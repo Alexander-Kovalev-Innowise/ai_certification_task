@@ -517,13 +517,10 @@ Per OQ-7, the service computes and stores a WCAG-derived accessible palette alon
 | Method & Path | Auth | `@RequiresCapability` | `X-Trainer-Context` |
 |---|---|---|---|
 | `POST /coaches/invite` | Bearer | `INVITE_COACH` | N/A — own tenant |
-| `POST /coaches/accept/:code` | `@Public()` or Bearer | `REDEEM_SHARE_LINK`\* | N/A — path-scoped |
 | `GET /trainers/:id/coaches` | Bearer | `VIEW_OWN_COACH_ROSTER` | N/A — path-scoped |
 | `PATCH /coaches/:id` | Bearer | `MANAGE_COACH_PROFILE` | N/A — own tenant / path-scoped |
 
-\* see the inconsistency note below — this endpoint's capability is the same `REDEEM_SHARE_LINK` used by the canonical redeem endpoint, which is exactly why it's flagged as likely redundant.
-
-**Inconsistency found (flag for sign-off — see §8.6):** the architecture module table lists `POST /coaches/accept/:code` under `CoachesController`, but architecture §9.1 describes coach-link acceptance (`COACH_ACCEPT`) as one dispatch branch of the single canonical `POST /share-links/:code/redeem` (§4.4), including its exact atomicity mechanism (conditional `updateMany`, BR-006). Two live endpoints performing the same state transition is a correctness risk (two code paths to keep in sync, two places the single-use race has to be gotten right). I have designed `POST /coaches/accept/:code` as a **thin alias** — it accepts the same body shape and internally calls `ShareLinkRedemptionService.redeem()` with the target `COACH_ACCEPT` branch, never duplicating the conditional-`updateMany` logic. Recommend collapsing to one canonical endpoint (`/share-links/:code/redeem`) before `coder` builds this, and keeping `/coaches/accept/:code` only as a friendlier alias if `frontend-design` specifically wants a coach-branded URL.
+**Resolved (was §8.6):** `POST /coaches/accept/:code` is dropped. Coach-link acceptance (`COACH_ACCEPT`) has exactly one entry point — `POST /share-links/:code/redeem` (§4.4) — matching how every other ShareLink type is redeemed. No coach-specific alias route.
 
 #### [TASK-001] POST /coaches/invite (2026-09-22)
 
@@ -534,10 +531,6 @@ FR-060. Trainer only, own tenant (`tid` claim). Generates a `ShareLink(type=COAC
 **Response:** `201 { shareLinkCode: string, expiresAt: string, status: 'PENDING' }`.
 
 **Status codes:** `201` · `400 VALIDATION_ERROR` · `403 FORBIDDEN`.
-
-#### [TASK-001] POST /coaches/accept/:code (2026-09-22)
-
-See inconsistency note above. **Request/response/status codes identical to the `COACH_ACCEPT` branch of `POST /share-links/:code/redeem`** (§4.4) — not re-specified here to avoid the two copies drifting.
 
 #### [TASK-001] GET /trainers/:id/coaches (2026-09-22)
 
@@ -905,9 +898,9 @@ Not generated in this pass — flagged as a follow-up, not a blocker: the endpoi
 | 8.1 | `X-Trainer-Context` is architected as required "on every player-facing request" (§8), but Epic-01's data model (`Availability`, `ChildPurchaseApproval`) has almost nothing literally trainer-partitioned yet. | Documented per-endpoint bucket (Required/N-A) honestly rather than forcing the header everywhere for appearance's sake; it ends up **Required** on essentially nothing concrete in Epic-01 beyond optionally scoping `GET /me/bootstrap`'s `activeContext`. | Confirm this is expected — the header becomes load-bearing once Epic-02 adds real trainer-scoped content (events/calendar), not before. |
 | 8.2 | `Capability.APPROVE_CHILD_PURCHASE` is missing from the architecture doc's literal `CHILD_DENIED` set (§9.2) even though §7.3's role matrix shows it denied for a child login. | Added it to the deny-list in this spec (§0.7, §4.6). | Confirm the addition — it's a real gap between two sections of the same architecture doc, not something I'm inventing from nothing. |
 | 8.3 | The boot-time assertion requires every non-`@Public` route to carry `@RequiresCapability`, but `/auth/logout` has no natural capability of its own. | Annotated it with `EDIT_OWN_PROFILE` as the closest fit. | Consider a dedicated `@AlwaysAllowed()` escape-hatch decorator instead — implementation detail, low priority. |
-| 8.4 | `POST /auth/register`'s purpose is unstated beyond the bare path in the module table; BR-005 + §9.1 leave no public self-registration flow for any role. | Scoped it to "complete trainer setup-link" (OQ-8's flow needs *some* endpoint, and this is the only unclaimed one). | Confirm this reading, or say the endpoint should be dropped entirely. |
+| 8.4 | `POST /auth/register`'s purpose is unstated beyond the bare path in the module table; BR-005 + §9.1 leave no public self-registration flow for any role. | **RESOLVED (2026-09-22, project owner confirmed):** scoped to "complete a Super-Admin-provisioned trainer's setup link" only. Players/coaches always get an account via `POST /share-links/:code/redeem`; there is no general self-signup path. | — |
 | 8.5 | `UsersController`'s module-table row lists `POST /users`, but no acceptance criteria anywhere describe an SA-creates-any-role flow distinct from `POST /trainers`. | Dropped `POST /users` from the surface; `POST /trainers` is the sole creation endpoint. | Confirm, or supply the missing acceptance criteria if a generic create-user flow is actually wanted. |
-| 8.6 | `POST /coaches/accept/:code` (module table) duplicates the `COACH_ACCEPT` branch of `POST /share-links/:code/redeem` (§9.1) — same state transition, two entry points. | Designed the former as a thin alias delegating to the latter's service method, not a second implementation. | Confirm whether to keep both routes (as alias) or collapse to one canonical endpoint before `coder` builds it. |
+| 8.6 | `POST /coaches/accept/:code` (module table) duplicates the `COACH_ACCEPT` branch of `POST /share-links/:code/redeem` (§9.1) — same state transition, two entry points. | **RESOLVED (2026-09-22, project owner confirmed):** collapsed to one canonical endpoint. `POST /coaches/accept/:code` is dropped entirely; coach acceptance goes through `POST /share-links/:code/redeem` like every other ShareLink type (§4.2). | — |
 | 8.7 | The task brief asked for exactly 9 controllers; the architecture doc's own module map promotes `associations` to a 10th, explicitly instructing the API designer to treat it as a second owning module on the same `/player-profiles` surface. | Followed the architecture doc (per the brief's own precedence rule) and designed a 10th controller, `AssociationsController`. | Confirm 10 controllers is fine, or say whether `associations`' endpoints should be physically folded into `PlayerProfilesController`'s class instead (routing is identical either way). |
 | 8.8 | No controller row anywhere exposes `PlayerTrainerAssociationService.listRosterForTrainer`, though FR-070 requires a trainer roster view and the service method already exists for it. | Added `GET /trainers/:id/players`. | Confirm the addition and its response shape (`{playerProfileId, name, age, availabilitySummary}` — deliberately excludes anything CRM-shaped per architecture §18's "no notes/tags/pipeline" boundary). |
 | 8.9 | No controller row exposes `ShareLinkService.listByTrainer`, though FR-060's "trainer can view invitation status" and FR-023's usage tracking imply a trainer-facing list. | Added `GET /trainers/:id/share-links`. | Confirm the addition. |
