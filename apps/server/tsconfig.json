@@ -1,0 +1,14 @@
+{
+  "extends": "@practiceperfect/tsconfig/nest.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
+    "types": ["node", "jest"],
+    "paths": {
+      "src/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "exclude": ["node_modules", "dist", "test/jest-e2e.json"]
+}
