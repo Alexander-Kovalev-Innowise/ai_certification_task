@@ -8,7 +8,7 @@ Multi-role training/coaching platform (Super Admin, Trainer, Coach, Player/Paren
 |------|---------|------------|--------------|
 | architect-architecture.md | System design, components, data flow | - | 2026-09-22 (TASK-001, amended: lean single-instance scope) |
 | api-designer-spec.md | Endpoints, schemas, authentication | architect-architecture | 2026-09-22 (TASK-001) |
-| frontend-design-spec.md | Pages, components, state management | architect-architecture, api-designer-spec | - |
+| frontend-design-spec.md | Pages, components, state management | architect-architecture, api-designer-spec | 2026-09-22 (TASK-001) |
 | docs-generator-implementation.md | Build process, deployment, tooling | - | - |
 
 ## Key Decisions
@@ -45,6 +45,15 @@ Multi-role training/coaching platform (Super Admin, Trainer, Coach, Player/Paren
 - [2026-09-22] `GET /me/bootstrap` response shape defined per role (`SUPER_ADMIN` / `TRAINER` / `COACH` / `PLAYER_PARENT` adult / `PLAYER_PARENT` child) as a discriminated union; `X-Trainer-Context` is optional on this one endpoint by design (it enumerates contexts rather than assuming one).
 - [2026-09-22] Standard error shape (RFC 7807-flavored) + `class-validator` → `details[]` mapping + full `errorCode` catalog defined once in spec §0, referenced (not repeated) per endpoint.
 - [2026-09-22] Nine additional inconsistencies/gaps found between the architecture doc, requirements doc, and business spec during design — logged in `api-designer-spec.md` §8, none blocking but all recommended for sign-off before `frontend-design` locks UI contracts against these shapes.
+
+### Frontend Design (TASK-001, see `frontend-design-spec.md`)
+
+- [2026-09-22] Aesthetic direction: "Court Glow" — dark performance surface (`#0D0D0D`-based ground, inverted from the source grayscale scale) with a tenant-driven accent glow computed from each trainer's `primaryColorHex`/`derivedPalette`; Clash Display (headings) + General Sans (body) type pairing, self-hosted via `next/font/local`.
+- [2026-09-22] Route map: 23 pages under `apps/client/app/` (6 public/auth incl. `/join/[code]` ShareLink dispatcher, 1 forced-password-change, 3 Super Admin, 5 trainer, 3 coach, 4 player/parent, 1 shared account) plus global layout-mounted components (`ImpersonationBanner`, `ContextSwitcher`, `BrandingProvider`, 4 role-scoped `RoleGuard` shells) and the shared `AvailabilityGrid` — reconciled against api-designer-spec's ~45 endpoints and against the requirements doc's ~20-route estimate (three routes added on top: `/register` is trainer-setup-only per API spec §8.4, not public signup; `/change-password` forced landing for `mustChangePassword`; `/verify-email` as its own non-blocking route).
+- [2026-09-22] State management: in-memory access token in a Zustand store (never persisted to browser storage), a hand-rolled `apiClient` interceptor that auto-attaches `Authorization`/`X-Trainer-Context` and does one silent-refresh retry on 401, TanStack Query for all server-state caching/pagination (keyset-only, matching architect §3.3), Zustand for client-only UI state (auth, active trainer context, impersonation countdown). Impersonation and context-switcher state are mounted at layout level (not page level) so they survive client-side navigation.
+- [2026-09-22] Form validation: Zod schemas mirror `class-validator` DTOs 1:1 (React Hook Form + `@hookform/resolvers/zod`), UX-only — server remains source of truth. Child-field restrictions (`CHILD_FIELD_NOT_EDITABLE`) are enforced primarily by omitting fields from the rendered form, not just by validation.
+- [2026-09-22] Branding: `BrandingProvider` applies trainer `logoUrl`/`primaryColorHex`/server-computed `derivedPalette` (or a client-side recomputation using the same transform names when only the raw hex is available) as CSS custom properties on a `data-branding` wrapper; non-blocking `contrastWarning` from `PATCH /trainers/:id/branding` renders as a dismissible post-save banner, matching the server's non-blocking design (architect OQ-7) with no added client-side gate.
+- [2026-09-22] Seven open items logged in `frontend-design-spec.md` §11 needing sign-off before `writing-plans`, most notably: `CreateTrainerDto.trainerName` single-field-vs-split UI question, the undocumented `PASSWORD_POLICY` regex (blocks implementing password schemas precisely), and whether availability-slot overlap should be client-blocked.
 
 ## Tech Stack
 
