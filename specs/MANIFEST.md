@@ -7,7 +7,7 @@ Multi-role training/coaching platform (Super Admin, Trainer, Coach, Player/Paren
 | File | Purpose | Depends On | Last Updated |
 |------|---------|------------|--------------|
 | architect-architecture.md | System design, components, data flow | - | 2026-09-22 (TASK-001, amended: lean single-instance scope) |
-| api-designer-spec.md | Endpoints, schemas, authentication | architect-architecture | - |
+| api-designer-spec.md | Endpoints, schemas, authentication | architect-architecture | 2026-09-22 (TASK-001) |
 | frontend-design-spec.md | Pages, components, state management | architect-architecture, api-designer-spec | - |
 | docs-generator-implementation.md | Build process, deployment, tooling | - | - |
 
@@ -34,6 +34,17 @@ Multi-role training/coaching platform (Super Admin, Trainer, Coach, Player/Paren
   - Async email/media use a Postgres **transactional outbox** (`OutboxJob`, ADR-13) drained by cron + an after-commit nudge — preserves retry/backoff/crash-durability without a broker, and is strictly more durable than the previous `afterCommit` enqueue. **Adds one model: Epic-01 is now 15 models, not 14.**
   - Accepted cost: **NFR-003 (1,000 concurrent) is no longer architecturally guaranteed** — it relied on horizontal scaling. Re-negotiated deliberately; exit criteria for revisiting the whole lean set are in §21 of the architecture doc.
 - [2026-09-22] OQ-3 confirmed (player trainer context travels in a server-validated `X-Trainer-Context` header) and OQ-4 approved (`GET /me/bootstrap` aggregate endpoint kept). **No blocking open question remains — `/api-designer` is unblocked.**
+
+### API Design (TASK-001, see `api-designer-spec.md`)
+
+- [2026-09-22] Full REST surface designed for Epic-01: 9 architecture-defined controllers **plus a 10th, `AssociationsController`**, promoted by the architecture doc's own module map but not named in the original 9-controller brief — flagged for sign-off (spec §8.7). ~45 endpoints total, including 3 gap-fill additions with no upstream controller row (`GET /trainers/:id/players`, `GET /trainers/:id/share-links`, `GET /coaches/:id/availability/check` — spec §8.8/§8.9).
+- [2026-09-22] Auth endpoints (`/auth/register|login|refresh|logout|forgot-password|reset-password|verify-email(+resend)|change-password`) fully specified: 15 min JWT access (body), 7-day rotating opaque refresh (httpOnly `Path=/auth` cookie), double-submit CSRF on `/auth/refresh` + `/auth/logout`, named-limiter annotations (`auth-ip`/`auth-identity`/`token-consume`) per endpoint.
+- [2026-09-22] Impersonation `act`-claim round trip fully worked (`POST /impersonation/start` → no refresh token issued, decoded JWT before/after shown → `POST /impersonation/end` → client calls `POST /auth/refresh` on the untouched admin cookie to return to the admin's own token, zero re-login).
+- [2026-09-22] `X-Trainer-Context` documented per-endpoint across all controllers as Required / N/A-path-scoped / N/A-own-tenant / N/A-platform. Finding: it is genuinely **Required** on almost nothing in Epic-01's actual data model (`Availability`/`ChildPurchaseApproval` carry no `trainerId`) — flagged as open question §8.1, expected to become load-bearing at Epic-02.
+- [2026-09-22] Child (`typ: CHILD`) capability deny-list wired to every gated endpoint, returning `403 { errorCode: 'CHILD_CAPABILITY_DENIED' }` (never a silent no-op) plus a narrower `403 CHILD_FIELD_NOT_EDITABLE` for field-level restrictions on `PATCH /me` / `PATCH /player-profiles/:id`. Added `Capability.APPROVE_CHILD_PURCHASE` to the architecture doc's literal deny-list to reconcile it with the §7.3 role matrix — flagged for sign-off (spec §8.2).
+- [2026-09-22] `GET /me/bootstrap` response shape defined per role (`SUPER_ADMIN` / `TRAINER` / `COACH` / `PLAYER_PARENT` adult / `PLAYER_PARENT` child) as a discriminated union; `X-Trainer-Context` is optional on this one endpoint by design (it enumerates contexts rather than assuming one).
+- [2026-09-22] Standard error shape (RFC 7807-flavored) + `class-validator` → `details[]` mapping + full `errorCode` catalog defined once in spec §0, referenced (not repeated) per endpoint.
+- [2026-09-22] Nine additional inconsistencies/gaps found between the architecture doc, requirements doc, and business spec during design — logged in `api-designer-spec.md` §8, none blocking but all recommended for sign-off before `frontend-design` locks UI contracts against these shapes.
 
 ## Tech Stack
 
