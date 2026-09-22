@@ -141,6 +141,17 @@ GET /users?limit=50&cursor=eyJjcmVhdGVkQXQiOi4uLn0
 { "items": [ /* T[] */ ], "nextCursor": "eyJjcmVhdGVkQXQiOi4uLn0" | null, "hasMore": true }
 ```
 
+### 0.10 `PASSWORD_POLICY` (resolved 2026-09-22, project owner confirmed)
+
+Referenced by `@Matches(PASSWORD_POLICY)` throughout §1 and §2 but previously undefined:
+
+```ts
+const PASSWORD_POLICY = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/;
+// at least one lowercase, one uppercase, one digit; length enforced separately via @MinLength(8)
+```
+
+Minimum length is **8**, not 12 — the `@MinLength(12)` on `CompleteTrainerSetupDto.password` (§1.3) and `ResetPasswordDto.newPassword` (§1.6) is corrected to `@MinLength(8)` to match. No special-character requirement. `frontend-design-spec.md`'s Zod password schema mirrors this exactly.
+
 ---
 
 ## 1. `AuthController` — `/auth` (module `auth`)
@@ -169,7 +180,7 @@ Owns `RefreshToken`, `EmailVerificationToken`, `PasswordResetToken`. Session/tok
 ```ts
 class CompleteTrainerSetupDto {
   @IsString() @IsNotEmpty() setupToken: string;       // opaque, from the invite email link
-  @IsString() @MinLength(12) @Matches(PASSWORD_POLICY) password: string;
+  @IsString() @MinLength(8) @Matches(PASSWORD_POLICY) password: string;
 }
 ```
 
@@ -243,7 +254,7 @@ Revokes the presented refresh-token row (and, if `?everywhere=true`, all of the 
 ```ts
 class ResetPasswordDto {
   @IsString() @IsNotEmpty() token: string;
-  @IsString() @MinLength(12) @Matches(PASSWORD_POLICY) newPassword: string;
+  @IsString() @MinLength(8) @Matches(PASSWORD_POLICY) newPassword: string;
 }
 ```
 Single-use, 1 h expiry. On success: `passwordHash` updated, `tokenVersion++` (revokes all existing sessions — a password reset is itself a "logout everywhere"), all `RefreshToken` rows revoked.
@@ -469,7 +480,8 @@ FR-010 / BR-005. Only Super Admin. One transaction: `User(role=TRAINER, status=A
 ```ts
 class CreateTrainerDto {
   @IsString() @MaxLength(200) businessName: string;
-  @IsString() @MaxLength(100) trainerName: string;   // split into firstName/lastName server-side, or kept as one field — confirm with frontend-design
+  @IsString() @MaxLength(100) firstName: string;   // RESOLVED 2026-09-22: split to match UserSummaryDto's firstName/lastName convention
+  @IsString() @MaxLength(100) lastName: string;
   @IsEmail() @MaxLength(255) email: string;
   @IsPhoneNumber() phone: string;
 }
