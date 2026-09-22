@@ -78,7 +78,8 @@ Nothing else in this plan builds without this phase. Order matters within it (ts
 - Create: `apps/server/eslint.config.mjs` (extends `@practiceperfect/eslint-config/nestjs.mjs`)
 - Create: `apps/server/src/main.ts` (placeholder: `NestFactory.create(AppModule)`, `app.listen(3000)` — full pipeline wiring is Task 0.11)
 - Create: `apps/server/src/app.module.ts` (placeholder: empty `@Module({ imports: [] })` — guard pipeline registered in Task 2.8)
-- Create: `apps/server/.env.example` (`DATABASE_URL`, `JWT_SECRET`, `PORT=3000`)
+
+**Note (revised 2026-09-22, project owner decision):** no per-app `.env.example` — a single root `.env.example` covers both apps (Task 0.7). `apps/server` has no `.env`/`.env.example` file of its own.
 
 **Do:** `npm run dev -w apps/server` (or `turbo run dev --filter=server`) must boot and serve on `:3000` with no routes yet.
 
@@ -88,12 +89,13 @@ Nothing else in this plan builds without this phase. Order matters within it (ts
 
 **Files:**
 - Create: `apps/client/package.json` (deps: `next`, `react`, `react-dom`; devDeps: `typescript`, `@types/react`)
-- Create: `apps/client/next.config.mjs`
+- Create: `apps/client/next.config.mjs` (loads the **root** `.env` via `import { config } from 'dotenv'; config({ path: new URL('../../.env', import.meta.url).pathname })` at the top of the file, before `export default nextConfig` — this puts `NEXT_PUBLIC_API_URL` into `process.env` before Next's own build-time env inlining runs, since Next only auto-loads `.env` files from the app's own directory by default)
 - Create: `apps/client/tsconfig.json` (extends `@practiceperfect/tsconfig/next.json`)
 - Create: `apps/client/eslint.config.mjs` (extends `@practiceperfect/eslint-config/next.mjs`)
 - Create: `apps/client/app/layout.tsx` (minimal `<html><body>{children}</body></html>`)
 - Create: `apps/client/app/page.tsx` (placeholder landing)
-- Create: `apps/client/.env.example` (`NEXT_PUBLIC_API_URL`)
+
+**Note (revised 2026-09-22):** no per-app `.env.example` here either — see Task 0.7. `apps/client` has no `.env`/`.env.example` file of its own; `next.config.mjs` loads the root `.env` explicitly (Task 0.7).
 
 **Commit:** `chore(client): bootstrap Next.js App Router skeleton`
 
@@ -117,21 +119,42 @@ Spacing (`xxs:4px xs:8px sm:12px md:16px lg:24px xl:32px xxl:40px`), radius (`xs
 
 **Commit:** `feat(client): wire Tailwind config to design tokens`
 
-### Task 0.7: `docker-compose.yml` — Postgres only
+### Task 0.7: `docker-compose.yml` — Postgres only — and the single root `.env.example`
 
 **Files:**
 - Create: `docker-compose.yml` (single `postgres:16` service, named volume, port 5432, env `POSTGRES_DB=practiceperfect`)
-- Modify: `apps/server/.env.example` (`DATABASE_URL=postgresql://postgres:postgres@localhost:5432/practiceperfect`)
+- Create: `.env.example` **(project root — NOT `apps/server/` or `apps/client/`)**, covering every var either app needs:
+  ```
+  # Server
+  NODE_ENV=development
+  PORT=3000
+
+  # Database (docker-compose: postgres:16, same directory — Compose reads this root .env natively for its own substitutions too)
+  DATABASE_URL=postgresql://postgres:postgres@localhost:5432/practiceperfect
+
+  # Auth
+  JWT_SECRET=changeme-generate-a-strong-random-secret
+
+  # Scheduler (in-process @nestjs/schedule cron; emergency valve — arch §13.1)
+  SCHEDULER_ENABLED=true
+
+  # Client
+  NEXT_PUBLIC_API_URL=http://localhost:3000
+  ```
 
 **Do:** No Redis service, no PgBouncer service — per `arch` lean-scope amendment. State this explicitly as a comment at the top of `docker-compose.yml`: `# Lean/single-instance scope (ADR-11): PostgreSQL only. No Redis, no PgBouncer, no broker.`
 
-**Commit:** `chore(scaffold): add docker-compose for local Postgres`
+**Revised (2026-09-22, project owner decision): single root `.env`/`.env.example`, not one per app.** Both `apps/server` and `apps/client` sit at the same depth (`apps/<name>`), so both reach the root file via the identical relative path `../../.env` from their own working directory (workspace commands run with `cwd` set to the package directory) — no path-depth mismatch to account for. `.gitignore` already excludes `.env` at the root (added earlier); nothing further needed there.
+
+**Commit:** `chore(scaffold): add docker-compose for local Postgres and root .env.example`
 
 ### Task 0.8: Typed environment config (`shared/config`)
 
 **Files:**
 - Create: `apps/server/src/shared/config/env.schema.ts` (zod schema: `DATABASE_URL`, `JWT_SECRET`, `PORT`, `SCHEDULER_ENABLED` (boolean, default `true` — arch §13.1 emergency valve), `NODE_ENV`)
-- Create: `apps/server/src/shared/config/config.module.ts` (`@Global()`, validates `process.env` against the schema at boot, throws on failure)
+- Create: `apps/server/src/shared/config/config.module.ts` (`@Global()`, loads the **root** `.env` via `dotenv.config({ path: resolve(process.cwd(), '../../.env') })` before validating `process.env` against the schema at boot, throws on failure)
+
+**Do (env loading, revised 2026-09-22):** `process.cwd()` is `apps/server` when run via `npm run dev -w apps/server` / `turbo run dev`, so `resolve(process.cwd(), '../../.env')` resolves to the project root regardless of whether the process runs from `src` (ts-node) or `dist` (compiled) — it's a `cwd`-relative path, not `__dirname`-relative, so build output depth never affects it.
 
 **Tests:** `apps/server/src/shared/config/env.schema.spec.ts` — invalid env (missing `DATABASE_URL`) throws; valid env parses; `SCHEDULER_ENABLED` defaults to `true` when unset.
 
