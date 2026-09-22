@@ -26,6 +26,11 @@ export const envSchema = z.object({
   // set to "false" to disable the in-process @nestjs/schedule cron on a
   // given instance without a code change).
   SCHEDULER_ENABLED: booleanFromString(true),
+  // Not in the plan's Task 0.8 var list, added in Task 0.11 — the single
+  // client origin CORS needs (arch §5 step 1). Defaults to the client's dev
+  // port so a bare `docker compose up -d && npm run dev` works out of the
+  // box without every contributor adding this to their local .env.
+  CLIENT_URL: z.string().min(1).default('http://localhost:3000'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

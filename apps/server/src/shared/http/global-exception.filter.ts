@@ -111,6 +111,31 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       return;
     }
 
+    // Body-parser (and other Express middleware) errors aren't HttpException
+    // instances but do carry an HTTP status — e.g. malformed JSON throws a
+    // SyntaxError with `.status = 400` before routing/ValidationPipe ever
+    // run. Treat 4xx of these as the client error they are, not a 500.
+    const rawStatus = isRecord(exception)
+      ? (exception.status ?? exception.statusCode)
+      : undefined;
+    if (typeof rawStatus === 'number' && rawStatus >= 400 && rawStatus < 500) {
+      const message = exception instanceof Error ? exception.message : 'Bad Request';
+      const errorCode = STATUS_TO_ERROR_CODE[rawStatus] ?? ERROR_CODES.VALIDATION_ERROR;
+      const payload: ErrorResponseBody = {
+        statusCode: rawStatus,
+        message: rawStatus === HttpStatus.BAD_REQUEST ? 'Validation failed' : message,
+        error: httpStatusPhrase(rawStatus),
+        errorCode,
+        path: request.url,
+        requestId,
+        ...(rawStatus === HttpStatus.BAD_REQUEST
+          ? { details: [{ field: 'body', message }] }
+          : {}),
+      };
+      response.status(rawStatus).json(payload);
+      return;
+    }
+
     // Unhandled exception -> 500, no details, never leak the raw stack trace.
     const payload: ErrorResponseBody = {
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,

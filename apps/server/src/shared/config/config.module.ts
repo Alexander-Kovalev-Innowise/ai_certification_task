@@ -13,8 +13,12 @@ import { validateEnv, type EnvConfig } from './env.schema';
 loadDotenv({ path: resolve(process.cwd(), '../../.env') });
 
 // Validated at module load (application boot) — throws synchronously on
-// invalid/missing required env vars, per Task 0.8's DoD.
-const env = validateEnv(process.env);
+// invalid/missing required env vars, per Task 0.8's DoD. Exported directly
+// (not just via the DI token below) so main.ts can read it before the Nest
+// DI container exists yet — importing this file is what triggers the
+// dotenv load + validation, regardless of whether anything wires
+// ConfigModule into AppModule's imports.
+export const env = validateEnv(process.env);
 
 export const ENV_CONFIG = Symbol('ENV_CONFIG');
 
