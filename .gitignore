@@ -3,3 +3,16 @@
 
 # Personal settings
 .claude/settings.local.json
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.next/
+
+# Environment
+.env
+
+# Coverage
+coverage/
