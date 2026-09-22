@@ -1,0 +1,23 @@
+@import 'tailwindcss';
+@config '../../tailwind.config.ts';
+
+:root {
+  --surface-0: #0d0d0d;
+  --surface-1: #171717;
+  --surface-2: #242424;
+  --surface-3: #363636;
+  --border-soft: #5e5e5e;
+  --border-strong: #868686;
+  --ink-muted: #cfcfcf;
+  --ink: #f3f3f3;
+  --brand-primary: #6ee7b7; /* platform default mint, overridden per-tenant by BrandingProvider (Task 10.10) */
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --info: #60a5fa;
+
+  /* RGB mirror of --brand-primary for rgba()-based glow shadows (fe §1.2/1.3).
+     Static platform-default value here; BrandingProvider (Task 10.10) overrides
+     all three at runtime per tenant. */
+  --brand-primary-rgb: 110, 231, 183;
+}
