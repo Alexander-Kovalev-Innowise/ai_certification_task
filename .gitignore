@@ -1,0 +1,5 @@
+# Worktrees
+.worktrees/
+
+# Personal settings
+.claude/settings.local.json
