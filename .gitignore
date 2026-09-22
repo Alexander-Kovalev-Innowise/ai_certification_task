@@ -11,6 +11,9 @@ node_modules/
 dist/
 .next/
 
+# Turborepo cache
+.turbo/
+
 # Environment
 .env
 
