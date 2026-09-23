@@ -1,0 +1,48 @@
+import { Type } from 'class-transformer';
+import { IsArray, IsBoolean, IsInt, Max, Min, ValidateNested } from 'class-validator';
+
+// Task 5.11 (api §4.5 "PUT /player-profiles/:id/availability", FR-090).
+// `startTime`/`endTime` are range-validated here (0-1440); the
+// `startTime < endTime` cross-field check needs both values at once and
+// isn't expressible as a single-field decorator, so AvailabilityService
+// checks it (same "data-dependent validation lives in the service"
+// convention PlayerProfileService's age check already established).
+export class AvailabilitySlotDto {
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  dayOfWeek!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(1440)
+  startTime!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(1440)
+  endTime!: number;
+
+  @IsBoolean()
+  isAvailable!: boolean;
+}
+
+// Task 5.11. Full-replace body — `PUT`, not `PATCH` (weekly grid semantics).
+export class SetAvailabilityDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AvailabilitySlotDto)
+  slots!: AvailabilitySlotDto[];
+}
+
+export class AvailabilitySlotResponseDto {
+  dayOfWeek!: number;
+  startTime!: number;
+  endTime!: number;
+  isAvailable!: boolean;
+}
+
+export class AvailabilityGridResponseDto {
+  playerProfileId!: string;
+  slots!: AvailabilitySlotResponseDto[];
+}
