@@ -104,6 +104,22 @@ export class ShareLinksRepository {
   }
 
   /**
+   * Task 4.12 (api §4.2 "GET /trainers/:id/coaches" roster). All `COACH_UNIQUE`
+   * links for this trainer that are not `REVOKED` — the roster derives
+   * `invitationStatus: 'Pending'|'Expired'` from these (arch §9.1's
+   * single-use claim marks a link `EXPIRED` on both a successful accept AND
+   * genuine time-expiry, so `CoachService.listCoaches` cross-references
+   * `targetEmail` against accepted `CoachProfile` rows to tell the two
+   * apart — see that method's own comment).
+   */
+  async listCoachInvitesByTrainer(trainerId: string): Promise<ShareLink[]> {
+    return this.prisma.extended.shareLink.findMany({
+      where: { trainerId, type: 'COACH_UNIQUE', status: { not: 'REVOKED' } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
    * Task 4.6. Plain (non-conditional) increment for the
    * ANONYMOUS_REGISTRATION branch's `PLAYER_STATIC` links — those have no
    * single-use constraint (`maxUses: null`, BR-006), so there is no race to

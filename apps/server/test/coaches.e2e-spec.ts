@@ -146,4 +146,94 @@ describe('CoachesController (e2e, Task 4.11)', () => {
       expect(res.body.errorCode).toBe('VALIDATION_ERROR');
     });
   });
+
+  describe('GET /trainers/:id/coaches (Task 4.12)', () => {
+    async function insertCoach(trainerId: string, status: 'PENDING' | 'ACTIVE', overrides: Record<string, unknown> = {}) {
+      const user = await insertUser({ role: 'COACH', ...overrides });
+      const coachProfile = await db.prisma.coachProfile.create({
+        data: { userId: user.id, trainerId, status, bio: 'Bio text' },
+      });
+      return { user, coachProfile };
+    }
+
+    it('reflects Accepted, Pending and Expired invitation statuses correctly', async () => {
+      const trainer = await insertTrainer();
+      const { user: acceptedUser } = await insertCoach(trainer.trainerId, 'ACTIVE');
+
+      const pendingInvite = await db.prisma.shareLink.create({
+        data: {
+          code: `pending-${randomUUID()}`,
+          type: 'COACH_UNIQUE',
+          trainerId: trainer.trainerId,
+          createdByUserId: trainer.userId,
+          targetEmail: `${randomUUID()}@example.com`,
+          expiresAt: new Date(Date.now() + 60_000),
+        },
+      });
+      const expiredInvite = await db.prisma.shareLink.create({
+        data: {
+          code: `expired-${randomUUID()}`,
+          type: 'COACH_UNIQUE',
+          trainerId: trainer.trainerId,
+          createdByUserId: trainer.userId,
+          targetEmail: `${randomUUID()}@example.com`,
+          expiresAt: new Date(Date.now() - 60_000),
+        },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/trainers/${trainer.trainerId}/coaches`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.items).toHaveLength(3);
+
+      const accepted = res.body.items.find((r: { email: string }) => r.email === acceptedUser.email);
+      expect(accepted).toMatchObject({ invitationStatus: 'Accepted', status: 'ACTIVE', bio: 'Bio text' });
+
+      const pending = res.body.items.find((r: { email: string }) => r.email === pendingInvite.targetEmail);
+      expect(pending).toMatchObject({ invitationStatus: 'Pending', userId: null });
+
+      const expired = res.body.items.find((r: { email: string }) => r.email === expiredInvite.targetEmail);
+      expect(expired).toMatchObject({ invitationStatus: 'Expired', userId: null });
+    });
+
+    it('an accepted invite’s own ShareLink is not double-counted alongside its CoachProfile row', async () => {
+      const trainer = await insertTrainer();
+      const { user: acceptedUser } = await insertCoach(trainer.trainerId, 'ACTIVE');
+      // Simulates the claimed link itself (status flips to EXPIRED on successful accept, arch §9.1).
+      await db.prisma.shareLink.create({
+        data: {
+          code: `claimed-${randomUUID()}`,
+          type: 'COACH_UNIQUE',
+          trainerId: trainer.trainerId,
+          createdByUserId: trainer.userId,
+          targetEmail: acceptedUser.email,
+          status: 'EXPIRED',
+          useCount: 1,
+        },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/trainers/${trainer.trainerId}/coaches`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.items).toHaveLength(1);
+      expect(res.body.items[0]).toMatchObject({ email: acceptedUser.email, invitationStatus: 'Accepted' });
+    });
+
+    it('cross-tenant -> 404 (never 403, arch §8 Layer 3)', async () => {
+      const trainerA = await insertTrainer();
+      const trainerB = await insertTrainer();
+      await insertCoach(trainerA.trainerId, 'ACTIVE');
+
+      const res = await request(app.getHttpServer())
+        .get(`/trainers/${trainerA.trainerId}/coaches`)
+        .set('Authorization', `Bearer ${trainerB.accessToken}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.errorCode).toBe('NOT_FOUND');
+    });
+  });
 });
