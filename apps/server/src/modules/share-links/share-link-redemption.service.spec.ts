@@ -133,6 +133,8 @@ describe('ShareLinkRedemptionService.redeem — ANONYMOUS_REGISTRATION (Task 4.6
       authService,
       jwtService,
       authSnapshotRepository,
+      usersRepository,
+      prismaService,
     );
   }
 

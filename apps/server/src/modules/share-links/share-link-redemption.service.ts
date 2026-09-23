@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { Prisma } from '@prisma/client';
 import type { Request, Response } from 'express';
@@ -6,6 +6,8 @@ import type { Request, Response } from 'express';
 import { env } from '../../shared/config/config.module';
 import { JOB_TYPES } from '../../shared/jobs/job-types.const';
 import { OutboxService } from '../../shared/jobs/outbox.service';
+import { buildChildBlockedShareLinkEmailPayload } from '../../shared/mail/templates/child-blocked-sharelink.template';
+import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { AccessTokenClaims } from '../../shared/security/access-token-claims.interface';
 import type { AuthContext } from '../../shared/security/auth-context.interface';
 import { AuthSnapshotRepository } from '../../shared/security/auth-snapshot.repository';
@@ -14,6 +16,7 @@ import { AuthService } from '../auth/auth.service';
 import type { AuthSessionResponseDto } from '../auth/dto/auth-session-response.dto';
 import { PasswordService } from '../auth/password.service';
 import { AccountProvisioningService } from '../users/account-provisioning.service';
+import { UsersRepository } from '../users/users.repository';
 
 import type { RedeemShareLinkDto } from './dto/redeem-share-link.dto';
 import { resolveShareLinkInvalidReason } from './share-link.service';
@@ -102,6 +105,8 @@ export class ShareLinkRedemptionService {
     private readonly authService: AuthService,
     private readonly jwtService: JwtService,
     private readonly authSnapshotRepository: AuthSnapshotRepository,
+    private readonly usersRepository: UsersRepository,
+    private readonly prisma: PrismaService,
   ) {}
 
   /**
@@ -133,8 +138,7 @@ export class ShareLinkRedemptionService {
     // be checked ahead of the ASSOCIATE_EXISTING role check below, never
     // folded into it.
     if (authContext.accountType === 'CHILD') {
-      // Task 4.8.
-      throw new Error('CHILD_SHARE_LINK_BLOCKED is implemented in Task 4.8');
+      await this.redeemChildBlocked(authContext, link.code);
     }
 
     if (authContext.role === 'PLAYER_PARENT') {
@@ -279,6 +283,46 @@ export class ShareLinkRedemptionService {
     }
 
     return results;
+  }
+
+  /**
+   * Task 4.8 (api §4.4, arch §9.1 "CHILD_SHARE_LINK_BLOCKED", FR-052/SEC-006).
+   * Body ignored. Side effect only: enqueues
+   * `OutboxJob(EMAIL_CHILD_BLOCKED_SHARELINK)` to the guardian with the code
+   * + "Review Registration" CTA. No association created, no partial state
+   * written beyond that one job row — the single-statement `$transaction`
+   * exists only because `OutboxService.enqueue` requires a
+   * `Prisma.TransactionClient` (arch §13.2's "must be called INSIDE the
+   * caller's own $transaction"), not because there is anything else to
+   * commit atomically with it here. Always throws — the return type is
+   * `never` so `redeem()`'s dispatcher needs no `return` after calling this.
+   */
+  private async redeemChildBlocked(ctx: AuthContext, shareLinkCode: string): Promise<never> {
+    if (ctx.guardianUserId) {
+      const [child, guardian] = await Promise.all([
+        this.usersRepository.findById(ctx.userId),
+        this.usersRepository.findById(ctx.guardianUserId),
+      ]);
+
+      if (guardian) {
+        await this.prisma.$transaction(async (tx) => {
+          await this.outboxService.enqueue(
+            tx,
+            JOB_TYPES.EMAIL_CHILD_BLOCKED_SHARELINK,
+            buildChildBlockedShareLinkEmailPayload(guardian.email, {
+              guardianFirstName: guardian.firstName,
+              childFirstName: child?.firstName ?? '',
+              shareLinkCode,
+            }) as unknown as Prisma.InputJsonValue,
+          );
+        });
+      }
+    }
+
+    throw new ForbiddenException({
+      message: 'A child login cannot redeem a ShareLink',
+      errorCode: 'CHILD_SHARE_LINK_BLOCKED',
+    });
   }
 
   /**

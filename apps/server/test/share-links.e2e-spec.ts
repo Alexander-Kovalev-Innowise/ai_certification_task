@@ -526,4 +526,28 @@ describe('ShareLinksController (e2e, Task 4.2)', () => {
       expect(JSON.stringify(res.body)).not.toContain(otherOwner.userId);
     });
   });
+
+  describe('POST /share-links/:code/redeem — CHILD_SHARE_LINK_BLOCKED (Task 4.8)', () => {
+    it('typ:CHILD -> exactly 403 CHILD_SHARE_LINK_BLOCKED, no association created, guardian notified via outbox', async () => {
+      const link = await seedPlayerStaticLink();
+      const guardian = await insertUser();
+      const child = await insertUser();
+      const childToken = await signToken(child, { typ: 'CHILD', gid: guardian.id });
+
+      const res = await request(app.getHttpServer())
+        .post(`/share-links/${link.code}/redeem`)
+        .set('Authorization', `Bearer ${childToken}`)
+        .send({});
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('CHILD_SHARE_LINK_BLOCKED');
+
+      const associations = await db.prisma.playerTrainerAssociation.findMany({ where: { trainerId: link.trainerId } });
+      expect(associations).toHaveLength(0);
+
+      const jobs = await db.prisma.outboxJob.findMany({ where: { type: 'EMAIL_CHILD_BLOCKED_SHARELINK' } });
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].payload).toMatchObject({ to: guardian.email });
+    });
+  });
 });
