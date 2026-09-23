@@ -10,6 +10,9 @@ node_modules/
 # Build output
 dist/
 .next/
+apps/server/test/*.js
+apps/server/test/*.d.ts
+apps/server/test/*.js.map
 
 # Turborepo cache
 .turbo/
