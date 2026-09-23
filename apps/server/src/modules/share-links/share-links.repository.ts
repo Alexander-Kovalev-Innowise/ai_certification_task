@@ -102,4 +102,15 @@ export class ShareLinksRepository {
       take: params.limit + 1,
     });
   }
+
+  /**
+   * Task 4.6. Plain (non-conditional) increment for the
+   * ANONYMOUS_REGISTRATION branch's `PLAYER_STATIC` links — those have no
+   * single-use constraint (`maxUses: null`, BR-006), so there is no race to
+   * guard against the way Task 4.9's conditional `updateMany` (COACH_UNIQUE)
+   * has to. Always called inside the redemption flow's own `$transaction`.
+   */
+  async incrementUseCount(id: string, tx: Prisma.TransactionClient): Promise<void> {
+    await tx.shareLink.update({ where: { id }, data: { useCount: { increment: 1 } } });
+  }
 }

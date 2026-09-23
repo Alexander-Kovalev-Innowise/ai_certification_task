@@ -1,6 +1,8 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query, Req, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
+import type { Request, Response } from 'express';
 
 import type { PaginatedResponseDto } from '../../shared/http/pagination.dto';
 import type { AuthContext } from '../../shared/security/auth-context.interface';
@@ -9,10 +11,13 @@ import { CurrentUser } from '../../shared/security/decorators/current-user.decor
 import { Public } from '../../shared/security/decorators/public.decorator';
 import { RequiresCapability } from '../../shared/security/decorators/requires-capability.decorator';
 import { Roles } from '../../shared/security/decorators/roles.decorator';
+import { AuthSessionResponseDto } from '../auth/dto/auth-session-response.dto';
 
 import { CreateShareLinkDto } from './dto/create-share-link.dto';
 import { ListShareLinksQueryDto } from './dto/list-share-links-query.dto';
+import { RedeemShareLinkDto } from './dto/redeem-share-link.dto';
 import { ShareLinkCreatedResponseDto, ShareLinkPreviewResponseDto, ShareLinkRowDto } from './dto/share-link-response.dto';
+import { ShareLinkRedemptionService } from './share-link-redemption.service';
 import { ShareLinkService } from './share-link.service';
 
 // Task 4.2, first endpoint — extended by every later share-links task
@@ -24,7 +29,10 @@ import { ShareLinkService } from './share-link.service';
 @ApiBearerAuth()
 @Controller()
 export class ShareLinksController {
-  constructor(private readonly shareLinkService: ShareLinkService) {}
+  constructor(
+    private readonly shareLinkService: ShareLinkService,
+    private readonly shareLinkRedemptionService: ShareLinkRedemptionService,
+  ) {}
 
   // Task 4.2 (api §4.4 "POST /share-links", FR-023). TRAINER only — see
   // ShareLinkService.requireTrainerId's comment on why "or Super Admin"
@@ -84,5 +92,31 @@ export class ShareLinksController {
   @ApiResponse({ status: 404 })
   async revokeShareLink(@CurrentUser() ctx: AuthContext, @Param('id') id: string): Promise<void> {
     await this.shareLinkService.revokeShareLink(ctx, id);
+  }
+
+  // Task 4.6, extended in Task 4.7 (ASSOCIATE_EXISTING), Task 4.8
+  // (CHILD_SHARE_LINK_BLOCKED), Task 4.9 (COACH_ACCEPT) and Task 4.10
+  // (ROLE_CANNOT_REDEEM_SHARE_LINK + final Swagger pass over every response
+  // shape). `@Public()` at the guard level — auth is read manually inside
+  // ShareLinkRedemptionService.redeem (api §4.4's "auth optional" posture;
+  // see that method's own comment on why `@RequiresCapability` would be
+  // inert here even if added). Currently implements ANONYMOUS_REGISTRATION
+  // only; the other four branches land in the tasks named above.
+  @Public()
+  @Throttle({ 'auth-ip': {} })
+  @Post('share-links/:code/redeem')
+  @ApiOperation({ summary: 'Redeem a ShareLink — dispatches by auth state x typ x link type (arch §9.1)' })
+  @ApiResponse({ status: 201, description: 'ANONYMOUS_REGISTRATION — auto-login session', type: AuthSessionResponseDto })
+  @ApiResponse({ status: 400 })
+  @ApiResponse({ status: 404, description: 'Unknown code' })
+  @ApiResponse({ status: 409, description: 'Expired/exhausted/revoked link', schema: { example: { errorCode: 'SHARE_LINK_UNAVAILABLE' } } })
+  @ApiResponse({ status: 429, description: 'Too many attempts', headers: { 'Retry-After': { schema: { type: 'integer' } } } })
+  async redeemShareLink(
+    @Param('code') code: string,
+    @Body() dto: RedeemShareLinkDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthSessionResponseDto> {
+    return this.shareLinkRedemptionService.redeem(code, dto, req, res);
   }
 }

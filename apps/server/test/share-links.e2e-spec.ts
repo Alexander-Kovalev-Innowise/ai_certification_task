@@ -376,4 +376,88 @@ describe('ShareLinksController (e2e, Task 4.2)', () => {
       expect(row?.status).toBe('REVOKED');
     });
   });
+
+  describe('POST /share-links/:code/redeem — ANONYMOUS_REGISTRATION (Task 4.6)', () => {
+    async function seedPlayerStaticLink(): Promise<{ code: string; trainerId: string }> {
+      const trainer = await insertTrainer({ businessName: 'Redeem Co' });
+      const link = await db.prisma.shareLink.create({
+        data: { code: `redeem-${randomUUID()}`, type: 'PLAYER_STATIC', trainerId: trainer.trainerId, createdByUserId: trainer.userId },
+      });
+      return { code: link.code, trainerId: trainer.trainerId };
+    }
+
+    function redeemDto(overrides: Record<string, unknown> = {}) {
+      return {
+        email: `${randomUUID()}@example.com`,
+        password: 'Password1',
+        phone: '+14155552671',
+        playerName: 'Jamie Doe',
+        dateOfBirth: '2015-01-01',
+        gender: 'OTHER',
+        isSelf: false,
+        ...overrides,
+      };
+    }
+
+    it('no auth header, PLAYER_STATIC link -> 201 auto-login session; creates User+PlayerProfile+PlayerTrainerAssociation, increments useCount', async () => {
+      const link = await seedPlayerStaticLink();
+      const dto = redeemDto();
+
+      const res = await request(app.getHttpServer()).post(`/share-links/${link.code}/redeem`).send(dto);
+
+      expect(res.status).toBe(201);
+      expect(res.body.accessToken).toEqual(expect.any(String));
+      expect(res.body.user).toMatchObject({ email: dto.email, role: 'PLAYER_PARENT' });
+      expect(res.headers['set-cookie']).toBeDefined();
+
+      const user = await db.prisma.user.findUnique({ where: { email: dto.email } });
+      expect(user).not.toBeNull();
+
+      const profile = await db.prisma.playerProfile.findFirst({ where: { accountUserId: user!.id } });
+      expect(profile).not.toBeNull();
+      expect(profile?.name).toBe(dto.playerName);
+
+      const association = await db.prisma.playerTrainerAssociation.findFirst({
+        where: { trainerId: link.trainerId, playerProfileId: profile!.id },
+      });
+      expect(association?.status).toBe('ACTIVE');
+
+      const refreshedLink = await db.prisma.shareLink.findUnique({ where: { code: link.code } });
+      expect(refreshedLink?.useCount).toBe(1);
+
+      const jobs = await db.prisma.outboxJob.findMany({ where: { type: 'EMAIL_SHARELINK_CONFIRMATION' } });
+      expect(jobs).toHaveLength(1);
+    });
+
+    it('missing a required field -> 400 VALIDATION_ERROR', async () => {
+      const link = await seedPlayerStaticLink();
+      const dto = redeemDto();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- intentionally deleting a required field to prove server-side validation
+      delete (dto as any).playerName;
+
+      const res = await request(app.getHttpServer()).post(`/share-links/${link.code}/redeem`).send(dto);
+
+      expect(res.status).toBe(400);
+      expect(res.body.errorCode).toBe('VALIDATION_ERROR');
+    });
+
+    it('revoked link -> 409 SHARE_LINK_UNAVAILABLE', async () => {
+      const trainer = await insertTrainer();
+      const link = await db.prisma.shareLink.create({
+        data: { code: `revoked-redeem-${randomUUID()}`, type: 'PLAYER_STATIC', trainerId: trainer.trainerId, createdByUserId: trainer.userId, status: 'REVOKED' },
+      });
+
+      const res = await request(app.getHttpServer()).post(`/share-links/${link.code}/redeem`).send(redeemDto());
+
+      expect(res.status).toBe(409);
+      expect(res.body.errorCode).toBe('SHARE_LINK_UNAVAILABLE');
+    });
+
+    it('unknown code -> 404', async () => {
+      const res = await request(app.getHttpServer()).post('/share-links/does-not-exist/redeem').send(redeemDto());
+
+      expect(res.status).toBe(404);
+      expect(res.body.errorCode).toBe('NOT_FOUND');
+    });
+  });
 });
