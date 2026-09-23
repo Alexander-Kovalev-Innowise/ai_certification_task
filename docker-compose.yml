@@ -8,7 +8,10 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: practiceperfect
     ports:
-      - '5432:5432'
+      # Host 5433 -> container 5432: a native Windows PostgreSQL service
+      # already occupies host port 5432 on this machine. Container-internal
+      # port stays 5432 (unaffected, only the host-side mapping changed).
+      - '5433:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
