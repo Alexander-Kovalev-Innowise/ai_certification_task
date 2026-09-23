@@ -7,6 +7,7 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import request from 'supertest';
 
+import { seedTrainerPair } from './helpers/tenant-isolation.helper';
 import { resetTestDatabase, startTestDatabase, stopTestDatabase, TestDatabase } from './setup/testcontainers.setup';
 
 // Task 3.8 onward — POST /trainers (Super Admin creates trainer account),
@@ -310,5 +311,48 @@ describe('TrainersController (e2e, Task 3.8)', () => {
 
     expect(getRes.status).toBe(200);
     expect(getRes.body).toMatchObject({ id: createRes.body.id, userId: createRes.body.userId, businessName: 'Round Trip Co' });
+  });
+
+  // Task 3.12 (arch §8 Layer 3, mandatory DoD item) — "trainer B cannot
+  // read/modify trainer A's row -> 404 (not 403, to avoid existence
+  // disclosure)". TrainersController is the first tenant-owned controller
+  // in this plan, so this is also where the reusable fixture
+  // (test/helpers/tenant-isolation.helper.ts's seedTrainerPair) is
+  // established for later phases' own isolation tests (Tasks 4.15, 5.14,
+  // 6.5) to import instead of re-deriving. Task 3.9's own "a different
+  // trainer -> 404" tests above already cover this same scenario using
+  // this file's local `insertTrainer` helper; these two tests are the
+  // canonical, explicitly-labeled DoD assertion built on the new shared
+  // fixture instead.
+  describe('mandatory tenant isolation (Task 3.12, arch §8 Layer 3)', () => {
+    it('trainer B reading trainer A\'s row via GET /trainers/:id -> 404, never 403', async () => {
+      const { trainerA, trainerB } = await seedTrainerPair(db.prisma);
+      const trainerBToken = await signToken({ id: trainerB.userId, role: 'TRAINER' }, { tid: trainerB.trainerId });
+
+      const res = await request(app.getHttpServer())
+        .get(`/trainers/${trainerA.trainerId}`)
+        .set('Authorization', `Bearer ${trainerBToken}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.errorCode).toBe('NOT_FOUND');
+    });
+
+    it('trainer B modifying trainer A\'s row via PATCH /trainers/:id -> 404, never 403, and leaves trainer A\'s row untouched', async () => {
+      const { trainerA, trainerB } = await seedTrainerPair(db.prisma, {
+        a: { businessName: 'Trainer A Original' },
+      });
+      const trainerBToken = await signToken({ id: trainerB.userId, role: 'TRAINER' }, { tid: trainerB.trainerId });
+
+      const res = await request(app.getHttpServer())
+        .patch(`/trainers/${trainerA.trainerId}`)
+        .set('Authorization', `Bearer ${trainerBToken}`)
+        .send({ businessName: 'Hijacked by B' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.errorCode).toBe('NOT_FOUND');
+
+      const untouched = await db.prisma.trainerProfile.findUnique({ where: { id: trainerA.trainerId } });
+      expect(untouched?.businessName).toBe('Trainer A Original');
+    });
   });
 });
