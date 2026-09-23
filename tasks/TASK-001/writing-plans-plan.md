@@ -89,7 +89,7 @@ Nothing else in this plan builds without this phase. Order matters within it (ts
 
 **Files:**
 - Create: `apps/client/package.json` (deps: `next`, `react`, `react-dom`; devDeps: `typescript`, `@types/react`)
-- Create: `apps/client/next.config.mjs` (loads the **root** `.env` via `import { config } from 'dotenv'; config({ path: new URL('../../.env', import.meta.url).pathname })` at the top of the file, before `export default nextConfig` — this puts `NEXT_PUBLIC_API_URL` into `process.env` before Next's own build-time env inlining runs, since Next only auto-loads `.env` files from the app's own directory by default)
+- Create: `apps/client/next.config.mjs` (loads the **root** `.env` via `import { config } from 'dotenv'; import { fileURLToPath } from 'node:url'; config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) })` at the top of the file, before `export default nextConfig` — this puts `NEXT_PUBLIC_API_URL` into `process.env` before Next's own build-time env inlining runs, since Next only auto-loads `.env` files from the app's own directory by default. **Use `fileURLToPath`, not `.pathname`** — a `file://` URL's `.pathname` is POSIX-style (`/D:/...`), which is not a valid Windows filesystem path and silently fails to load the file, verified 2026-09-23)
 - Create: `apps/client/tsconfig.json` (extends `@practiceperfect/tsconfig/next.json`)
 - Create: `apps/client/eslint.config.mjs` (extends `@practiceperfect/eslint-config/next.mjs`)
 - Create: `apps/client/app/layout.tsx` (minimal `<html><body>{children}</body></html>`)
