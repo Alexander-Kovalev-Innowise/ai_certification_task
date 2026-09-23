@@ -452,4 +452,57 @@ describe('UsersController — Super Admin directory (e2e, Task 3.1)', () => {
       await db.prisma.$executeRawUnsafe(`DROP ROLE app_role_3_7`);
     }
   });
+
+  // Task 3.11 — consolidated integration coverage. Directory pagination/
+  // search/RBAC (Task 3.1) and the GDPR-delete irreversibility chain for a
+  // plain user (Task 3.7) already have dedicated tests above; the one gap
+  // Task 3.11 closes is proving the *whole* anonymizer registry fires
+  // together for an account that owns more than just User-level PII — a
+  // TRAINER, whose TrainersAnonymizer (Task 3.10) didn't exist yet when
+  // Task 3.7's own tests were written. "Historical reference still
+  // resolves to Deleted User-shaped data" (the plan's other Task 3.11
+  // clause) has nothing to assert yet per the plan's own fallback ("once a
+  // later phase has something referencing a deleted user — otherwise
+  // assert the User row alone") — no Phase 4+ model references a User yet.
+  it('DELETE /users/:id on a TRAINER account anonymizes BOTH the User row and their TrainerProfile (full anonymizer-registry chain)', async () => {
+    const admin = await insertUser({ role: 'SUPER_ADMIN' });
+    const adminToken = await signToken(admin);
+    const trainerUser = await insertUser({ role: 'TRAINER', firstName: 'Real', lastName: 'Trainer' });
+    const trainerProfileId = randomUUID();
+    await db.prisma.trainerProfile.create({
+      data: {
+        id: trainerProfileId,
+        userId: trainerUser.id,
+        businessName: 'Real Trainer Business',
+        address: '456 Business Ave',
+        website: 'https://real-trainer.example.com',
+        description: 'A thriving training business',
+      },
+    });
+
+    const res = await request(app.getHttpServer())
+      .delete(`/users/${trainerUser.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'trainer requested GDPR erasure' });
+
+    expect(res.status).toBe(204);
+
+    const userRow = await db.prisma.user.findFirst({ where: { id: trainerUser.id } });
+    expect(userRow).toMatchObject({ firstName: 'Deleted', lastName: 'User', status: 'DELETED' });
+
+    const trainerProfileRow = await db.prisma.trainerProfile.findUnique({ where: { id: trainerProfileId } });
+    expect(trainerProfileRow).toMatchObject({
+      businessName: 'Deleted Business',
+      address: null,
+      website: null,
+      description: null,
+    });
+
+    // Irreversibility: reactivate hard-fails, and login is permanently impossible.
+    const reactivateRes = await request(app.getHttpServer())
+      .post(`/users/${trainerUser.id}/reactivate`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(reactivateRes.status).toBe(409);
+    expect(reactivateRes.body.errorCode).toBe('CANNOT_REACTIVATE_DELETED_USER');
+  });
 });

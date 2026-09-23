@@ -273,4 +273,42 @@ describe('TrainersController (e2e, Task 3.8)', () => {
 
     expect(res.status).toBe(403);
   });
+
+  // Task 3.11 — consolidated integration coverage. Duplicate-email conflict
+  // already has a dedicated test above (Task 3.8); this closes the one
+  // remaining integration gap — the full create -> read round trip through
+  // the real POST /trainers endpoint (Task 3.9's GET tests all seed their
+  // TrainerProfile directly, never via the actual creation flow), proving
+  // the `tid` claim the trainer would receive on login/setup-completion
+  // really does resolve to the TrainerProfile POST /trainers just created.
+  it('POST /trainers then GET /trainers/:id (as the newly created trainer) round-trips end to end', async () => {
+    const admin = await insertUser({ role: 'SUPER_ADMIN' });
+    const adminToken = await signToken(admin);
+    const dto = createTrainerDto({ businessName: 'Round Trip Co' });
+
+    const createRes = await request(app.getHttpServer())
+      .post('/trainers')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(dto);
+    expect(createRes.status).toBe(201);
+
+    // A freshly created trainer has mustChangePassword: true, which blocks
+    // every route except /auth/change-password, /auth/logout, /me
+    // (CapabilitiesGuard's PASSWORD_CHANGE_REQUIRED, arch §6.6) — simulate
+    // that they already completed setup (Task 2.20's completeTrainerSetup
+    // clears this same flag) so this round trip can reach GET /trainers/:id.
+    await db.prisma.user.update({ where: { id: createRes.body.userId }, data: { mustChangePassword: false } });
+    const createdUser = await db.prisma.user.findUnique({ where: { id: createRes.body.userId } });
+    const trainerAccessToken = await signToken(
+      { id: createdUser!.id, role: 'TRAINER' },
+      { tid: createRes.body.id },
+    );
+
+    const getRes = await request(app.getHttpServer())
+      .get(`/trainers/${createRes.body.id}`)
+      .set('Authorization', `Bearer ${trainerAccessToken}`);
+
+    expect(getRes.status).toBe(200);
+    expect(getRes.body).toMatchObject({ id: createRes.body.id, userId: createRes.body.userId, businessName: 'Round Trip Co' });
+  });
 });
