@@ -103,4 +103,47 @@ describe('AccountProvisioningService (Task 2.10)', () => {
     const persistedUser = await prismaService.user.findUnique({ where: { id: user.id } });
     expect(persistedUser).not.toBeNull();
   });
+
+  // Task 3.8's addition: a second in-transaction hook, given the full
+  // created User row, for writes that must commit atomically with it but
+  // that this service has no business depending on (e.g. a PasswordResetToken
+  // + OutboxJob row from another module).
+  it('runs afterCreate in the same transaction, after createProfile, with the full created User', async () => {
+    const seenProfileFirst: string[] = [];
+    const input = baseInput({
+      createProfile: async (tx: unknown, userId: string) => {
+        seenProfileFirst.push('profile');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tx is a Prisma.TransactionClient
+        await (tx as any).trainerProfile.create({ data: { userId, businessName: 'Test Co' } });
+      },
+      afterCreate: async (tx: unknown, user: { id: string; email: string }) => {
+        seenProfileFirst.push('afterCreate');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tx is a Prisma.TransactionClient
+        await (tx as any).trainerProfile.update({ where: { userId: user.id }, data: { website: user.email } });
+      },
+    });
+
+    const user = await service.createUserWithProfile(input);
+
+    expect(seenProfileFirst).toEqual(['profile', 'afterCreate']);
+    const persistedProfile = await prismaService.trainerProfile.findUnique({ where: { userId: user.id } });
+    expect(persistedProfile.website).toBe(user.email);
+  });
+
+  it('leaves no orphan User/profile row when afterCreate fails partway through', async () => {
+    const input = baseInput({
+      createProfile: async (tx: unknown, userId: string) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tx is a Prisma.TransactionClient
+        await (tx as any).trainerProfile.create({ data: { userId, businessName: 'Test Co' } });
+      },
+      afterCreate: async () => {
+        throw new Error('simulated afterCreate failure');
+      },
+    });
+
+    await expect(service.createUserWithProfile(input)).rejects.toThrow('simulated afterCreate failure');
+
+    const persistedUser = await prismaService.user.findUnique({ where: { email: input.email } });
+    expect(persistedUser).toBeNull();
+  });
 });

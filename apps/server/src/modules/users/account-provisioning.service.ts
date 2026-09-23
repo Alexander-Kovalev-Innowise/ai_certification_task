@@ -27,6 +27,19 @@ export interface CreateUserWithProfileInput {
    * the type allows it).
    */
   createProfile?: (tx: Prisma.TransactionClient, userId: string) => Promise<void>;
+  /**
+   * Task 3.8. Runs in the SAME transaction, after createProfile, given the
+   * full created User row. Lets a caller add further inserts that must
+   * commit atomically with the User (and profile) row without
+   * AccountProvisioningService itself taking on a dependency on that
+   * caller's own module — e.g. Task 3.8's trainer creation needs a
+   * PasswordResetToken(purpose:'TRAINER_SETUP') row (auth module) and an
+   * OutboxJob(EMAIL_TRAINER_INVITE) row (shared/jobs) committed alongside
+   * the User+TrainerProfile; those repositories are injected into
+   * TrainerService (trainers module), not here, and passed in via this
+   * closure.
+   */
+  afterCreate?: (tx: Prisma.TransactionClient, user: User) => Promise<void>;
 }
 
 // Task 2.10 (arch §3.2 point 3). The ONLY code path in this codebase
@@ -64,6 +77,10 @@ export class AccountProvisioningService {
 
       if (input.createProfile) {
         await input.createProfile(tx, user.id);
+      }
+
+      if (input.afterCreate) {
+        await input.afterCreate(tx, user);
       }
 
       return user;
