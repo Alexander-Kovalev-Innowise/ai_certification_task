@@ -224,4 +224,65 @@ describe('AuthController (e2e, Task 2.13)', () => {
       expect(user!.tokenVersion).toBeGreaterThan(0);
     });
   });
+
+  describe('POST /auth/logout (Task 2.15)', () => {
+    it('revokes the presented refresh token — a subsequent refresh with it fails', async () => {
+      const { email } = await insertUser();
+      const { body, refreshToken, csrf } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+
+      const logoutRes = await request(app.getHttpServer())
+        .post('/auth/logout')
+        .set('Authorization', `Bearer ${body.accessToken}`)
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
+        .set('X-CSRF-Token', csrf);
+      expect(logoutRes.status).toBe(204);
+
+      const refreshAfterLogout = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
+        .set('X-CSRF-Token', csrf);
+      expect(refreshAfterLogout.status).toBe(401);
+    });
+
+    it('?everywhere=true revokes every session and bumps tokenVersion', async () => {
+      const { id, email } = await insertUser();
+      const session1 = await loginAndGetCookies(email, KNOWN_PASSWORD);
+      const session2 = await loginAndGetCookies(email, KNOWN_PASSWORD);
+
+      const logoutRes = await request(app.getHttpServer())
+        .post('/auth/logout?everywhere=true')
+        .set('Authorization', `Bearer ${session1.body.accessToken}`)
+        .set('Cookie', [`refreshToken=${session1.refreshToken}`, `csrf=${session1.csrf}`])
+        .set('X-CSRF-Token', session1.csrf);
+      expect(logoutRes.status).toBe(204);
+
+      const refreshSession1 = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Cookie', [`refreshToken=${session1.refreshToken}`, `csrf=${session1.csrf}`])
+        .set('X-CSRF-Token', session1.csrf);
+      const refreshSession2 = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Cookie', [`refreshToken=${session2.refreshToken}`, `csrf=${session2.csrf}`])
+        .set('X-CSRF-Token', session2.csrf);
+
+      expect(refreshSession1.status).toBe(401);
+      expect(refreshSession2.status).toBe(401);
+
+      const user = await db.prisma.user.findUnique({ where: { id } });
+      expect(user!.tokenVersion).toBeGreaterThan(0);
+    });
+
+    it('requires the CSRF pair like refresh does', async () => {
+      const { email } = await insertUser();
+      const { body, refreshToken } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/logout')
+        .set('Authorization', `Bearer ${body.accessToken}`)
+        .set('Cookie', [`refreshToken=${refreshToken}`]);
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('CSRF_MISMATCH');
+    });
+  });
 });

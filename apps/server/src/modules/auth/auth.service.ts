@@ -11,7 +11,9 @@ import type { AuthSessionResponseDto, UserSummaryDto } from './dto/auth-session-
 import type { LoginDto } from './dto/login.dto';
 import { generateOpaqueToken, hashOpaqueToken } from './opaque-token.util';
 import { PasswordService } from './password.service';
+import { RefreshTokenRepository } from './refresh-token.repository';
 import {
+  clearSessionCookies,
   CSRF_COOKIE,
   REFRESH_TOKEN_COOKIE,
   REFRESH_TOKEN_TTL_MS,
@@ -46,6 +48,7 @@ export class AuthService {
     private readonly passwordService: PasswordService,
     private readonly tokenService: TokenService,
     private readonly tokenRotationService: TokenRotationService,
+    private readonly refreshTokenRepository: RefreshTokenRepository,
   ) {}
 
   async login(dto: LoginDto, res: Response): Promise<AuthSessionResponseDto> {
@@ -108,6 +111,31 @@ export class AuthService {
     setSessionCookies(res, newRawRefreshToken, newCsrfToken);
 
     return { accessToken, expiresIn, user: summary };
+  }
+
+  /**
+   * Task 2.15. Same CSRF requirement as refresh (arch §6.4). `everywhere`
+   * additionally revokes every RefreshToken row for the user AND bumps
+   * `tokenVersion` — a password-reset-grade "logout everywhere", killing
+   * any still-live access token too (arch §6.3), not just future refreshes.
+   */
+  async logout(req: Request, res: Response, userId: string, everywhere: boolean): Promise<void> {
+    this.assertCsrf(req);
+
+    const presentedRawToken = (req.cookies as Record<string, string> | undefined)?.[REFRESH_TOKEN_COOKIE];
+    if (presentedRawToken) {
+      const presented = await this.refreshTokenRepository.findByTokenHash(hashOpaqueToken(presentedRawToken));
+      if (presented && !presented.revokedAt) {
+        await this.refreshTokenRepository.revoke(presented.id);
+      }
+    }
+
+    if (everywhere) {
+      await this.refreshTokenRepository.revokeAllForUser(userId);
+      await this.usersRepository.update(userId, { tokenVersion: { increment: 1 } });
+    }
+
+    clearSessionCookies(res);
   }
 
   /** Shared by login (Task 2.13) and, later, setup-completion (Task 2.20). */
