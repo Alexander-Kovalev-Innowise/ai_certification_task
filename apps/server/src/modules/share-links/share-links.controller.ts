@@ -1,7 +1,8 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 
+import type { PaginatedResponseDto } from '../../shared/http/pagination.dto';
 import type { AuthContext } from '../../shared/security/auth-context.interface';
 import { Capability } from '../../shared/security/capability.enum';
 import { CurrentUser } from '../../shared/security/decorators/current-user.decorator';
@@ -10,7 +11,8 @@ import { RequiresCapability } from '../../shared/security/decorators/requires-ca
 import { Roles } from '../../shared/security/decorators/roles.decorator';
 
 import { CreateShareLinkDto } from './dto/create-share-link.dto';
-import { ShareLinkCreatedResponseDto, ShareLinkPreviewResponseDto } from './dto/share-link-response.dto';
+import { ListShareLinksQueryDto } from './dto/list-share-links-query.dto';
+import { ShareLinkCreatedResponseDto, ShareLinkPreviewResponseDto, ShareLinkRowDto } from './dto/share-link-response.dto';
 import { ShareLinkService } from './share-link.service';
 
 // Task 4.2, first endpoint — extended by every later share-links task
@@ -51,5 +53,22 @@ export class ShareLinksController {
   @ApiResponse({ status: 200, type: ShareLinkPreviewResponseDto })
   async previewShareLink(@Param('code') code: string): Promise<ShareLinkPreviewResponseDto> {
     return this.shareLinkService.previewShareLink(code);
+  }
+
+  // Task 4.4 (api §4.4 "GET /trainers/:id/share-links", added — §8.9 gap).
+  // Own tenant for TRAINER, any for SUPER_ADMIN — same ownership pattern as
+  // TrainersController.getTrainer (api §4.1 footnote).
+  @Roles(Role.TRAINER, Role.SUPER_ADMIN)
+  @RequiresCapability(Capability.GENERATE_SHARE_LINK)
+  @Get('trainers/:id/share-links')
+  @ApiOperation({ summary: "List a trainer's own generated ShareLinks and their usage counts" })
+  @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 404, description: 'Cross-tenant (never 403, arch §8 Layer 3)' })
+  async listShareLinks(
+    @CurrentUser() ctx: AuthContext,
+    @Param('id') id: string,
+    @Query() query: ListShareLinksQueryDto,
+  ): Promise<PaginatedResponseDto<ShareLinkRowDto>> {
+    return this.shareLinkService.listShareLinks(ctx, id, query);
   }
 }

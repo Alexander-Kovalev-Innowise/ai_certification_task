@@ -1,16 +1,19 @@
 import { randomBytes } from 'node:crypto';
 
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { ShareLink } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
 
+import { buildPaginatedResponse, PaginatedResponseDto, decodeCursor } from '../../shared/http/pagination.dto';
 import type { AuthContext } from '../../shared/security/auth-context.interface';
 
 import type { CreateShareLinkDto } from './dto/create-share-link.dto';
+import type { ListShareLinksQueryDto } from './dto/list-share-links-query.dto';
 import {
   ShareLinkCreatedResponseDto,
   ShareLinkPreviewInvalidReason,
   ShareLinkPreviewResponseDto,
+  ShareLinkRowDto,
 } from './dto/share-link-response.dto';
 import { ShareLinksRepository, ShareLinkWithTrainer } from './share-links.repository';
 
@@ -119,6 +122,63 @@ export class ShareLinkService {
       createdBy: { connect: { id: ctx.userId } },
     });
     return this.toResponse(link);
+  }
+
+  /**
+   * Task 4.4 (api §4.4 "GET /trainers/:id/share-links", added — §8.9 gap).
+   * `assertOwnershipOrNotFound` runs BEFORE the repository call — same
+   * ordering TrainerService.getTrainer documents, and for the same reason:
+   * it's what keeps a TRAINER caller's mismatched `:id` from ever reaching
+   * ShareLinksRepository.listByTrainer's `.extended` query, where the
+   * tenant-guard extension would throw a 500 TenantScopeViolationError
+   * instead of the clean 404 cross-tenant reads are supposed to produce
+   * (arch §8 Layer 3).
+   */
+  async listShareLinks(
+    ctx: AuthContext,
+    trainerId: string,
+    query: ListShareLinksQueryDto,
+  ): Promise<PaginatedResponseDto<ShareLinkRowDto>> {
+    this.assertOwnershipOrNotFound(ctx, trainerId);
+
+    const limit = query.limit ?? 50;
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
+
+    const rows = await this.shareLinksRepository.listByTrainer(trainerId, { limit, cursor });
+
+    return buildPaginatedResponse(
+      rows.map((row) => this.toRow(row)),
+      limit,
+      (item) => ({ createdAt: item.createdAt.toISOString(), id: item.id }),
+    );
+  }
+
+  /** Mirrors TrainerService's own ownership check (api §4.1 footnote) — 404, never 403 (arch §8 Layer 3). */
+  private assertOwnershipOrNotFound(ctx: AuthContext, trainerId: string): void {
+    if (ctx.role === 'SUPER_ADMIN') {
+      return;
+    }
+    if (ctx.role === 'TRAINER' && ctx.trainerId === trainerId) {
+      return;
+    }
+    throw new NotFoundException({ message: 'Trainer not found', errorCode: 'NOT_FOUND' });
+  }
+
+  private toRow(link: ShareLink): ShareLinkRowDto {
+    return plainToInstance(
+      ShareLinkRowDto,
+      {
+        id: link.id,
+        code: link.code,
+        type: link.type,
+        targetEmail: link.targetEmail,
+        status: link.status,
+        useCount: link.useCount,
+        expiresAt: link.expiresAt,
+        createdAt: link.createdAt,
+      },
+      { excludeExtraneousValues: true },
+    );
   }
 
   /**

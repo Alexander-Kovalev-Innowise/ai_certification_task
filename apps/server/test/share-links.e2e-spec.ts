@@ -245,4 +245,70 @@ describe('ShareLinksController (e2e, Task 4.2)', () => {
       expect(res.body).toMatchObject({ valid: false, reason: 'EXHAUSTED' });
     });
   });
+
+  describe('GET /trainers/:id/share-links (Task 4.4)', () => {
+    it('lists the trainer’s own links with usage counts', async () => {
+      const trainer = await insertTrainer();
+      await db.prisma.shareLink.create({
+        data: {
+          code: 'row-1',
+          type: 'PLAYER_STATIC',
+          trainerId: trainer.trainerId,
+          createdByUserId: trainer.userId,
+          useCount: 3,
+        },
+      });
+      await db.prisma.shareLink.create({
+        data: {
+          code: 'row-2',
+          type: 'COACH_UNIQUE',
+          trainerId: trainer.trainerId,
+          createdByUserId: trainer.userId,
+          targetEmail: 'coach@example.com',
+        },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/trainers/${trainer.trainerId}/share-links`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.items).toHaveLength(2);
+      const row1 = res.body.items.find((r: { code: string }) => r.code === 'row-1');
+      expect(row1).toMatchObject({ code: 'row-1', type: 'PLAYER_STATIC', useCount: 3, status: 'ACTIVE' });
+      const row2 = res.body.items.find((r: { code: string }) => r.code === 'row-2');
+      expect(row2).toMatchObject({ code: 'row-2', type: 'COACH_UNIQUE', targetEmail: 'coach@example.com' });
+    });
+
+    it('cross-tenant -> 404 (never 403, arch §8 Layer 3)', async () => {
+      const trainerA = await insertTrainer();
+      const trainerB = await insertTrainer();
+      await db.prisma.shareLink.create({
+        data: { code: 'a-only', type: 'PLAYER_STATIC', trainerId: trainerA.trainerId, createdByUserId: trainerA.userId },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/trainers/${trainerA.trainerId}/share-links`)
+        .set('Authorization', `Bearer ${trainerB.accessToken}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.errorCode).toBe('NOT_FOUND');
+    });
+
+    it('Super Admin can list any trainer’s links', async () => {
+      const admin = await insertUser({ role: 'SUPER_ADMIN' });
+      const adminToken = await signToken(admin);
+      const trainer = await insertTrainer();
+      await db.prisma.shareLink.create({
+        data: { code: 'sa-visible', type: 'PLAYER_STATIC', trainerId: trainer.trainerId, createdByUserId: trainer.userId },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/trainers/${trainer.trainerId}/share-links`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.items).toHaveLength(1);
+    });
+  });
 });

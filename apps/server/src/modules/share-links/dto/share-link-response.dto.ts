@@ -16,6 +16,20 @@ export class ShareLinkCreatedResponseDto {
   @Expose() status!: ShareLinkStatus;
 }
 
+// Task 4.4 (api §4.4 "GET /trainers/:id/share-links", added — §8.9 gap).
+// One row of the trainer's own generated-links list, usage counts included.
+@Exclude()
+export class ShareLinkRowDto {
+  @Expose() id!: string;
+  @Expose() code!: string;
+  @Expose() type!: ShareLinkType;
+  @Expose() targetEmail?: string | null;
+  @Expose() status!: ShareLinkStatus;
+  @Expose() useCount!: number;
+  @Expose() expiresAt!: Date | null;
+  @Expose() createdAt!: Date;
+}
+
 export type ShareLinkPreviewInvalidReason = 'EXPIRED' | 'REVOKED' | 'EXHAUSTED' | 'NOT_FOUND';
 
 // Task 4.3 (api §4.4 "GET /share-links/:code"). Deliberately minimal — no

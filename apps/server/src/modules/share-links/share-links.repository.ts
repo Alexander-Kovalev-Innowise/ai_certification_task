@@ -1,9 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma, ShareLink, TrainerProfile } from '@prisma/client';
 
+import type { KeysetCursor } from '../../shared/http/pagination.dto';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 
 export type ShareLinkWithTrainer = ShareLink & { trainer: TrainerProfile };
+
+export interface ListShareLinksParams {
+  limit: number;
+  cursor?: KeysetCursor;
+}
 
 // Task 4.2, extended in Task 4.4 (listByTrainer), Task 4.5 (revoke) and Task
 // 4.9 (the conditional single-use `updateMany`). `create` uses the base
@@ -37,5 +43,39 @@ export class ShareLinksRepository {
   async findByCode(code: string, tx?: Prisma.TransactionClient): Promise<ShareLinkWithTrainer | null> {
     const client = tx ?? this.prisma;
     return client.shareLink.findUnique({ where: { code }, include: { trainer: true } });
+  }
+
+  /**
+   * Task 4.4 (api §4.4 "GET /trainers/:id/share-links", added — §8.9 gap).
+   * Goes through `.extended` for the tenant-guard runtime net (arch §8 Layer
+   * 2) — `where.trainerId` is always present (unlike `findByCode` above),
+   * so a TRAINER-scoped caller who somehow reaches this with a mismatched
+   * `trainerId` gets a loud `TenantScopeViolationError` rather than another
+   * trainer's rows. `ShareLinkService.listShareLinks` calls
+   * `assertOwnershipOrNotFound` first, which is what keeps a mismatched id
+   * from ever reaching here in the first place (mirrors
+   * TrainerService.getTrainer's own comment on the same ordering).
+   *
+   * Keyset pagination on `(createdAt, id)` DESC via the Prisma query builder
+   * (an `OR` tuple-comparison, not raw SQL — no trigram/functional-index
+   * concern here, unlike UsersRepository.findAllPaginated) — fetches
+   * `limit + 1` rows for `buildPaginatedResponse`'s `hasMore` trick.
+   */
+  async listByTrainer(trainerId: string, params: ListShareLinksParams): Promise<ShareLink[]> {
+    return this.prisma.extended.shareLink.findMany({
+      where: {
+        trainerId,
+        ...(params.cursor
+          ? {
+              OR: [
+                { createdAt: { lt: new Date(params.cursor.createdAt) } },
+                { createdAt: new Date(params.cursor.createdAt), id: { lt: params.cursor.id } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: params.limit + 1,
+    });
   }
 }
