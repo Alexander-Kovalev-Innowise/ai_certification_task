@@ -401,4 +401,49 @@ describe('PlayerProfilesController (e2e, Task 5.1)', () => {
       expect(res.status).toBe(404);
     });
   });
+
+  // Task 5.14. RBAC + tenant + child-capability sweep across the
+  // player-profiles module. `PlayerProfile` is not a tenant-owned model
+  // (arch §8 Layer 2's five-model set), so "tenant isolation" here is
+  // family ownership — already exercised per-endpoint above (Tasks
+  // 5.3/5.4/5.5's own cross-ownership 404 tests); this block adds the
+  // consolidated child-capability-denial sweep the plan calls for.
+  describe('Task 5.14 — RBAC/tenant/child-capability sweep', () => {
+    it('every CHILD-denied write endpoint consistently reports 403 CHILD_CAPABILITY_DENIED', async () => {
+      const parent = await insertParent();
+      const childUser = await insertUser({ role: 'PLAYER_PARENT' });
+      await db.prisma.playerProfile.create({
+        data: { accountUserId: parent.userId, childUserId: childUser.id, name: 'Kid One', dateOfBirth: new Date('2016-01-01'), gender: 'FEMALE', isSelf: false },
+      });
+      const childToken = await signToken(childUser, { typ: 'CHILD', gid: parent.userId });
+
+      const res = await request(app.getHttpServer())
+        .post('/player-profiles')
+        .set('Authorization', `Bearer ${childToken}`)
+        .send(validChildBody());
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('CHILD_CAPABILITY_DENIED');
+    });
+
+    it('a child CAN read and edit their own basic profile fields (EDIT_OWN_PROFILE is not child-denied)', async () => {
+      const parent = await insertParent();
+      const childUser = await insertUser({ role: 'PLAYER_PARENT' });
+      const profile = await db.prisma.playerProfile.create({
+        data: { accountUserId: parent.userId, childUserId: childUser.id, name: 'Kid One', dateOfBirth: new Date('2016-01-01'), gender: 'FEMALE', isSelf: false },
+      });
+      const childToken = await signToken(childUser, { typ: 'CHILD', gid: parent.userId });
+
+      const getRes = await request(app.getHttpServer())
+        .get(`/player-profiles/${profile.id}`)
+        .set('Authorization', `Bearer ${childToken}`);
+      expect(getRes.status).toBe(200);
+
+      const patchRes = await request(app.getHttpServer())
+        .patch(`/player-profiles/${profile.id}`)
+        .set('Authorization', `Bearer ${childToken}`)
+        .send({ school: 'Own School' });
+      expect(patchRes.status).toBe(200);
+    });
+  });
 });

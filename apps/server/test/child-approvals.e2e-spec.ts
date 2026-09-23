@@ -351,4 +351,37 @@ describe('ChildApprovalsController (e2e, Task 5.12)', () => {
       expect(jobs).toHaveLength(1);
     });
   });
+
+  // Task 5.14. RBAC + child-capability sweep across the child-approvals
+  // module. `ChildPurchaseApproval` carries no `trainerId` (api §0.3/§4.6),
+  // so there is no tenant-isolation dimension here — ownership is
+  // guardian-based, already exercised per-endpoint above (the "not the
+  // caller's child -> 404" cases). The approve/deny-vs-expiry race is
+  // already covered by Task 5.13's own "race-critical" test above; this
+  // block only adds the consolidated child-capability-denial sweep.
+  describe('Task 5.14 — RBAC/child-capability sweep', () => {
+    it('every CHILD-denied endpoint in this module consistently reports 403 CHILD_CAPABILITY_DENIED', async () => {
+      const parent = await insertParent();
+      const childUser = await insertUser({ role: 'PLAYER_PARENT' });
+      const profile = await insertProfile(parent.userId, { childUserId: childUser.id });
+      const approval = await insertApproval(profile.id, parent.userId);
+      const childToken = await signToken(childUser, { typ: 'CHILD', gid: parent.userId });
+
+      const attempts = [
+        () => request(app.getHttpServer()).get('/approvals').set('Authorization', `Bearer ${childToken}`),
+        () => request(app.getHttpServer()).post(`/approvals/${approval.id}/approve`).set('Authorization', `Bearer ${childToken}`).send({}),
+        () => request(app.getHttpServer()).post(`/approvals/${approval.id}/deny`).set('Authorization', `Bearer ${childToken}`).send({}),
+      ];
+
+      for (const attempt of attempts) {
+        const res = await attempt();
+        expect(res.status).toBe(403);
+        expect(res.body.errorCode).toBe('CHILD_CAPABILITY_DENIED');
+      }
+
+      // Confirms the deny-list rejected the request before it ever touched the row.
+      const row = await db.prisma.childPurchaseApproval.findUnique({ where: { id: approval.id } });
+      expect(row?.status).toBe('PENDING');
+    });
+  });
 });

@@ -7,6 +7,7 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import request from 'supertest';
 
+import { seedTrainerPair } from './helpers/tenant-isolation.helper';
 import { resetTestDatabase, startTestDatabase, stopTestDatabase, TestDatabase } from './setup/testcontainers.setup';
 
 // Task 5.7, first endpoint (GET /me/contexts) — extended in Task 5.8
@@ -423,6 +424,50 @@ describe('AssociationsController (e2e, Task 5.7)', () => {
         .get(`/trainers/${trainer.trainerId}/players`)
         .set('Authorization', `Bearer ${trainer.accessToken}`);
       expect(after.body.items).toHaveLength(0);
+    });
+  });
+
+  // Task 5.14. RBAC + tenant + child-capability sweep across the
+  // associations module, using the Task 3.12 `seedTrainerPair` fixture
+  // (trainers.e2e-spec.ts/coaches.e2e-spec.ts's own tenant-isolation
+  // convention) rather than this file's local `insertTrainer` helper, so
+  // "trainer B cannot read trainer A's roster" is proven against the same
+  // reusable two-trainer fixture every other tenant-owned controller's
+  // suite already relies on.
+  describe('Task 5.14 — RBAC/tenant/child-capability sweep', () => {
+    it('tenant isolation (Task 3.12 fixture): trainer B cannot read trainer A\'s roster -> 404', async () => {
+      const { trainerA, trainerB } = await seedTrainerPair(db.prisma);
+      const accessTokenB = await jwtService.signAsync(
+        { sub: trainerB.userId, role: 'TRAINER', typ: 'ADULT', gid: null, tid: trainerB.trainerId, tv: 0, jti: randomUUID() },
+        { expiresIn: '15m' },
+      );
+
+      const res = await request(app.getHttpServer())
+        .get(`/trainers/${trainerA.trainerId}/players`)
+        .set('Authorization', `Bearer ${accessTokenB}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.errorCode).toBe('NOT_FOUND');
+    });
+
+    it('every CHILD-denied write endpoint consistently reports 403 CHILD_CAPABILITY_DENIED', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const childUser = await insertUser({ role: 'PLAYER_PARENT' });
+      const profile = await insertProfile(parent.userId, { childUserId: childUser.id });
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.trainerId, playerProfileId: profile.id } });
+      const childToken = await signToken(childUser, { typ: 'CHILD', gid: parent.userId });
+
+      const attempts = [
+        () => request(app.getHttpServer()).post(`/player-profiles/${profile.id}/trainers`).set('Authorization', `Bearer ${childToken}`).send({ trainerId: trainer.trainerId }),
+        () => request(app.getHttpServer()).delete(`/player-profiles/${profile.id}/trainers/${trainer.trainerId}`).set('Authorization', `Bearer ${childToken}`),
+      ];
+
+      for (const attempt of attempts) {
+        const res = await attempt();
+        expect(res.status).toBe(403);
+        expect(res.body.errorCode).toBe('CHILD_CAPABILITY_DENIED');
+      }
     });
   });
 });
