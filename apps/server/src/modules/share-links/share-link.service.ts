@@ -7,8 +7,12 @@ import { plainToInstance } from 'class-transformer';
 import type { AuthContext } from '../../shared/security/auth-context.interface';
 
 import type { CreateShareLinkDto } from './dto/create-share-link.dto';
-import { ShareLinkCreatedResponseDto } from './dto/share-link-response.dto';
-import { ShareLinksRepository } from './share-links.repository';
+import {
+  ShareLinkCreatedResponseDto,
+  ShareLinkPreviewInvalidReason,
+  ShareLinkPreviewResponseDto,
+} from './dto/share-link-response.dto';
+import { ShareLinksRepository, ShareLinkWithTrainer } from './share-links.repository';
 
 // api §4.4 "POST /share-links" — COACH_UNIQUE links expire 7 days after
 // creation; single-use is enforced at redemption time (Task 4.9's
@@ -25,6 +29,32 @@ const COACH_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
  */
 function generateShareLinkCode(): string {
   return randomBytes(12).toString('base64url');
+}
+
+/**
+ * Task 4.3 (api §4.4 "GET /share-links/:code"). Shared with the redemption
+ * flows (Task 4.6 onward) so "why is this link unusable" is computed exactly
+ * once: `null` means valid. Checked in this order — an explicit `REVOKED`/
+ * `EXPIRED` status always wins over a stale `expiresAt` comparison, and a
+ * still-`ACTIVE` row whose `expiresAt` has simply passed (the 15-minute
+ * maintenance-sweep lag, Task 4.14) is reported `EXPIRED` too, not `valid`.
+ */
+export function resolveShareLinkInvalidReason(
+  link: Pick<ShareLink, 'status' | 'expiresAt' | 'maxUses' | 'useCount'>,
+): ShareLinkPreviewInvalidReason | null {
+  if (link.status === 'REVOKED') {
+    return 'REVOKED';
+  }
+  if (link.status === 'EXPIRED') {
+    return 'EXPIRED';
+  }
+  if (link.expiresAt && link.expiresAt.getTime() < Date.now()) {
+    return 'EXPIRED';
+  }
+  if (link.maxUses !== null && link.useCount >= link.maxUses) {
+    return 'EXHAUSTED';
+  }
+  return null;
 }
 
 // Task 4.2, extended in Task 4.4 (listByTrainer), Task 4.5 (revoke).
@@ -61,6 +91,21 @@ export class ShareLinkService {
       createdBy: { connect: { id: ctx.userId } },
     });
     return this.toResponse(link);
+  }
+
+  /**
+   * Task 4.3 (api §4.4 "GET /share-links/:code"). `@Public()` — never 404s
+   * (arch §9.1: an unknown code returns `200 {valid:false,
+   * reason:'NOT_FOUND'}` too, so probing codes can't distinguish "wrong
+   * code" from "expired code" by status alone).
+   */
+  async previewShareLink(code: string): Promise<ShareLinkPreviewResponseDto> {
+    const link = await this.shareLinksRepository.findByCode(code);
+    if (!link) {
+      return this.toPreviewResponse(null, 'NOT_FOUND');
+    }
+
+    return this.toPreviewResponse(link, resolveShareLinkInvalidReason(link));
   }
 
   /** Task 4.2/Task 4.11 (BR-006). Expires in 7 days; single-use enforced at redemption (Task 4.9), not at creation. */
@@ -106,6 +151,24 @@ export class ShareLinkService {
         joinUrl: `/join/${link.code}`,
         expiresAt: link.expiresAt,
         status: link.status,
+      },
+      { excludeExtraneousValues: true },
+    );
+  }
+
+  private toPreviewResponse(
+    link: ShareLinkWithTrainer | null,
+    reason: ShareLinkPreviewInvalidReason | null,
+  ): ShareLinkPreviewResponseDto {
+    return plainToInstance(
+      ShareLinkPreviewResponseDto,
+      {
+        valid: reason === null,
+        reason: reason ?? undefined,
+        type: link?.type,
+        trainerDisplayName: link?.trainer.businessName,
+        logoUrl: link?.trainer.logoUrl,
+        primaryColorHex: link?.trainer.primaryColorHex,
       },
       { excludeExtraneousValues: true },
     );

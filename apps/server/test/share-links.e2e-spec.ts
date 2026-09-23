@@ -159,4 +159,90 @@ describe('ShareLinksController (e2e, Task 4.2)', () => {
       expect(res.status).toBe(403);
     });
   });
+
+  describe('GET /share-links/:code (Task 4.3, public preview)', () => {
+    it('unknown code -> 200 {valid:false, reason:NOT_FOUND} (never 404)', async () => {
+      const res = await request(app.getHttpServer()).get('/share-links/does-not-exist');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ valid: false, reason: 'NOT_FOUND' });
+    });
+
+    it('valid ACTIVE link -> 200 {valid:true, ...branding}, no PII/internal ids', async () => {
+      const trainer = await insertTrainer({ businessName: 'Acme Co', logoUrl: 'https://cdn.example.com/logo.png', primaryColorHex: '#112233' });
+      const link = await db.prisma.shareLink.create({
+        data: { code: 'valid-code', type: 'PLAYER_STATIC', trainerId: trainer.trainerId, createdByUserId: trainer.userId },
+      });
+
+      const res = await request(app.getHttpServer()).get(`/share-links/${link.code}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        valid: true,
+        type: 'PLAYER_STATIC',
+        trainerDisplayName: 'Acme Co',
+        logoUrl: 'https://cdn.example.com/logo.png',
+        primaryColorHex: '#112233',
+      });
+      expect(res.body.trainerId).toBeUndefined();
+      expect(res.body.id).toBeUndefined();
+    });
+
+    it('revoked link -> 200 {valid:false, reason:REVOKED}', async () => {
+      const trainer = await insertTrainer();
+      const link = await db.prisma.shareLink.create({
+        data: { code: 'revoked-code', type: 'PLAYER_STATIC', trainerId: trainer.trainerId, createdByUserId: trainer.userId, status: 'REVOKED' },
+      });
+
+      const res = await request(app.getHttpServer()).get(`/share-links/${link.code}`);
+
+      expect(res.body).toMatchObject({ valid: false, reason: 'REVOKED' });
+    });
+
+    it('expired link (status EXPIRED) -> 200 {valid:false, reason:EXPIRED}', async () => {
+      const trainer = await insertTrainer();
+      const link = await db.prisma.shareLink.create({
+        data: { code: 'expired-code', type: 'COACH_UNIQUE', trainerId: trainer.trainerId, createdByUserId: trainer.userId, status: 'EXPIRED' },
+      });
+
+      const res = await request(app.getHttpServer()).get(`/share-links/${link.code}`);
+
+      expect(res.body).toMatchObject({ valid: false, reason: 'EXPIRED' });
+    });
+
+    it('ACTIVE link past its expiresAt (maintenance-sweep lag) -> 200 {valid:false, reason:EXPIRED}', async () => {
+      const trainer = await insertTrainer();
+      const link = await db.prisma.shareLink.create({
+        data: {
+          code: 'lagging-expiry-code',
+          type: 'COACH_UNIQUE',
+          trainerId: trainer.trainerId,
+          createdByUserId: trainer.userId,
+          expiresAt: new Date(Date.now() - 60_000),
+        },
+      });
+
+      const res = await request(app.getHttpServer()).get(`/share-links/${link.code}`);
+
+      expect(res.body).toMatchObject({ valid: false, reason: 'EXPIRED' });
+    });
+
+    it('exhausted link (useCount >= maxUses) -> 200 {valid:false, reason:EXHAUSTED}', async () => {
+      const trainer = await insertTrainer();
+      const link = await db.prisma.shareLink.create({
+        data: {
+          code: 'exhausted-code',
+          type: 'PLAYER_STATIC',
+          trainerId: trainer.trainerId,
+          createdByUserId: trainer.userId,
+          maxUses: 1,
+          useCount: 1,
+        },
+      });
+
+      const res = await request(app.getHttpServer()).get(`/share-links/${link.code}`);
+
+      expect(res.body).toMatchObject({ valid: false, reason: 'EXHAUSTED' });
+    });
+  });
 });

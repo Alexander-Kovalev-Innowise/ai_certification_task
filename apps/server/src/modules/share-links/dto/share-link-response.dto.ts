@@ -15,3 +15,20 @@ export class ShareLinkCreatedResponseDto {
   @Expose() expiresAt!: Date | null;
   @Expose() status!: ShareLinkStatus;
 }
+
+export type ShareLinkPreviewInvalidReason = 'EXPIRED' | 'REVOKED' | 'EXHAUSTED' | 'NOT_FOUND';
+
+// Task 4.3 (api §4.4 "GET /share-links/:code"). Deliberately minimal — no
+// PII, no trainer internal id — so an enumerated code leaks nothing beyond
+// public branding. `type`/`trainerDisplayName`/`logoUrl`/`primaryColorHex`
+// are left `undefined` (never serialized) for the NOT_FOUND case, since
+// there is no trainer to describe.
+@Exclude()
+export class ShareLinkPreviewResponseDto {
+  @Expose() valid!: boolean;
+  @Expose() reason?: ShareLinkPreviewInvalidReason;
+  @Expose() type?: ShareLinkType;
+  @Expose() trainerDisplayName?: string;
+  @Expose() logoUrl?: string | null;
+  @Expose() primaryColorHex?: string | null;
+}

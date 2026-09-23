@@ -1,15 +1,16 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 
 import type { AuthContext } from '../../shared/security/auth-context.interface';
 import { Capability } from '../../shared/security/capability.enum';
 import { CurrentUser } from '../../shared/security/decorators/current-user.decorator';
+import { Public } from '../../shared/security/decorators/public.decorator';
 import { RequiresCapability } from '../../shared/security/decorators/requires-capability.decorator';
 import { Roles } from '../../shared/security/decorators/roles.decorator';
 
 import { CreateShareLinkDto } from './dto/create-share-link.dto';
-import { ShareLinkCreatedResponseDto } from './dto/share-link-response.dto';
+import { ShareLinkCreatedResponseDto, ShareLinkPreviewResponseDto } from './dto/share-link-response.dto';
 import { ShareLinkService } from './share-link.service';
 
 // Task 4.2, first endpoint — extended by every later share-links task
@@ -39,5 +40,16 @@ export class ShareLinksController {
     @Body() dto: CreateShareLinkDto,
   ): Promise<ShareLinkCreatedResponseDto> {
     return this.shareLinkService.createShareLink(ctx, dto);
+  }
+
+  // Task 4.3 (api §4.4 "GET /share-links/:code"). Never 404s — even an
+  // unknown code returns 200 {valid:false, reason:'NOT_FOUND'} (arch §9.1
+  // enumeration-safety posture).
+  @Public()
+  @Get('share-links/:code')
+  @ApiOperation({ summary: 'Public ShareLink preview — branding only, never PII, never 404s' })
+  @ApiResponse({ status: 200, type: ShareLinkPreviewResponseDto })
+  async previewShareLink(@Param('code') code: string): Promise<ShareLinkPreviewResponseDto> {
+    return this.shareLinkService.previewShareLink(code);
   }
 }

@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import type { Prisma, ShareLink } from '@prisma/client';
+import type { Prisma, ShareLink, TrainerProfile } from '@prisma/client';
 
 import { PrismaService } from '../../shared/prisma/prisma.service';
+
+export type ShareLinkWithTrainer = ShareLink & { trainer: TrainerProfile };
 
 // Task 4.2, extended in Task 4.4 (listByTrainer), Task 4.5 (revoke) and Task
 // 4.9 (the conditional single-use `updateMany`). `create` uses the base
@@ -26,10 +28,14 @@ export class ShareLinksRepository {
    * an enumerated code must leak nothing beyond public branding), so this is
    * deliberately NOT tenant-scoped and uses the base client, not `.extended`.
    * Backs both the public preview (Task 4.3) and every redemption branch
-   * (Tasks 4.6-4.10).
+   * (Tasks 4.6-4.10). Includes the owning `TrainerProfile` — Task 4.3's
+   * preview response needs `trainerDisplayName`/`logoUrl`/`primaryColorHex`,
+   * and every redemption branch already needs the trainer relation loaded
+   * (association creation, coach-profile creation) — one join is cheaper
+   * than a second round trip every caller would otherwise need.
    */
-  async findByCode(code: string, tx?: Prisma.TransactionClient): Promise<ShareLink | null> {
+  async findByCode(code: string, tx?: Prisma.TransactionClient): Promise<ShareLinkWithTrainer | null> {
     const client = tx ?? this.prisma;
-    return client.shareLink.findUnique({ where: { code } });
+    return client.shareLink.findUnique({ where: { code }, include: { trainer: true } });
   }
 }
