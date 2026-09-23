@@ -5,13 +5,15 @@ import { plainToInstance } from 'class-transformer';
 import { JOB_TYPES } from '../../shared/jobs/job-types.const';
 import { OutboxService } from '../../shared/jobs/outbox.service';
 import { buildTrainerInviteEmailPayload } from '../../shared/mail/templates/trainer-invite.template';
+import type { AuthContext } from '../../shared/security/auth-context.interface';
 import { generateOpaqueToken, hashOpaqueToken } from '../auth/opaque-token.util';
 import { PasswordResetTokenRepository } from '../auth/password-reset-token.repository';
 import { PasswordService } from '../auth/password.service';
 import { AccountProvisioningService } from '../users/account-provisioning.service';
 
 import type { CreateTrainerDto } from './dto/create-trainer.dto';
-import { TrainerCreatedResponseDto } from './dto/trainer-response.dto';
+import { TrainerCreatedResponseDto, TrainerResponseDto } from './dto/trainer-response.dto';
+import type { UpdateTrainerDto } from './dto/update-trainer.dto';
 import { TrainersRepository } from './trainers.repository';
 
 // Postgres unique-violation code — see users.service.ts's identical constant/usage.
@@ -118,5 +120,74 @@ export class TrainerService {
       },
       { excludeExtraneousValues: true },
     );
+  }
+
+  /**
+   * Task 3.9 (api §4.1 "GET /trainers/:id"). `EDIT_OWN_PROFILE` +
+   * assertOwnershipOrNotFound below, not a dedicated capability (api §4.1
+   * footnote). Stripe/subscription/fee columns (Epic-05 stubs) are omitted
+   * from TrainerResponseDto entirely, not exposed as null.
+   */
+  async getTrainer(ctx: AuthContext, id: string): Promise<TrainerResponseDto> {
+    this.assertOwnershipOrNotFound(ctx, id);
+
+    const trainer = await this.trainersRepository.findById(id);
+    if (!trainer) {
+      throw new NotFoundException({ message: 'Trainer not found', errorCode: 'NOT_FOUND' });
+    }
+
+    return this.toResponse(trainer);
+  }
+
+  /** Task 3.9 (api §4.1 "PATCH /trainers/:id"). Business details only — branding is Task 8.1's separate endpoint. */
+  async updateTrainer(ctx: AuthContext, id: string, dto: UpdateTrainerDto): Promise<TrainerResponseDto> {
+    this.assertOwnershipOrNotFound(ctx, id);
+
+    const existing = await this.trainersRepository.findById(id);
+    if (!existing) {
+      throw new NotFoundException({ message: 'Trainer not found', errorCode: 'NOT_FOUND' });
+    }
+
+    const updated = await this.trainersRepository.update(id, {
+      ...(dto.businessName !== undefined ? { businessName: dto.businessName } : {}),
+      ...(dto.address !== undefined ? { address: dto.address } : {}),
+      ...(dto.website !== undefined ? { website: dto.website } : {}),
+      ...(dto.description !== undefined ? { description: dto.description } : {}),
+    });
+
+    return this.toResponse(updated);
+  }
+
+  /**
+   * `:id === caller.tid` for TRAINER, unconditional for SUPER_ADMIN (api
+   * §4.1 footnote). Always 404 on a mismatch, never 403 — arch §8 Layer 3:
+   * cross-tenant reads must not disclose existence. Runs BEFORE any
+   * repository call, which is what keeps a mismatched id from ever
+   * reaching the tenant-guard Prisma extension (Layer 2) — that extension
+   * would throw TenantScopeViolationError (500) for a genuinely
+   * cross-tenant query, the wrong status for an ordinary ownership miss.
+   */
+  private assertOwnershipOrNotFound(ctx: AuthContext, id: string): void {
+    if (ctx.role === 'SUPER_ADMIN') {
+      return;
+    }
+    if (ctx.role === 'TRAINER' && ctx.trainerId === id) {
+      return;
+    }
+    throw new NotFoundException({ message: 'Trainer not found', errorCode: 'NOT_FOUND' });
+  }
+
+  private toResponse(trainer: {
+    id: string;
+    userId: string;
+    businessName: string;
+    address: string | null;
+    website: string | null;
+    description: string | null;
+    logoUrl: string | null;
+    primaryColorHex: string | null;
+    createdAt: Date;
+  }): TrainerResponseDto {
+    return plainToInstance(TrainerResponseDto, trainer, { excludeExtraneousValues: true });
   }
 }

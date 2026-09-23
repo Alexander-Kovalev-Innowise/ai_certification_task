@@ -95,6 +95,21 @@ describe('TrainersController (e2e, Task 3.8)', () => {
     };
   }
 
+  /** Seeds a TRAINER User + TrainerProfile directly (bypassing POST /trainers), returning both plus a ready-to-use access token. */
+  async function insertTrainer(overrides: Record<string, unknown> = {}): Promise<{
+    userId: string;
+    trainerId: string;
+    accessToken: string;
+  }> {
+    const user = await insertUser({ role: 'TRAINER' });
+    const trainerId = randomUUID();
+    await db.prisma.trainerProfile.create({
+      data: { id: trainerId, userId: user.id, businessName: 'Original Co', ...overrides },
+    });
+    const accessToken = await signToken(user, { role: 'TRAINER', tid: trainerId });
+    return { userId: user.id, trainerId, accessToken };
+  }
+
   it('POST /trainers as Super Admin creates exactly one User+TrainerProfile+setup token+outbox job, returns 201 TrainerResponseDto', async () => {
     const admin = await insertUser({ role: 'SUPER_ADMIN' });
     const accessToken = await signToken(admin);
@@ -165,5 +180,97 @@ describe('TrainersController (e2e, Task 3.8)', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.errorCode).toBe('VALIDATION_ERROR');
+  });
+
+  it('GET /trainers/:id — owning trainer can read their own profile', async () => {
+    const trainer = await insertTrainer({ businessName: 'Owner Co' });
+
+    const res = await request(app.getHttpServer())
+      .get(`/trainers/${trainer.trainerId}`)
+      .set('Authorization', `Bearer ${trainer.accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: trainer.trainerId, userId: trainer.userId, businessName: 'Owner Co' });
+    expect(res.body.stripeCustomerId).toBeUndefined();
+    expect(res.body.subscriptionStatus).toBeUndefined();
+    expect(res.body.platformFeePercent).toBeUndefined();
+  });
+
+  it('GET /trainers/:id — a different trainer -> 404 (never 403, arch §8 Layer 3)', async () => {
+    const trainerA = await insertTrainer({ businessName: 'Trainer A Co' });
+    const trainerB = await insertTrainer({ businessName: 'Trainer B Co' });
+
+    const res = await request(app.getHttpServer())
+      .get(`/trainers/${trainerA.trainerId}`)
+      .set('Authorization', `Bearer ${trainerB.accessToken}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.errorCode).toBe('NOT_FOUND');
+  });
+
+  it('GET /trainers/:id — Super Admin can read any trainer', async () => {
+    const admin = await insertUser({ role: 'SUPER_ADMIN' });
+    const adminToken = await signToken(admin);
+    const trainer = await insertTrainer({ businessName: 'Some Co' });
+
+    const res = await request(app.getHttpServer())
+      .get(`/trainers/${trainer.trainerId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.businessName).toBe('Some Co');
+  });
+
+  it('PATCH /trainers/:id — owning trainer can edit their own business details', async () => {
+    const trainer = await insertTrainer({ businessName: 'Before' });
+
+    const res = await request(app.getHttpServer())
+      .patch(`/trainers/${trainer.trainerId}`)
+      .set('Authorization', `Bearer ${trainer.accessToken}`)
+      .send({ businessName: 'After', address: '123 Main St' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ businessName: 'After', address: '123 Main St' });
+  });
+
+  it('PATCH /trainers/:id — a different trainer -> 404', async () => {
+    const trainerA = await insertTrainer({ businessName: 'Trainer A Co' });
+    const trainerB = await insertTrainer({ businessName: 'Trainer B Co' });
+
+    const res = await request(app.getHttpServer())
+      .patch(`/trainers/${trainerA.trainerId}`)
+      .set('Authorization', `Bearer ${trainerB.accessToken}`)
+      .send({ businessName: 'Hijacked' });
+
+    expect(res.status).toBe(404);
+
+    const unchanged = await db.prisma.trainerProfile.findUnique({ where: { id: trainerA.trainerId } });
+    expect(unchanged?.businessName).toBe('Trainer A Co');
+  });
+
+  it('PATCH /trainers/:id — Super Admin can edit any trainer', async () => {
+    const admin = await insertUser({ role: 'SUPER_ADMIN' });
+    const adminToken = await signToken(admin);
+    const trainer = await insertTrainer({ businessName: 'Before' });
+
+    const res = await request(app.getHttpServer())
+      .patch(`/trainers/${trainer.trainerId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ description: 'Edited by admin' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.description).toBe('Edited by admin');
+  });
+
+  it('GET /trainers/:id as a non-trainer, non-Super-Admin role -> 403', async () => {
+    const user = await insertUser();
+    const accessToken = await signToken(user);
+    const trainer = await insertTrainer();
+
+    const res = await request(app.getHttpServer())
+      .get(`/trainers/${trainer.trainerId}`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(403);
   });
 });

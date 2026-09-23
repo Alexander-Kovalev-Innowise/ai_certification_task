@@ -21,4 +21,20 @@ export class TrainersRepository {
   async findByUserId(userId: string): Promise<TrainerProfile | null> {
     return this.prisma.trainerProfile.findUnique({ where: { userId } });
   }
+
+  /**
+   * Task 3.9 (api §4.1 "GET /trainers/:id"). Goes through `.extended` for
+   * the tenant-guard runtime net (Layer 2, arch §8) — safe to call with any
+   * `id` because TrainerService.assertOwnershipOrNotFound already
+   * guarantees a TRAINER caller's `id` equals their own `ctx.trainerId`
+   * before this is ever reached; see that method's comment.
+   */
+  async findById(id: string): Promise<TrainerProfile | null> {
+    return this.prisma.extended.trainerProfile.findFirst({ where: { id } });
+  }
+
+  /** Task 3.9 (api §4.1 "PATCH /trainers/:id"). Same ownership precondition as findById. */
+  async update(id: string, data: Prisma.TrainerProfileUpdateInput): Promise<TrainerProfile> {
+    return this.prisma.extended.trainerProfile.update({ where: { id }, data });
+  }
 }
