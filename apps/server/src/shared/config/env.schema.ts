@@ -37,6 +37,11 @@ export const envSchema = z.object({
   // adapter is a stub in Epic-01 (out of functional scope) — every
   // environment gets the console adapter until a real provider is wired.
   MAIL_PROVIDER: z.enum(['console', 'ses']).default('console'),
+  // Not in the plan's Task 0.8 var list, added in Task 1.11 — same
+  // config-keyed useClass pattern as MAIL_PROVIDER (arch §13: "Ports, not
+  // providers... bound by token in the module's useClass factory keyed off
+  // config"). Defaults to 'local' since the S3 adapter is a stub.
+  STORAGE_PROVIDER: z.enum(['local', 's3']).default('local'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
