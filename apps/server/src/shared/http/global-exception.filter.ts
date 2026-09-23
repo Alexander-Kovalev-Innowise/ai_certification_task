@@ -64,6 +64,18 @@ function extractMessage(body: unknown, fallback: string): string {
   return fallback;
 }
 
+// Task 2.22 addition: lets a service/guard attach its own `details[]` to a
+// thrown HttpException (e.g. CHILD_FIELD_NOT_EDITABLE naming the offending
+// fields) and have it actually reach the client. Previously only the
+// class-validator-shaped 400 branch above ever populated `details` — any
+// other exception's own `details` was silently dropped.
+function extractDetails(body: unknown): ValidationDetail[] | undefined {
+  if (!isRecord(body) || !Array.isArray(body.details)) {
+    return undefined;
+  }
+  return body.details as ValidationDetail[];
+}
+
 function httpStatusPhrase(status: number): string {
   return STATUS_CODES[status] ?? 'Error';
 }
@@ -98,6 +110,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       }
 
       const errorCode = extractErrorCode(body) ?? STATUS_TO_ERROR_CODE[status] ?? ERROR_CODES.INTERNAL_ERROR;
+      const details = extractDetails(body);
 
       const payload: ErrorResponseBody = {
         statusCode: status,
@@ -106,6 +119,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         errorCode,
         path: request.url,
         requestId,
+        ...(details ? { details } : {}),
       };
       response.status(status).json(payload);
       return;

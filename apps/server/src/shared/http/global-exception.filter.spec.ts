@@ -97,6 +97,27 @@ describe('GlobalExceptionFilter', () => {
     expect(body.errorCode).toBe('ACCOUNT_INACTIVE');
   });
 
+  // Task 2.22 regression: PATCH /me's CHILD_FIELD_NOT_EDITABLE needs its
+  // own `details[]` (naming the offending fields) to actually reach the
+  // client — previously only the class-validator-shaped 400 branch above
+  // ever populated `details`, silently dropping it for every other
+  // exception.
+  it('passes through details[] attached to a non-validation exception body', () => {
+    const { host, getBody, getStatus } = createHost('/me');
+    const exception = new ForbiddenException({
+      message: 'Not editable',
+      errorCode: 'CHILD_FIELD_NOT_EDITABLE',
+      details: [{ field: 'firstName', message: 'firstName is not editable by a child login' }],
+    });
+
+    filter.catch(exception, host);
+
+    expect(getStatus()).toBe(403);
+    const body = getBody();
+    expect(body.errorCode).toBe('CHILD_FIELD_NOT_EDITABLE');
+    expect(body.details).toEqual([{ field: 'firstName', message: 'firstName is not editable by a child login' }]);
+  });
+
   it('maps an unhandled Error to 500 INTERNAL_ERROR with no details', () => {
     const { host, getBody, getStatus } = createHost('/boom');
     const exception = new Error('unexpected failure');
