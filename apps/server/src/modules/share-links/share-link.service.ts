@@ -153,6 +153,30 @@ export class ShareLinkService {
     );
   }
 
+  /**
+   * Task 4.5 (api §4.4 "DELETE /share-links/:id"). Soft revoke — the
+   * ownership check happens via which repository lookup is used (a
+   * SUPER_ADMIN has no tenant of their own to scope by, so
+   * `findById`/unscoped; a TRAINER's lookup is tenant-scoped via
+   * `findByIdForTrainer`), rather than a separate assertion function — a
+   * ShareLink's identity is its own `id`, not a `:trainerId` path param, so
+   * there's no `:id === ctx.trainerId` comparison to make the way
+   * TrainerService/this class's own `assertOwnershipOrNotFound` do for the
+   * `/trainers/:id/...` routes.
+   */
+  async revokeShareLink(ctx: AuthContext, id: string): Promise<void> {
+    const link =
+      ctx.role === 'SUPER_ADMIN'
+        ? await this.shareLinksRepository.findById(id)
+        : await this.shareLinksRepository.findByIdForTrainer(id, this.requireTrainerId(ctx));
+
+    if (!link) {
+      throw new NotFoundException({ message: 'ShareLink not found', errorCode: 'NOT_FOUND' });
+    }
+
+    await this.shareLinksRepository.revoke(link.id);
+  }
+
   /** Mirrors TrainerService's own ownership check (api §4.1 footnote) — 404, never 403 (arch §8 Layer 3). */
   private assertOwnershipOrNotFound(ctx: AuthContext, trainerId: string): void {
     if (ctx.role === 'SUPER_ADMIN') {

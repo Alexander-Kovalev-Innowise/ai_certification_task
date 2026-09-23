@@ -45,6 +45,30 @@ export class ShareLinksRepository {
     return client.shareLink.findUnique({ where: { code }, include: { trainer: true } });
   }
 
+  /** Task 4.5. Unscoped lookup by id — only ever called for a SUPER_ADMIN caller (ShareLinkService.revokeShareLink), who has no tenant of their own to scope by. */
+  async findById(id: string): Promise<ShareLink | null> {
+    return this.prisma.shareLink.findUnique({ where: { id } });
+  }
+
+  /** Task 4.5. Tenant-scoped lookup by id — `.extended` so a mismatched `trainerId` is a loud bug (arch §8 Layer 2), not a silent miss. */
+  async findByIdForTrainer(id: string, trainerId: string): Promise<ShareLink | null> {
+    return this.prisma.extended.shareLink.findFirst({ where: { id, trainerId } });
+  }
+
+  /**
+   * Task 4.5 (api §4.4 "DELETE /share-links/:id"). Soft revoke only —
+   * `status = REVOKED`, never a row delete, so usage history survives for
+   * the Epic-06 analytics stub (arch §18). Base client, not `.extended`:
+   * ownership is already verified by the caller
+   * (ShareLinkService.revokeShareLink calls findByIdForTrainer/findById
+   * first), matching TrainersRepository.update's identical division of
+   * labor between the ownership check and the write.
+   */
+  async revoke(id: string, tx?: Prisma.TransactionClient): Promise<ShareLink> {
+    const client = tx ?? this.prisma;
+    return client.shareLink.update({ where: { id }, data: { status: 'REVOKED' } });
+  }
+
   /**
    * Task 4.4 (api §4.4 "GET /trainers/:id/share-links", added — §8.9 gap).
    * Goes through `.extended` for the tenant-guard runtime net (arch §8 Layer

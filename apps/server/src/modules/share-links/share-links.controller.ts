@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 
@@ -70,5 +70,19 @@ export class ShareLinksController {
     @Query() query: ListShareLinksQueryDto,
   ): Promise<PaginatedResponseDto<ShareLinkRowDto>> {
     return this.shareLinkService.listShareLinks(ctx, id, query);
+  }
+
+  // Task 4.5 (api §4.4 "DELETE /share-links/:id"). Soft revoke, not a row
+  // delete — usage history survives for the Epic-06 analytics stub.
+  @Roles(Role.TRAINER, Role.SUPER_ADMIN)
+  @RequiresCapability(Capability.GENERATE_SHARE_LINK)
+  @Delete('share-links/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Revoke a ShareLink (soft — status becomes REVOKED)' })
+  @ApiResponse({ status: 204 })
+  @ApiResponse({ status: 403 })
+  @ApiResponse({ status: 404 })
+  async revokeShareLink(@CurrentUser() ctx: AuthContext, @Param('id') id: string): Promise<void> {
+    await this.shareLinkService.revokeShareLink(ctx, id);
   }
 }

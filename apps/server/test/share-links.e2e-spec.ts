@@ -311,4 +311,69 @@ describe('ShareLinksController (e2e, Task 4.2)', () => {
       expect(res.body.items).toHaveLength(1);
     });
   });
+
+  describe('DELETE /share-links/:id (Task 4.5)', () => {
+    it('soft-revokes the link, and its preview now reports REVOKED', async () => {
+      const trainer = await insertTrainer();
+      const link = await db.prisma.shareLink.create({
+        data: { code: 'to-revoke', type: 'PLAYER_STATIC', trainerId: trainer.trainerId, createdByUserId: trainer.userId },
+      });
+
+      const res = await request(app.getHttpServer())
+        .delete(`/share-links/${link.id}`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+
+      expect(res.status).toBe(204);
+
+      const row = await db.prisma.shareLink.findUnique({ where: { id: link.id } });
+      expect(row?.status).toBe('REVOKED');
+
+      const previewRes = await request(app.getHttpServer()).get(`/share-links/${link.code}`);
+      expect(previewRes.body).toMatchObject({ valid: false, reason: 'REVOKED' });
+    });
+
+    it('cross-tenant -> 404, and leaves the link untouched', async () => {
+      const trainerA = await insertTrainer();
+      const trainerB = await insertTrainer();
+      const link = await db.prisma.shareLink.create({
+        data: { code: 'a-owned', type: 'PLAYER_STATIC', trainerId: trainerA.trainerId, createdByUserId: trainerA.userId },
+      });
+
+      const res = await request(app.getHttpServer())
+        .delete(`/share-links/${link.id}`)
+        .set('Authorization', `Bearer ${trainerB.accessToken}`);
+
+      expect(res.status).toBe(404);
+
+      const row = await db.prisma.shareLink.findUnique({ where: { id: link.id } });
+      expect(row?.status).toBe('ACTIVE');
+    });
+
+    it('unknown id -> 404', async () => {
+      const trainer = await insertTrainer();
+
+      const res = await request(app.getHttpServer())
+        .delete(`/share-links/${randomUUID()}`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+
+      expect(res.status).toBe(404);
+    });
+
+    it('Super Admin can revoke any trainer’s link', async () => {
+      const admin = await insertUser({ role: 'SUPER_ADMIN' });
+      const adminToken = await signToken(admin);
+      const trainer = await insertTrainer();
+      const link = await db.prisma.shareLink.create({
+        data: { code: 'sa-revoke', type: 'PLAYER_STATIC', trainerId: trainer.trainerId, createdByUserId: trainer.userId },
+      });
+
+      const res = await request(app.getHttpServer())
+        .delete(`/share-links/${link.id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(204);
+      const row = await db.prisma.shareLink.findUnique({ where: { id: link.id } });
+      expect(row?.status).toBe('REVOKED');
+    });
+  });
 });
