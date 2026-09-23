@@ -125,6 +125,12 @@ export class AssociationsRepository {
    * inside a `tx`) so a soft-deleted profile is correctly invisible
    * (soft-delete.extension.ts covers `PlayerProfile`).
    */
+  /** Task 5.8 — validates a bare `trainerId` (the "pick from My Trainers" branch, no ShareLink code involved). */
+  async findTrainerById(trainerId: string, tx?: Prisma.TransactionClient): Promise<{ id: string } | null> {
+    const client = tx ?? this.prisma;
+    return client.trainerProfile.findUnique({ where: { id: trainerId }, select: { id: true } });
+  }
+
   async findOwnedPlayerProfile(
     playerProfileId: string,
     ownerUserId: string,

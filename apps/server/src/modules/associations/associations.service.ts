@@ -1,9 +1,23 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 
 import type { AuthContext } from '../../shared/security/auth-context.interface';
+import { resolveShareLinkInvalidReason } from '../share-links/share-link.service';
+import { ShareLinksRepository } from '../share-links/share-links.repository';
 
 import { AssociationsRepository, ContextRow } from './associations.repository';
 import { ContextEntryDto, ContextListResponseDto } from './dto/context-list-response.dto';
+
+export interface AddTrainerAssociationResult {
+  statusCode: number;
+  body: {
+    id: string;
+    trainerId: string;
+    playerProfileId: string;
+    status: 'ACTIVE';
+    connectedAt: string;
+    alreadyConnected: boolean;
+  };
+}
 
 // Task 5.7, first method (`listContextsForUser`) — extended in Tasks
 // 5.8-5.10 (`addTrainerAssociation`, `removeTrainerAssociation`,
@@ -11,10 +25,18 @@ import { ContextEntryDto, ContextListResponseDto } from './dto/context-list-resp
 // `PlayerTrainerAssociationService`, the plan's prose name for the same
 // responsibility) to match this codebase's `<module>.service.ts` /
 // `<Module>Service` naming convention used by every other module
-// (CoachService, ShareLinkService, ...).
+// (CoachService, ShareLinkService, ...). `ShareLinksRepository` is imported
+// directly (not via a `ShareLinksModule` import) — `ShareLinksModule`
+// already imports `AssociationsModule` for `AssociationsRepository`, so
+// importing it back here would be circular; same
+// import-the-class-directly-and-re-declare-as-a-provider workaround
+// `UsersModule` already uses for `RefreshTokenRepository`.
 @Injectable()
 export class AssociationsService {
-  constructor(private readonly associationsRepository: AssociationsRepository) {}
+  constructor(
+    private readonly associationsRepository: AssociationsRepository,
+    private readonly shareLinksRepository: ShareLinksRepository,
+  ) {}
 
   /**
    * Task 5.7 (api §4.3 "GET /me/contexts", FR-034). Adult: every
@@ -28,6 +50,72 @@ export class AssociationsService {
         : await this.associationsRepository.findActiveContextsForAccount(ctx.userId);
 
     return { contexts: rows.map(toEntry) };
+  }
+
+  /**
+   * Task 5.8 (api §4.3 "POST /player-profiles/:id/trainers", FR-032 "Add
+   * Trainer"). CHILD tokens never reach this method
+   * (`MANAGE_TRAINER_ASSOCIATIONS` is in `CHILD_DENIED`). Body is oneOf
+   * `{shareLinkCode}` / `{trainerId}` — exactly one, checked here (not
+   * declaratively, same reasoning as `RedeemShareLinkDto`). Idempotent per
+   * `(trainer, profile)`: an already-active pair returns `200` with the
+   * existing row (`alreadyConnected: true`), never a `409`.
+   */
+  async addTrainerAssociation(
+    ctx: AuthContext,
+    playerProfileId: string,
+    dto: { shareLinkCode?: string; trainerId?: string },
+  ): Promise<AddTrainerAssociationResult> {
+    const hasCode = dto.shareLinkCode !== undefined;
+    const hasTrainerId = dto.trainerId !== undefined;
+    if (hasCode === hasTrainerId) {
+      throw new BadRequestException({
+        message: 'Exactly one of shareLinkCode or trainerId is required',
+        errorCode: 'VALIDATION_ERROR',
+        details: [{ field: 'shareLinkCode|trainerId', message: 'Provide exactly one of shareLinkCode or trainerId' }],
+      });
+    }
+
+    const profile = await this.associationsRepository.findOwnedPlayerProfile(playerProfileId, ctx.userId);
+    if (!profile) {
+      throw new NotFoundException({ message: 'Player profile not found', errorCode: 'NOT_FOUND' });
+    }
+
+    let trainerId: string;
+    let shareLinkId: string | undefined;
+
+    if (dto.trainerId) {
+      const trainer = await this.associationsRepository.findTrainerById(dto.trainerId);
+      if (!trainer) {
+        throw new NotFoundException({ message: 'Trainer not found', errorCode: 'NOT_FOUND' });
+      }
+      trainerId = dto.trainerId;
+    } else {
+      const link = await this.shareLinksRepository.findByCode(dto.shareLinkCode!);
+      if (!link) {
+        throw new NotFoundException({ message: 'Unknown ShareLink code', errorCode: 'NOT_FOUND' });
+      }
+      if (resolveShareLinkInvalidReason(link) !== null) {
+        throw new NotFoundException({ message: 'ShareLink is no longer available', errorCode: 'NOT_FOUND' });
+      }
+      trainerId = link.trainerId;
+      shareLinkId = link.id;
+    }
+
+    const existing = await this.associationsRepository.findActive(trainerId, playerProfileId);
+    const association = await this.associationsRepository.associate({ trainerId, playerProfileId, shareLinkId });
+
+    return {
+      statusCode: existing ? 200 : 201,
+      body: {
+        id: association.id,
+        trainerId,
+        playerProfileId,
+        status: 'ACTIVE',
+        connectedAt: association.connectedAt.toISOString(),
+        alreadyConnected: existing !== null,
+      },
+    };
   }
 }
 

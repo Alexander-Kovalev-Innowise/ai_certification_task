@@ -172,4 +172,122 @@ describe('AssociationsController (e2e, Task 5.7)', () => {
       expect(res.body.contexts[0].isSelf).toBe(false);
     });
   });
+
+  describe('POST /player-profiles/:id/trainers (Task 5.8)', () => {
+    it('by trainerId -> 201, creates the association', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const profile = await insertProfile(parent.userId);
+
+      const res = await request(app.getHttpServer())
+        .post(`/player-profiles/${profile.id}/trainers`)
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send({ trainerId: trainer.trainerId });
+
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ trainerId: trainer.trainerId, playerProfileId: profile.id, status: 'ACTIVE' });
+    });
+
+    it('by shareLinkCode -> 201, resolves the trainer from the link', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const profile = await insertProfile(parent.userId);
+      const link = await db.prisma.shareLink.create({
+        data: { code: `code-${randomUUID()}`, type: 'PLAYER_STATIC', trainerId: trainer.trainerId, createdByUserId: trainer.userId },
+      });
+
+      const res = await request(app.getHttpServer())
+        .post(`/player-profiles/${profile.id}/trainers`)
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send({ shareLinkCode: link.code });
+
+      expect(res.status).toBe(201);
+      expect(res.body.trainerId).toBe(trainer.trainerId);
+    });
+
+    it('neither field -> 400', async () => {
+      const parent = await insertParent();
+      const profile = await insertProfile(parent.userId);
+
+      const res = await request(app.getHttpServer())
+        .post(`/player-profiles/${profile.id}/trainers`)
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.errorCode).toBe('VALIDATION_ERROR');
+    });
+
+    it('both fields -> 400', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const profile = await insertProfile(parent.userId);
+
+      const res = await request(app.getHttpServer())
+        .post(`/player-profiles/${profile.id}/trainers`)
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send({ trainerId: trainer.trainerId, shareLinkCode: 'whatever' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errorCode).toBe('VALIDATION_ERROR');
+    });
+
+    it('unknown trainerId -> 404', async () => {
+      const parent = await insertParent();
+      const profile = await insertProfile(parent.userId);
+
+      const res = await request(app.getHttpServer())
+        .post(`/player-profiles/${profile.id}/trainers`)
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send({ trainerId: randomUUID() });
+
+      expect(res.status).toBe(404);
+    });
+
+    it('unknown shareLinkCode -> 404', async () => {
+      const parent = await insertParent();
+      const profile = await insertProfile(parent.userId);
+
+      const res = await request(app.getHttpServer())
+        .post(`/player-profiles/${profile.id}/trainers`)
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send({ shareLinkCode: 'does-not-exist' });
+
+      expect(res.status).toBe(404);
+    });
+
+    it('already-associated -> 200 with the existing row, not 409', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const profile = await insertProfile(parent.userId);
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.trainerId, playerProfileId: profile.id } });
+
+      const res = await request(app.getHttpServer())
+        .post(`/player-profiles/${profile.id}/trainers`)
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send({ trainerId: trainer.trainerId });
+
+      expect(res.status).toBe(200);
+      expect(res.body.alreadyConnected).toBe(true);
+
+      const rows = await db.prisma.playerTrainerAssociation.findMany({ where: { trainerId: trainer.trainerId, playerProfileId: profile.id } });
+      expect(rows).toHaveLength(1);
+    });
+
+    it('a CHILD token -> 403 CHILD_CAPABILITY_DENIED', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const childUser = await insertUser({ role: 'PLAYER_PARENT' });
+      const profile = await insertProfile(parent.userId, { childUserId: childUser.id });
+      const childToken = await signToken(childUser, { typ: 'CHILD', gid: parent.userId });
+
+      const res = await request(app.getHttpServer())
+        .post(`/player-profiles/${profile.id}/trainers`)
+        .set('Authorization', `Bearer ${childToken}`)
+        .send({ trainerId: trainer.trainerId });
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('CHILD_CAPABILITY_DENIED');
+    });
+  });
 });
