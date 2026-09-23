@@ -10,7 +10,7 @@ import { AssociationsRepository } from '../associations/associations.repository'
 import type { CreateChildProfileDto } from './dto/create-child-profile.dto';
 import { PlayerProfileResponseDto } from './dto/player-profile-response.dto';
 import type { UpdatePlayerProfileDto } from './dto/update-player-profile.dto';
-import { PlayerProfilesRepository } from './player-profiles.repository';
+import { PlayerProfilesRepository, TrainerRowForProfile } from './player-profiles.repository';
 
 // Task 5.1's response also needs a status code that varies per branch (`201`
 // normally, `200` for the FR-030 non-blocking-duplicate branch) — same
@@ -181,6 +181,19 @@ export class PlayerProfileService {
     });
 
     return this.toResponse(updated);
+  }
+
+  /**
+   * Task 5.5 (api §4.3 "GET /player-profiles/:id/trainers", FR-032). Same
+   * ownership gate as `getProfileById` — this is a sub-resource of the
+   * profile, not its own independent read.
+   */
+  async listTrainersForProfile(ctx: AuthContext, id: string): Promise<TrainerRowForProfile[]> {
+    const profile = await this.playerProfilesRepository.findById(id);
+    if (!profile || !this.canRead(ctx, profile)) {
+      throw new NotFoundException({ message: 'Player profile not found', errorCode: 'NOT_FOUND' });
+    }
+    return this.playerProfilesRepository.findTrainersForProfile(id);
   }
 
   private canRead(ctx: AuthContext, profile: PlayerProfile): boolean {

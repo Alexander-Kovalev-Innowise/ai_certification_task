@@ -11,6 +11,7 @@ import { CreateChildProfileDto } from './dto/create-child-profile.dto';
 import { PlayerProfileResponseDto } from './dto/player-profile-response.dto';
 import { UpdatePlayerProfileDto } from './dto/update-player-profile.dto';
 import { PlayerProfileService } from './player-profile.service';
+import type { TrainerRowForProfile } from './player-profiles.repository';
 
 // Task 5.1, extended in Tasks 5.2-5.5 (api §4.3). No `@Roles()` on any
 // endpoint in this controller — ownership (adult owner / the child
@@ -83,5 +84,15 @@ export class PlayerProfilesController {
     @Body() dto: UpdatePlayerProfileDto,
   ): Promise<PlayerProfileResponseDto> {
     return this.playerProfileService.updateProfile(ctx, id, dto);
+  }
+
+  // Task 5.5 (api §4.3 "GET /player-profiles/:id/trainers", FR-032).
+  @RequiresCapability(Capability.EDIT_OWN_PROFILE)
+  @Get(':id/trainers')
+  @ApiOperation({ summary: "A child's per-trainer connection list, with dates" })
+  @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 404 })
+  async listTrainersForProfile(@CurrentUser() ctx: AuthContext, @Param('id') id: string): Promise<TrainerRowForProfile[]> {
+    return this.playerProfileService.listTrainersForProfile(ctx, id);
   }
 }

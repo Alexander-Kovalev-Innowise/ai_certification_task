@@ -365,4 +365,40 @@ describe('PlayerProfilesController (e2e, Task 5.1)', () => {
       expect(res.status).toBe(404);
     });
   });
+
+  describe('GET /player-profiles/:id/trainers (Task 5.5)', () => {
+    it("returns the profile's trainer connections with dates", async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer({ businessName: 'Elite FC' });
+      const profile = await db.prisma.playerProfile.create({
+        data: { accountUserId: parent.userId, name: 'Kid One', dateOfBirth: new Date('2016-01-01'), gender: 'FEMALE', isSelf: false },
+      });
+      await db.prisma.playerTrainerAssociation.create({
+        data: { trainerId: trainer.trainerId, playerProfileId: profile.id },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/player-profiles/${profile.id}/trainers`)
+        .set('Authorization', `Bearer ${parent.accessToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0]).toMatchObject({ trainerId: trainer.trainerId, businessName: 'Elite FC', status: 'ACTIVE' });
+      expect(res.body[0].connectedAt).toEqual(expect.any(String));
+    });
+
+    it('cross-ownership -> 404', async () => {
+      const owner = await insertParent();
+      const stranger = await insertParent();
+      const profile = await db.prisma.playerProfile.create({
+        data: { accountUserId: owner.userId, name: 'Kid One', dateOfBirth: new Date('2016-01-01'), gender: 'FEMALE', isSelf: false },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/player-profiles/${profile.id}/trainers`)
+        .set('Authorization', `Bearer ${stranger.accessToken}`);
+
+      expect(res.status).toBe(404);
+    });
+  });
 });
