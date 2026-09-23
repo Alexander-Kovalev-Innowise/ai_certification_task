@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import type { ShareLink } from '@prisma/client';
+import type { Prisma, ShareLink } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
 
 import { buildPaginatedResponse, PaginatedResponseDto, decodeCursor } from '../../shared/http/pagination.dto';
@@ -111,16 +111,31 @@ export class ShareLinkService {
     return this.toPreviewResponse(link, resolveShareLinkInvalidReason(link));
   }
 
-  /** Task 4.2/Task 4.11 (BR-006). Expires in 7 days; single-use enforced at redemption (Task 4.9), not at creation. */
-  async generateCoachLink(ctx: AuthContext, targetEmail: string): Promise<ShareLinkCreatedResponseDto> {
-    const link = await this.shareLinksRepository.create({
-      code: generateShareLinkCode(),
-      type: 'COACH_UNIQUE',
-      targetEmail,
-      expiresAt: new Date(Date.now() + COACH_LINK_TTL_MS),
-      trainer: { connect: { id: this.requireTrainerId(ctx) } },
-      createdBy: { connect: { id: ctx.userId } },
-    });
+  /**
+   * Task 4.2/Task 4.11 (BR-006). Expires in 7 days; single-use enforced at
+   * redemption (Task 4.9), not at creation. Optional `tx` — Task 4.11's
+   * `CoachService.inviteCoach` needs this link and its own
+   * `OutboxJob(EMAIL_COACH_INVITE)` row to commit atomically (arch §13.2),
+   * so it opens the transaction and passes it through here rather than this
+   * service opening its own (Task 4.2's own direct `POST /share-links` call
+   * site simply omits `tx`, using the base client as before).
+   */
+  async generateCoachLink(
+    ctx: AuthContext,
+    targetEmail: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<ShareLinkCreatedResponseDto> {
+    const link = await this.shareLinksRepository.create(
+      {
+        code: generateShareLinkCode(),
+        type: 'COACH_UNIQUE',
+        targetEmail,
+        expiresAt: new Date(Date.now() + COACH_LINK_TTL_MS),
+        trainer: { connect: { id: this.requireTrainerId(ctx) } },
+        createdBy: { connect: { id: ctx.userId } },
+      },
+      tx,
+    );
     return this.toResponse(link);
   }
 
