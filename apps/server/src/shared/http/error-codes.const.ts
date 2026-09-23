@@ -34,6 +34,12 @@ export const ERROR_CODES = {
   // "already active". Not in api §0.5's shared catalog table (only named in
   // §3's endpoint-specific prose), same category as CSRF_MISMATCH above.
   CANNOT_REACTIVATE_DELETED_USER: 'CANNOT_REACTIVATE_DELETED_USER',
+  // Task 4.10 (api §4.4 "POST /share-links/:code/redeem" branch table) —
+  // `409 CONFLICT` whose errorCode distinguishes "a trainer/Super-Admin
+  // tried to redeem a ShareLink" from a generic CONFLICT. Named in the
+  // endpoint-specific branch table only, same category as
+  // CANNOT_REACTIVATE_DELETED_USER above.
+  ROLE_CANNOT_REDEEM_SHARE_LINK: 'ROLE_CANNOT_REDEEM_SHARE_LINK',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

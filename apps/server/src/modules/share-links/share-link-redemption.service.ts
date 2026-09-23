@@ -119,11 +119,16 @@ export class ShareLinkRedemptionService {
   ) {}
 
   /**
-   * The canonical dispatch entry point (arch §9.1). `@Public()` at the guard
-   * level (ShareLinksController) means `request.authContext` is never
-   * populated by `JwtAuthGuard` for this route — auth is resolved manually
-   * here via `resolveOptionalAuthContext`, exactly as the plan's Task 4.10
-   * note ("auth read manually inside the handler") describes.
+   * The canonical dispatch entry point (api §4.4, arch §9.1) — all five
+   * branches (Tasks 4.6-4.10), dispatched by auth state x `typ` x link type,
+   * exactly as arch §9.1's diagram orders them: no auth -> ANONYMOUS_REGISTRATION
+   * or COACH_ACCEPT (by link type); auth + `typ: CHILD` -> CHILD_SHARE_LINK_BLOCKED;
+   * auth + `role: PLAYER_PARENT` (implicitly ADULT, since CHILD was already
+   * excluded above) -> ASSOCIATE_EXISTING; auth + `role: COACH` -> COACH_ACCEPT;
+   * auth + `role: TRAINER | SUPER_ADMIN` -> ROLE_CANNOT_REDEEM_SHARE_LINK.
+   * `@Public()` at the guard level (ShareLinksController) means
+   * `request.authContext` is never populated by `JwtAuthGuard` for this
+   * route — auth is resolved manually here via `resolveOptionalAuthContext`.
    */
   async redeem(code: string, dto: RedeemShareLinkDto, req: Request, res: Response): Promise<RedeemResult> {
     const link = await this.shareLinksRepository.findByCode(code);
@@ -160,8 +165,13 @@ export class ShareLinkRedemptionService {
       return { statusCode: 200, body: result };
     }
 
-    // Task 4.10 (ROLE_CANNOT_REDEEM_SHARE_LINK for TRAINER|SUPER_ADMIN).
-    throw new Error('ROLE_CANNOT_REDEEM_SHARE_LINK is implemented in Task 4.10');
+    // Task 4.10 (api §4.4, arch §9.1 "reject", TRAINER | SUPER_ADMIN — "a
+    // trainer cannot be someone's player in Epic-01"). The only remaining
+    // roles once CHILD/PLAYER_PARENT/COACH are excluded above.
+    throw new ConflictException({
+      message: 'A trainer or Super Admin cannot redeem a ShareLink',
+      errorCode: 'ROLE_CANNOT_REDEEM_SHARE_LINK',
+    });
   }
 
   /**

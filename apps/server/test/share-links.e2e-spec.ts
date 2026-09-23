@@ -651,4 +651,12 @@ describe('ShareLinksController (e2e, Task 4.2)', () => {
       expect(refreshedLink?.status).toBe('ACTIVE');
     });
   });
+
+  // Task 4.10's own full branch-matrix test (auth state x typ x link type x
+  // expected branch) lives in its own file,
+  // test/share-links-redeem-matrix.e2e-spec.ts — see that file's header
+  // comment for why: this file's own Tasks 4.6-4.9 tests already spend most
+  // of the `auth-ip` throttler's 20-per-15-min budget on
+  // `POST /share-links/:code/redeem`, and appending the matrix's own calls
+  // here pushed it over into real 429s.
 });
