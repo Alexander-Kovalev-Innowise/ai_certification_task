@@ -192,4 +192,46 @@ describe('PlayerProfilesController (e2e, Task 5.1)', () => {
       expect(rows).toHaveLength(2);
     });
   });
+
+  describe('GET /player-profiles (Task 5.2)', () => {
+    it('an adult sees self + all children', async () => {
+      const parent = await insertParent();
+      const selfProfile = await db.prisma.playerProfile.create({
+        data: { accountUserId: parent.userId, name: 'Parent Self', dateOfBirth: new Date('1990-01-01'), gender: 'MALE', isSelf: true },
+      });
+      const childProfile = await db.prisma.playerProfile.create({
+        data: { accountUserId: parent.userId, name: 'Kid One', dateOfBirth: new Date('2016-01-01'), gender: 'FEMALE', isSelf: false },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get('/player-profiles')
+        .set('Authorization', `Bearer ${parent.accessToken}`);
+
+      expect(res.status).toBe(200);
+      const ids = res.body.map((row: { id: string }) => row.id);
+      expect(ids).toEqual(expect.arrayContaining([selfProfile.id, childProfile.id]));
+      expect(res.body.every((row: { trainerCount: number }) => typeof row.trainerCount === 'number')).toBe(true);
+    });
+
+    it("a child session's list contains exactly one profile, never a sibling's", async () => {
+      const parent = await insertParent();
+      const childUser = await insertUser({ role: 'PLAYER_PARENT' });
+      const childProfile = await db.prisma.playerProfile.create({
+        data: { accountUserId: parent.userId, childUserId: childUser.id, name: 'Kid One', dateOfBirth: new Date('2016-01-01'), gender: 'FEMALE', isSelf: false },
+      });
+      await db.prisma.playerProfile.create({
+        data: { accountUserId: parent.userId, name: 'Sibling Two', dateOfBirth: new Date('2017-01-01'), gender: 'MALE', isSelf: false },
+      });
+
+      const childToken = await signToken(childUser, { typ: 'CHILD', gid: parent.userId });
+
+      const res = await request(app.getHttpServer())
+        .get('/player-profiles')
+        .set('Authorization', `Bearer ${childToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].id).toBe(childProfile.id);
+    });
+  });
 });

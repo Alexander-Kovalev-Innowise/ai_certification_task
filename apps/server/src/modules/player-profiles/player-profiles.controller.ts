@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Res } from '@nestjs/common';
+import { Body, Controller, Get, Post, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 
@@ -43,5 +43,15 @@ export class PlayerProfilesController {
   ): Promise<void> {
     const result = await this.playerProfileService.createChildProfile(ctx, dto);
     res.status(result.statusCode).json(result.body);
+  }
+
+  // Task 5.2 (api §4.3 "GET /player-profiles", FR-032). Not a cross-trainer
+  // content view (FR-022 doesn't apply) — account-management metadata only.
+  @RequiresCapability(Capability.EDIT_OWN_PROFILE)
+  @Get()
+  @ApiOperation({ summary: "List the caller's own family (self + children), or just the child's own profile for a CHILD token" })
+  @ApiResponse({ status: 200, type: [PlayerProfileResponseDto] })
+  async listProfiles(@CurrentUser() ctx: AuthContext): Promise<PlayerProfileResponseDto[]> {
+    return this.playerProfileService.listProfiles(ctx);
   }
 }

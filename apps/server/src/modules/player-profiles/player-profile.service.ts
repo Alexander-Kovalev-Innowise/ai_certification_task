@@ -104,6 +104,37 @@ export class PlayerProfileService {
     return { statusCode: 201, body };
   }
 
+  /**
+   * Task 5.2 (api §4.3 "GET /player-profiles", FR-032). Adult
+   * `PLAYER_PARENT`: self + every child profile the account owns. `typ:
+   * CHILD`: only that child's own profile — never a sibling's, never the
+   * guardian's self profile (arch §9.2's service-layer restriction, the
+   * repository-level equivalent of Task 5.1's capability-level CHILD
+   * restriction). Each row's `trainerCount` is a plain count, never the
+   * full trainer objects `GET /player-profiles/:id/trainers` (Task 5.5)
+   * returns — keeps this list light for the family-picker UI (api §4.3).
+   */
+  async listProfiles(ctx: AuthContext): Promise<PlayerProfileResponseDto[]> {
+    const profiles =
+      ctx.accountType === 'CHILD'
+        ? await this.listChildOwnProfile(ctx.userId)
+        : await this.playerProfilesRepository.listForAccount(ctx.userId);
+
+    return Promise.all(profiles.map((profile) => this.toResponseWithTrainerCount(profile)));
+  }
+
+  private async listChildOwnProfile(childUserId: string): Promise<PlayerProfile[]> {
+    const own = await this.playerProfilesRepository.findByChildUserId(childUserId);
+    return own ? [own] : [];
+  }
+
+  private async toResponseWithTrainerCount(profile: PlayerProfile): Promise<PlayerProfileResponseDto> {
+    const trainerCount = await this.playerProfilesRepository.countActiveTrainers(profile.id);
+    const response = this.toResponse(profile);
+    response.trainerCount = trainerCount;
+    return response;
+  }
+
   private toResponse(profile: PlayerProfile): PlayerProfileResponseDto {
     return plainToInstance(PlayerProfileResponseDto, profile, { excludeExtraneousValues: true });
   }
