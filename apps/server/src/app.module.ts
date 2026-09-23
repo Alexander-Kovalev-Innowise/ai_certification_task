@@ -3,6 +3,7 @@ import { APP_GUARD, APP_INTERCEPTOR, DiscoveryModule, DiscoveryService, Metadata
 import { ThrottlerModule } from '@nestjs/throttler';
 
 import { AuthModule } from './modules/auth/auth.module';
+import { ShareLinksModule } from './modules/share-links/share-links.module';
 import { TrainersModule } from './modules/trainers/trainers.module';
 import { UsersModule } from './modules/users/users.module';
 import { ConfigModule } from './shared/config/config.module';
@@ -52,6 +53,7 @@ import { TenantContextInterceptor } from './shared/tenancy/tenant-context.interc
     UsersModule,
     AuthModule,
     TrainersModule,
+    ShareLinksModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthThrottlerGuard },
