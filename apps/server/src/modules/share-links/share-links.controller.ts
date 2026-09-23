@@ -100,23 +100,31 @@ export class ShareLinksController {
   // shape). `@Public()` at the guard level — auth is read manually inside
   // ShareLinkRedemptionService.redeem (api §4.4's "auth optional" posture;
   // see that method's own comment on why `@RequiresCapability` would be
-  // inert here even if added). Currently implements ANONYMOUS_REGISTRATION
-  // only; the other four branches land in the tasks named above.
+  // inert here even if added). `@Res()` WITHOUT `passthrough` — each branch
+  // returns a different status code (`201`/`200`/...), which
+  // `ShareLinkRedemptionService.RedeemResult`'s own comment explains a
+  // passthrough return value can't express (Nest re-applies the
+  // reflected/default status on top regardless of anything set on `res`
+  // beforehand). Currently implements ANONYMOUS_REGISTRATION and
+  // ASSOCIATE_EXISTING; the remaining branches land in the tasks named
+  // above.
   @Public()
   @Throttle({ 'auth-ip': {} })
   @Post('share-links/:code/redeem')
   @ApiOperation({ summary: 'Redeem a ShareLink — dispatches by auth state x typ x link type (arch §9.1)' })
   @ApiResponse({ status: 201, description: 'ANONYMOUS_REGISTRATION — auto-login session', type: AuthSessionResponseDto })
+  @ApiResponse({ status: 200, description: 'ASSOCIATE_EXISTING — one row per subjectProfileIds entry' })
   @ApiResponse({ status: 400 })
-  @ApiResponse({ status: 404, description: 'Unknown code' })
+  @ApiResponse({ status: 404, description: 'Unknown code, or a subjectProfileIds entry not owned by the caller' })
   @ApiResponse({ status: 409, description: 'Expired/exhausted/revoked link', schema: { example: { errorCode: 'SHARE_LINK_UNAVAILABLE' } } })
   @ApiResponse({ status: 429, description: 'Too many attempts', headers: { 'Retry-After': { schema: { type: 'integer' } } } })
   async redeemShareLink(
     @Param('code') code: string,
     @Body() dto: RedeemShareLinkDto,
     @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<AuthSessionResponseDto> {
-    return this.shareLinkRedemptionService.redeem(code, dto, req, res);
+    @Res() res: Response,
+  ): Promise<void> {
+    const result = await this.shareLinkRedemptionService.redeem(code, dto, req, res);
+    res.status(result.statusCode).json(result.body);
   }
 }

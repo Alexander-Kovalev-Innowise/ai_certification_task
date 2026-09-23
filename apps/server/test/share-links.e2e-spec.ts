@@ -99,6 +99,15 @@ describe('ShareLinksController (e2e, Task 4.2)', () => {
     return { userId: user.id, trainerId, accessToken };
   }
 
+  /** Shared by every redeem describe block (Tasks 4.6+) — a plain PLAYER_STATIC link under a fresh trainer. */
+  async function seedPlayerStaticLink(): Promise<{ code: string; trainerId: string }> {
+    const trainer = await insertTrainer({ businessName: 'Redeem Co' });
+    const link = await db.prisma.shareLink.create({
+      data: { code: `redeem-${randomUUID()}`, type: 'PLAYER_STATIC', trainerId: trainer.trainerId, createdByUserId: trainer.userId },
+    });
+    return { code: link.code, trainerId: trainer.trainerId };
+  }
+
   describe('POST /share-links (Task 4.2)', () => {
     it('creates a PLAYER_STATIC link with null expiry/uses', async () => {
       const trainer = await insertTrainer();
@@ -378,14 +387,6 @@ describe('ShareLinksController (e2e, Task 4.2)', () => {
   });
 
   describe('POST /share-links/:code/redeem — ANONYMOUS_REGISTRATION (Task 4.6)', () => {
-    async function seedPlayerStaticLink(): Promise<{ code: string; trainerId: string }> {
-      const trainer = await insertTrainer({ businessName: 'Redeem Co' });
-      const link = await db.prisma.shareLink.create({
-        data: { code: `redeem-${randomUUID()}`, type: 'PLAYER_STATIC', trainerId: trainer.trainerId, createdByUserId: trainer.userId },
-      });
-      return { code: link.code, trainerId: trainer.trainerId };
-    }
-
     function redeemDto(overrides: Record<string, unknown> = {}) {
       return {
         email: `${randomUUID()}@example.com`,
@@ -458,6 +459,71 @@ describe('ShareLinksController (e2e, Task 4.2)', () => {
 
       expect(res.status).toBe(404);
       expect(res.body.errorCode).toBe('NOT_FOUND');
+    });
+  });
+
+  describe('POST /share-links/:code/redeem — ASSOCIATE_EXISTING (Task 4.7)', () => {
+    async function seedPlayerParentWithProfile(): Promise<{ userId: string; accessToken: string; profileId: string }> {
+      const user = await insertUser({ role: 'PLAYER_PARENT' });
+      const accessToken = await signToken(user, { role: 'PLAYER_PARENT' });
+      const profile = await db.prisma.playerProfile.create({
+        data: { accountUserId: user.id, name: 'Jamie Doe', dateOfBirth: new Date('2015-01-01'), gender: 'OTHER', isSelf: false },
+      });
+      return { userId: user.id, accessToken, profileId: profile.id };
+    }
+
+    it('associates an owned profile with the trainer -> 200, one ACTIVE association per profile', async () => {
+      const link = await seedPlayerStaticLink();
+      const parent = await seedPlayerParentWithProfile();
+
+      const res = await request(app.getHttpServer())
+        .post(`/share-links/${link.code}/redeem`)
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send({ subjectProfileIds: [parent.profileId] });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([
+        { playerProfileId: parent.profileId, status: 'ACTIVE', connectedAt: expect.any(String), alreadyConnected: false },
+      ]);
+
+      const association = await db.prisma.playerTrainerAssociation.findFirst({
+        where: { trainerId: link.trainerId, playerProfileId: parent.profileId },
+      });
+      expect(association?.status).toBe('ACTIVE');
+    });
+
+    it('associating an already-connected profile is idempotent -> 200, alreadyConnected:true, no duplicate row', async () => {
+      const link = await seedPlayerStaticLink();
+      const parent = await seedPlayerParentWithProfile();
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: link.trainerId, playerProfileId: parent.profileId } });
+
+      const res = await request(app.getHttpServer())
+        .post(`/share-links/${link.code}/redeem`)
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send({ subjectProfileIds: [parent.profileId] });
+
+      expect(res.status).toBe(200);
+      expect(res.body[0]).toMatchObject({ playerProfileId: parent.profileId, alreadyConnected: true });
+
+      const associations = await db.prisma.playerTrainerAssociation.findMany({
+        where: { trainerId: link.trainerId, playerProfileId: parent.profileId },
+      });
+      expect(associations).toHaveLength(1);
+    });
+
+    it('associating a profile not owned by the caller -> 404, generic (no existence disclosure)', async () => {
+      const link = await seedPlayerStaticLink();
+      const parent = await seedPlayerParentWithProfile();
+      const otherOwner = await seedPlayerParentWithProfile();
+
+      const res = await request(app.getHttpServer())
+        .post(`/share-links/${link.code}/redeem`)
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send({ subjectProfileIds: [otherOwner.profileId] });
+
+      expect(res.status).toBe(404);
+      expect(res.body.errorCode).toBe('NOT_FOUND');
+      expect(JSON.stringify(res.body)).not.toContain(otherOwner.userId);
     });
   });
 });

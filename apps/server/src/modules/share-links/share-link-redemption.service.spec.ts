@@ -174,10 +174,11 @@ describe('ShareLinkRedemptionService.redeem — ANONYMOUS_REGISTRATION (Task 4.6
     const dto = baseDto();
     const { req, res } = fakeReqRes();
 
-    const session = await service.redeem(link.code, dto, req, res);
+    const result = await service.redeem(link.code, dto, req, res);
 
-    expect(session.accessToken).toEqual(expect.any(String));
-    expect(session.user.email).toBe(dto.email);
+    expect(result.statusCode).toBe(201);
+    expect(result.body.accessToken).toEqual(expect.any(String));
+    expect(result.body.user.email).toBe(dto.email);
 
     const user = await prismaService.user.findUnique({ where: { email: dto.email } });
     expect(user).not.toBeNull();

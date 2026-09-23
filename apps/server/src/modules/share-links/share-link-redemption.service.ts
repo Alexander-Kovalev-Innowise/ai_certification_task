@@ -25,6 +25,36 @@ class ShareLinkUnavailableError extends ConflictException {
   }
 }
 
+// Task 4.7 (api §4.4 "ASSOCIATE_EXISTING"). No dedicated response DTO name
+// in the spec (unlike ANONYMOUS_REGISTRATION's AuthSessionResponseDto) — one
+// row per `subjectProfileIds` entry, `alreadyConnected` distinguishing the
+// idempotent-no-op case from a freshly created association without the
+// caller having to diff timestamps.
+export interface AssociatedProfileResultDto {
+  playerProfileId: string;
+  status: 'ACTIVE';
+  connectedAt: Date;
+  alreadyConnected: boolean;
+}
+
+export type RedeemShareLinkResponse = AuthSessionResponseDto | AssociatedProfileResultDto[];
+
+/**
+ * Each branch returns a different HTTP status (`201` ANONYMOUS_REGISTRATION,
+ * `200` ASSOCIATE_EXISTING, ...) — a single `@HttpCode()`/passthrough
+ * `@Res()` return-value can't express that (NestJS's `RouterResponseController.apply`
+ * re-applies the reflected/default status on top of the response whenever
+ * `passthrough: true` is used, clobbering any status this service sets on
+ * `res` directly — verified against `@nestjs/core`'s
+ * `router-execution-context.js`). `ShareLinksController.redeemShareLink`
+ * therefore takes full manual control of the response (`@Res()` without
+ * `passthrough`) and sends exactly this `statusCode`/`body`.
+ */
+export interface RedeemResult {
+  statusCode: number;
+  body: RedeemShareLinkResponse;
+}
+
 /**
  * `RedeemShareLinkDto`'s ANONYMOUS_REGISTRATION shape (api §4.4, reproduced
  * verbatim from the spec) carries only `playerName` — there is no separate
@@ -81,7 +111,7 @@ export class ShareLinkRedemptionService {
    * here via `resolveOptionalAuthContext`, exactly as the plan's Task 4.10
    * note ("auth read manually inside the handler") describes.
    */
-  async redeem(code: string, dto: RedeemShareLinkDto, req: Request, res: Response): Promise<AuthSessionResponseDto> {
+  async redeem(code: string, dto: RedeemShareLinkDto, req: Request, res: Response): Promise<RedeemResult> {
     const link = await this.shareLinksRepository.findByCode(code);
     if (!link) {
       throw new NotFoundException({ message: 'Unknown ShareLink code', errorCode: 'NOT_FOUND' });
@@ -94,15 +124,26 @@ export class ShareLinkRedemptionService {
         // Task 4.9.
         throw new Error('COACH_ACCEPT (anonymous) is implemented in Task 4.9');
       }
-      return this.redeemAnonymousRegistration(link, dto, res);
+      const session = await this.redeemAnonymousRegistration(link, dto, res);
+      return { statusCode: 201, body: session };
     }
 
-    // Task 4.8/4.7/4.9/4.10 fill in the remaining branches, dispatched by
-    // `authContext.accountType`/`authContext.role` exactly as arch §9.1
-    // diagrams (CHILD check first — a CHILD login's `role` is still
-    // `PLAYER_PARENT`, so it must be checked ahead of the ASSOCIATE_EXISTING
-    // role check below, not folded into it).
-    throw new Error('Authenticated redeem branches are implemented in Tasks 4.7-4.10');
+    // CHILD check first (arch §9.1 diagram order) — a CHILD login's `role`
+    // is still `PLAYER_PARENT` (AuthService.resolveTenantClaims), so it must
+    // be checked ahead of the ASSOCIATE_EXISTING role check below, never
+    // folded into it.
+    if (authContext.accountType === 'CHILD') {
+      // Task 4.8.
+      throw new Error('CHILD_SHARE_LINK_BLOCKED is implemented in Task 4.8');
+    }
+
+    if (authContext.role === 'PLAYER_PARENT') {
+      const results = await this.redeemAssociateExisting(link, dto, authContext);
+      return { statusCode: 200, body: results };
+    }
+
+    // Task 4.9/4.10 (COACH_ACCEPT authenticated case, ROLE_CANNOT_REDEEM_SHARE_LINK).
+    throw new Error('COACH_ACCEPT/ROLE_CANNOT_REDEEM_SHARE_LINK are implemented in Tasks 4.9-4.10');
   }
 
   /**
@@ -186,6 +227,58 @@ export class ShareLinkRedemptionService {
     });
 
     return this.authService.issueSession(user, res);
+  }
+
+  /**
+   * Task 4.7 (api §4.4, arch §9.1 "ASSOCIATE_EXISTING"). Auth, `typ: ADULT`,
+   * `role: PLAYER_PARENT`. Body `{ subjectProfileIds: string[] }` (FR-021
+   * checklist). Each profile must be owned by the caller — rejected with a
+   * generic `NOT_FOUND` (never confirming/denying that a *different*
+   * profile id exists and belongs to someone else, same existence-disclosure
+   * posture as arch §8 Layer 3's tenant-isolation 404s) if not. Idempotent
+   * per `(trainer, profile)`: `AssociationsRepository.associate`'s upsert
+   * means an already-active pair is a no-op that still returns `200` with
+   * that row (`alreadyConnected: true`), never an error.
+   */
+  private async redeemAssociateExisting(
+    link: ShareLinkWithTrainer,
+    dto: RedeemShareLinkDto,
+    ctx: AuthContext,
+  ): Promise<AssociatedProfileResultDto[]> {
+    const invalidReason = resolveShareLinkInvalidReason(link);
+    if (invalidReason !== null) {
+      throw new ShareLinkUnavailableError();
+    }
+
+    if (!dto.subjectProfileIds || dto.subjectProfileIds.length === 0) {
+      throw missingFieldError(['subjectProfileIds']);
+    }
+
+    const results: AssociatedProfileResultDto[] = [];
+    for (const playerProfileId of dto.subjectProfileIds) {
+      const profile = await this.associationsRepository.findOwnedPlayerProfile(playerProfileId, ctx.userId);
+      if (!profile) {
+        // Generic — does not distinguish "no such profile" from "exists but
+        // isn't yours" (existence-disclosure posture, see method comment).
+        throw new NotFoundException({ message: 'Player profile not found', errorCode: 'NOT_FOUND' });
+      }
+
+      const existing = await this.associationsRepository.findActive(link.trainerId, playerProfileId);
+      const association = await this.associationsRepository.associate({
+        trainerId: link.trainerId,
+        playerProfileId,
+        shareLinkId: link.id,
+      });
+
+      results.push({
+        playerProfileId,
+        status: 'ACTIVE',
+        connectedAt: association.connectedAt,
+        alreadyConnected: existing !== null,
+      });
+    }
+
+    return results;
   }
 
   /**

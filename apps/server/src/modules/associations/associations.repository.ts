@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { PlayerTrainerAssociation, Prisma } from '@prisma/client';
+import type { PlayerProfile, PlayerTrainerAssociation, Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../shared/prisma/prisma.service';
 
@@ -73,5 +73,50 @@ export class AssociationsRepository {
       where: { id },
       data: { status: 'INACTIVE', disconnectedAt: new Date() },
     });
+  }
+
+  /**
+   * Task 4.1 stub, filled in for Task 4.7 (ASSOCIATE_EXISTING). An upsert,
+   * not a plain `create`: the model's own `@@unique([trainerId,
+   * playerProfileId])` constraint means a previously-`disconnect`ed pair
+   * (Phase 5) already has a row for this identity, and reconnecting must
+   * revive THAT row — `create` would violate the unique constraint. Task
+   * 4.6's ANONYMOUS_REGISTRATION branch still uses the plain `create` above
+   * (a brand-new PlayerProfile can never already have a row), so both
+   * methods stay, each correct for its own caller's precondition.
+   */
+  async associate(input: CreateAssociationInput, tx?: Prisma.TransactionClient): Promise<PlayerTrainerAssociation> {
+    const client = tx ?? this.prisma;
+    return client.playerTrainerAssociation.upsert({
+      where: { trainerId_playerProfileId: { trainerId: input.trainerId, playerProfileId: input.playerProfileId } },
+      create: {
+        trainer: { connect: { id: input.trainerId } },
+        playerProfile: { connect: { id: input.playerProfileId } },
+        ...(input.shareLinkId ? { shareLink: { connect: { id: input.shareLinkId } } } : {}),
+      },
+      update: {
+        status: 'ACTIVE',
+        connectedAt: new Date(),
+        disconnectedAt: null,
+        ...(input.shareLinkId ? { shareLink: { connect: { id: input.shareLinkId } } } : {}),
+      },
+    });
+  }
+
+  /**
+   * Task 4.7 (ASSOCIATE_EXISTING ownership check). A full
+   * `PlayerProfilesRepository` doesn't exist until Phase 5 — this narrow
+   * lookup is enough for "does this profile belong to this caller" without
+   * guessing at that module's eventual shape. `.extended` (when not already
+   * inside a `tx`) so a soft-deleted profile is correctly invisible
+   * (soft-delete.extension.ts covers `PlayerProfile`).
+   */
+  async findOwnedPlayerProfile(
+    playerProfileId: string,
+    ownerUserId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<PlayerProfile | null> {
+    const client = tx ? tx : this.prisma.extended;
+    return client.playerProfile.findFirst({ where: { id: playerProfileId, accountUserId: ownerUserId } });
   }
 }
