@@ -9,7 +9,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import type { User } from '@prisma/client';
+import type { Prisma, User } from '@prisma/client';
 import type { Request, Response } from 'express';
 
 import { JOB_TYPES } from '../../shared/jobs/job-types.const';
@@ -192,7 +192,14 @@ export class AuthService {
       await this.outboxService.enqueue(
         tx,
         JOB_TYPES.EMAIL_PASSWORD_RESET,
-        buildPasswordResetEmailPayload(user.email, { firstName: user.firstName, resetToken: rawToken }),
+        // buildPasswordResetEmailPayload's return type is its own interface
+        // (not indexed), so it doesn't structurally satisfy Prisma's
+        // InputJsonValue on its own — the cast is the boundary between "a
+        // typed template payload" and "an opaque JSON blob for the outbox".
+        buildPasswordResetEmailPayload(user.email, {
+          firstName: user.firstName,
+          resetToken: rawToken,
+        }) as unknown as Prisma.InputJsonValue,
       );
     });
 

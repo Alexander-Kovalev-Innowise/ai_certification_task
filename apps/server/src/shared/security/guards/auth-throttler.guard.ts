@@ -61,7 +61,7 @@ export function authIdentityTracker(req: Record<string, unknown>): string {
 }
 
 export function impersonationTracker(req: Record<string, unknown>): string {
-  const authContext = (req as AuthenticatedRequest).authContext;
+  const authContext = (req as unknown as AuthenticatedRequest).authContext;
   return authContext?.userId ?? 'anonymous';
 }
 

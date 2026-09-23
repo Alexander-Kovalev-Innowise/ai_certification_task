@@ -34,19 +34,19 @@ export function assertRoutesHaveRequiredCapability(
     const methodNames = metadataScanner.getAllMethodNames(prototype);
 
     for (const methodName of methodNames) {
-      const handler = prototype[methodName] as object;
+      const handler = prototype[methodName] as (...args: unknown[]) => unknown;
       const hasRoutePath = Reflect.hasMetadata(PATH_METADATA, handler);
       if (!hasRoutePath) {
         continue;
       }
 
-      const classRef = wrapper.metatype as object;
-      const isPublic = reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [handler, classRef]);
+      const classRef = wrapper.metatype as new (...args: unknown[]) => unknown;
+      const isPublic = reflector.getAllAndOverride<boolean, string>(IS_PUBLIC_KEY, [handler, classRef]);
       if (isPublic) {
         continue;
       }
 
-      const capabilities = reflector.getAllAndOverride<unknown[]>(REQUIRES_CAPABILITY_KEY, [handler, classRef]);
+      const capabilities = reflector.getAllAndOverride<unknown[], string>(REQUIRES_CAPABILITY_KEY, [handler, classRef]);
       if (!capabilities || capabilities.length === 0) {
         const controllerName = wrapper.metatype?.name ?? 'UnknownController';
         throw new Error(
