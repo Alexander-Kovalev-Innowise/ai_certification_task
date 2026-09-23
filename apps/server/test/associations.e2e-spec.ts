@@ -339,4 +339,90 @@ describe('AssociationsController (e2e, Task 5.7)', () => {
       expect(res.body.errorCode).toBe('CHILD_CAPABILITY_DENIED');
     });
   });
+
+  describe('GET /trainers/:id/players (Task 5.10)', () => {
+    it('returns the roster with a formatted availabilitySummary', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const profile = await insertProfile(parent.userId, { name: 'Roster Kid', dateOfBirth: new Date('2016-01-01') });
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.trainerId, playerProfileId: profile.id } });
+      await db.prisma.availability.create({
+        data: { subjectType: 'PLAYER', playerProfileId: profile.id, dayOfWeek: 1, startTime: 17 * 60, endTime: 20 * 60, isAvailable: true },
+      });
+      await db.prisma.availability.create({
+        data: { subjectType: 'PLAYER', playerProfileId: profile.id, dayOfWeek: 3, startTime: 18 * 60, endTime: 21 * 60, isAvailable: true },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/trainers/${trainer.trainerId}/players`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.items).toHaveLength(1);
+      expect(res.body.items[0]).toMatchObject({
+        playerProfileId: profile.id,
+        name: 'Roster Kid',
+        availabilitySummary: 'Mon 5-8pm, Wed 6-9pm',
+      });
+      expect(typeof res.body.items[0].age).toBe('number');
+    });
+
+    it('a day/time filter narrows results to matching players only', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const availableMonday = await insertProfile(parent.userId, { name: 'Available Monday' });
+      const availableTuesday = await insertProfile(parent.userId, { name: 'Available Tuesday' });
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.trainerId, playerProfileId: availableMonday.id } });
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.trainerId, playerProfileId: availableTuesday.id } });
+      await db.prisma.availability.create({
+        data: { subjectType: 'PLAYER', playerProfileId: availableMonday.id, dayOfWeek: 1, startTime: 17 * 60, endTime: 20 * 60, isAvailable: true },
+      });
+      await db.prisma.availability.create({
+        data: { subjectType: 'PLAYER', playerProfileId: availableTuesday.id, dayOfWeek: 2, startTime: 17 * 60, endTime: 20 * 60, isAvailable: true },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/trainers/${trainer.trainerId}/players`)
+        .query({ dayOfWeek: 1 })
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.items).toHaveLength(1);
+      expect(res.body.items[0].playerProfileId).toBe(availableMonday.id);
+    });
+
+    it('cross-tenant -> 404 (never 403, arch §8 Layer 3)', async () => {
+      const trainerA = await insertTrainer();
+      const trainerB = await insertTrainer();
+
+      const res = await request(app.getHttpServer())
+        .get(`/trainers/${trainerA.trainerId}/players`)
+        .set('Authorization', `Bearer ${trainerB.accessToken}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.errorCode).toBe('NOT_FOUND');
+    });
+
+    it('a removed association immediately excludes the player from the roster', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const profile = await insertProfile(parent.userId);
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.trainerId, playerProfileId: profile.id } });
+
+      const before = await request(app.getHttpServer())
+        .get(`/trainers/${trainer.trainerId}/players`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+      expect(before.body.items).toHaveLength(1);
+
+      await request(app.getHttpServer())
+        .delete(`/player-profiles/${profile.id}/trainers/${trainer.trainerId}`)
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .expect(204);
+
+      const after = await request(app.getHttpServer())
+        .get(`/trainers/${trainer.trainerId}/players`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+      expect(after.body.items).toHaveLength(0);
+    });
+  });
 });

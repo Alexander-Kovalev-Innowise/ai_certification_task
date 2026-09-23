@@ -1,11 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 
+import type { PaginatedResponseDto } from '../../shared/http/pagination.dto';
 import type { AuthContext } from '../../shared/security/auth-context.interface';
 import { resolveShareLinkInvalidReason } from '../share-links/share-link.service';
 import { ShareLinksRepository } from '../share-links/share-links.repository';
 
-import { AssociationsRepository, ContextRow } from './associations.repository';
+import { AssociationsRepository, ContextRow, PlayerProfileWithAvailability } from './associations.repository';
+import { formatAvailabilitySummary } from './availability-summary.formatter';
 import { ContextEntryDto, ContextListResponseDto } from './dto/context-list-response.dto';
+import type { ListRosterQueryDto } from './dto/list-roster-query.dto';
+import { RosterRowDto } from './dto/roster-row.dto';
 
 export interface AddTrainerAssociationResult {
   statusCode: number;
@@ -141,6 +145,76 @@ export class AssociationsService {
 
     await this.associationsRepository.disconnect(association.id);
   }
+
+  /**
+   * Task 5.10 (api §4.3 "GET /trainers/:id/players", FR-070 gap-fill §8.8).
+   * Own tenant for TRAINER, any for SUPER_ADMIN — same ownership pattern
+   * CoachService.listCoaches/ShareLinkService.listShareLinks already use;
+   * checked BEFORE the repository call so a mismatched `:id` never reaches
+   * the tenant-guard extension (same reasoning those methods document).
+   * `dayOfWeek`/`startTime`/`endTime` narrow to players with at least one
+   * matching available slot; pagination is an in-memory slice, same
+   * deliberate simplification CoachService.listCoaches uses for its own
+   * bounded roster.
+   */
+  async listRosterForTrainer(
+    ctx: AuthContext,
+    trainerId: string,
+    query: ListRosterQueryDto,
+  ): Promise<PaginatedResponseDto<RosterRowDto>> {
+    this.assertOwnershipOrNotFound(ctx, trainerId);
+
+    const players = await this.associationsRepository.listActivePlayersForTrainer(trainerId);
+    const filtered = players.filter((player) => matchesFilter(player, query));
+    const rows = filtered.map((player) => toRosterRow(player));
+
+    const limit = query.limit ?? 50;
+    return { items: rows.slice(0, limit), nextCursor: null, hasMore: rows.length > limit };
+  }
+
+  /** Mirrors CoachService's own ownership check (api §4.1 footnote) — 404, never 403 (arch §8 Layer 3). */
+  private assertOwnershipOrNotFound(ctx: AuthContext, trainerId: string): void {
+    if (ctx.role === 'SUPER_ADMIN') {
+      return;
+    }
+    if (ctx.role === 'TRAINER' && ctx.trainerId === trainerId) {
+      return;
+    }
+    throw new NotFoundException({ message: 'Trainer not found', errorCode: 'NOT_FOUND' });
+  }
+}
+
+function matchesFilter(player: PlayerProfileWithAvailability, query: ListRosterQueryDto): boolean {
+  if (query.dayOfWeek === undefined) {
+    return true;
+  }
+  return player.availability.some((slot) => {
+    if (!slot.isAvailable || slot.dayOfWeek !== query.dayOfWeek) {
+      return false;
+    }
+    if (query.startTime === undefined || query.endTime === undefined) {
+      return true;
+    }
+    return slot.startTime < query.endTime && slot.endTime > query.startTime;
+  });
+}
+
+function calculateAge(dateOfBirth: Date, now: Date = new Date()): number {
+  let age = now.getFullYear() - dateOfBirth.getFullYear();
+  const monthDiff = now.getMonth() - dateOfBirth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dateOfBirth.getDate())) {
+    age -= 1;
+  }
+  return age;
+}
+
+function toRosterRow(player: PlayerProfileWithAvailability): RosterRowDto {
+  return {
+    playerProfileId: player.id,
+    name: player.name,
+    age: calculateAge(player.dateOfBirth),
+    availabilitySummary: formatAvailabilitySummary(player.availability),
+  };
 }
 
 function toEntry(row: ContextRow): ContextEntryDto {

@@ -1,7 +1,8 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 
+import type { PaginatedResponseDto } from '../../shared/http/pagination.dto';
 import type { AuthContext } from '../../shared/security/auth-context.interface';
 import { Capability } from '../../shared/security/capability.enum';
 import { CurrentUser } from '../../shared/security/decorators/current-user.decorator';
@@ -10,6 +11,8 @@ import { RequiresCapability } from '../../shared/security/decorators/requires-ca
 import { AssociationsService } from './associations.service';
 import { AddTrainerAssociationDto } from './dto/add-trainer-association.dto';
 import { ContextListResponseDto } from './dto/context-list-response.dto';
+import { ListRosterQueryDto } from './dto/list-roster-query.dto';
+import { RosterRowDto } from './dto/roster-row.dto';
 
 // Task 5.7, first endpoint — extended in Tasks 5.8-5.10 (api §4.3's
 // `AssociationsController`, the second owning module mounted under
@@ -71,5 +74,20 @@ export class AssociationsController {
     @Param('trainerId') trainerId: string,
   ): Promise<void> {
     await this.associationsService.removeTrainerAssociation(ctx, id, trainerId);
+  }
+
+  // Task 5.10 (api §4.3 "GET /trainers/:id/players", FR-070 gap-fill §8.8).
+  // Own tenant for TRAINER, any for SUPER_ADMIN.
+  @RequiresCapability(Capability.VIEW_PLAYER_AVAILABILITY)
+  @Get('trainers/:id/players')
+  @ApiOperation({ summary: "A trainer's minimal player roster with availability summary — not full CRM" })
+  @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 404, description: 'Cross-tenant (never 403, arch §8 Layer 3)' })
+  async listRosterForTrainer(
+    @CurrentUser() ctx: AuthContext,
+    @Param('id') id: string,
+    @Query() query: ListRosterQueryDto,
+  ): Promise<PaginatedResponseDto<RosterRowDto>> {
+    return this.associationsService.listRosterForTrainer(ctx, id, query);
   }
 }

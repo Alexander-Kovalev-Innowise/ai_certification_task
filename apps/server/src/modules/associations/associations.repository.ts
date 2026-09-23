@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import type { PlayerProfile, PlayerTrainerAssociation, Prisma } from '@prisma/client';
+import type { Availability, PlayerProfile, PlayerTrainerAssociation, Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../shared/prisma/prisma.service';
+
+export type PlayerProfileWithAvailability = PlayerProfile & { availability: Availability[] };
 
 export interface CreateAssociationInput {
   trainerId: string;
@@ -125,6 +127,27 @@ export class AssociationsRepository {
    * inside a `tx`) so a soft-deleted profile is correctly invisible
    * (soft-delete.extension.ts covers `PlayerProfile`).
    */
+  /**
+   * Task 5.10 (api §4.3 "GET /trainers/:id/players", gap-fill §8.8). Every
+   * `ACTIVE` player on this trainer's roster, with their saved availability
+   * slots included — `AssociationsService.listRosterForTrainer` applies the
+   * optional day/time filter and pagination slice in-memory, same
+   * deliberate-simplification convention `CoachService.listCoaches`
+   * documents for its own bounded roster (arch §18: no CRM-scale dataset
+   * here). Goes through `.extended` for the tenant-guard runtime net —
+   * `where.trainerId` is always present, satisfied by the caller's own
+   * `tid`/`:id` ownership check upstream (`AssociationsService`'s own
+   * `assertOwnershipOrNotFound`, mirroring `CoachService`'s).
+   */
+  async listActivePlayersForTrainer(trainerId: string): Promise<PlayerProfileWithAvailability[]> {
+    const rows = await this.prisma.extended.playerTrainerAssociation.findMany({
+      where: { trainerId, status: 'ACTIVE' },
+      include: { playerProfile: { include: { availability: true } } },
+      orderBy: { connectedAt: 'desc' },
+    });
+    return rows.map((row) => row.playerProfile);
+  }
+
   /** Task 5.8 — validates a bare `trainerId` (the "pick from My Trainers" branch, no ShareLink code involved). */
   async findTrainerById(trainerId: string, tx?: Prisma.TransactionClient): Promise<{ id: string } | null> {
     const client = tx ?? this.prisma;
