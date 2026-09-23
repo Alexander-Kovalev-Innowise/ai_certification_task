@@ -9,6 +9,20 @@ export interface CreateAssociationInput {
   shareLinkId?: string;
 }
 
+// Task 5.7 (api §4.3 "GET /me/contexts"). One row per active
+// `(playerProfile, trainer)` pair — the shape `AssociationsService.
+// listContextsForUser` maps straight onto `ContextEntryDto`.
+export interface ContextRow {
+  playerProfileId: string;
+  playerProfileName: string;
+  isSelf: boolean;
+  trainerId: string;
+  trainerDisplayName: string;
+  logoUrl: string | null;
+  primaryColorHex: string | null;
+  connectedAt: Date;
+}
+
 // Task 4.1 (arch §2 — associations promoted to its own module to break a
 // share-links <-> player-profiles cycle). Repository-only for now: full
 // service logic (idempotency messaging, removal-with-cascade, the
@@ -119,4 +133,45 @@ export class AssociationsRepository {
     const client = tx ? tx : this.prisma.extended;
     return client.playerProfile.findFirst({ where: { id: playerProfileId, accountUserId: ownerUserId } });
   }
+
+  /**
+   * Task 5.7 (api §4.3 "GET /me/contexts", FR-034). Every active
+   * `(profile, trainer)` pair for an adult account — self + every child it
+   * owns, per api §4.3's "Me" + "Children" grouping (the controller/service
+   * does the grouping-by-profile; this returns the flat row set).
+   */
+  async findActiveContextsForAccount(accountUserId: string): Promise<ContextRow[]> {
+    const rows = await this.prisma.extended.playerTrainerAssociation.findMany({
+      where: { status: 'ACTIVE', playerProfile: { accountUserId } },
+      include: { playerProfile: true, trainer: true },
+      orderBy: { connectedAt: 'desc' },
+    });
+    return rows.map(toContextRow);
+  }
+
+  /**
+   * Task 5.7 — `typ: CHILD` case: only that child's own list, no "Me"/parent
+   * section (FR-034, arch §9.2's service-layer restriction).
+   */
+  async findActiveContextsForChild(childUserId: string): Promise<ContextRow[]> {
+    const rows = await this.prisma.extended.playerTrainerAssociation.findMany({
+      where: { status: 'ACTIVE', playerProfile: { childUserId } },
+      include: { playerProfile: true, trainer: true },
+      orderBy: { connectedAt: 'desc' },
+    });
+    return rows.map(toContextRow);
+  }
+}
+
+function toContextRow(row: PlayerTrainerAssociation & { playerProfile: PlayerProfile; trainer: { businessName: string; logoUrl: string | null; primaryColorHex: string | null } }): ContextRow {
+  return {
+    playerProfileId: row.playerProfileId,
+    playerProfileName: row.playerProfile.name,
+    isSelf: row.playerProfile.isSelf,
+    trainerId: row.trainerId,
+    trainerDisplayName: row.trainer.businessName,
+    logoUrl: row.trainer.logoUrl,
+    primaryColorHex: row.trainer.primaryColorHex,
+    connectedAt: row.connectedAt,
+  };
 }
