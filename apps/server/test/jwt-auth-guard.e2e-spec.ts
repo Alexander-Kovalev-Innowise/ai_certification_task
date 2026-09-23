@@ -182,6 +182,34 @@ describe('JwtAuthGuard (e2e, Task 2.4 DoD)', () => {
     expect(second.body.errorCode).toBe('ACCOUNT_INACTIVE');
   });
 
+  // Task 2.23 DoD sweep: arch §20's exact wording — "deactivating a user
+  // causes their already-issued, still-unexpired access token to be
+  // rejected on the very next request". Distinct from the tokenVersion-only
+  // test above: this simulates a real deactivate action (status flips to
+  // INACTIVE *and* tokenVersion bumps together, per arch §6.3's "Deactivation
+  // additionally revokes all RefreshToken rows" / tokenVersion-increment
+  // list) against a token that was validly issued while the user was still
+  // ACTIVE, proving no stale cache lets it keep working.
+  it('deactivating a user rejects their already-issued, still-unexpired access token on the very next request', async () => {
+    const userId = await insertUser({ status: 'ACTIVE', tokenVersion: 0 });
+    const token = await signToken(userId, 0);
+
+    const beforeDeactivation = await request(app.getHttpServer())
+      .get('/probe/single')
+      .set('Authorization', `Bearer ${token}`);
+    expect(beforeDeactivation.status).toBe(200);
+
+    // Simulates the deactivate action (Phase 3's POST /users/:id/deactivate,
+    // not built yet) directly against the DB.
+    await db.prisma.user.update({ where: { id: userId }, data: { status: 'INACTIVE', tokenVersion: { increment: 1 } } });
+
+    const afterDeactivation = await request(app.getHttpServer())
+      .get('/probe/single')
+      .set('Authorization', `Bearer ${token}`);
+    expect(afterDeactivation.status).toBe(401);
+    expect(afterDeactivation.body.errorCode).toBe('ACCOUNT_INACTIVE');
+  });
+
   it("completes the guard's User read without the tenant-guard extension throwing (proves the pre-ALS ordering, arch §6.3 constraint 2)", async () => {
     const userId = await insertUser({ status: 'ACTIVE' });
     const token = await signToken(userId, 0);

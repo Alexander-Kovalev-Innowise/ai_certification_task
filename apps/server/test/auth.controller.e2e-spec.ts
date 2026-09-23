@@ -637,4 +637,66 @@ describe('AuthController (e2e, Task 2.13)', () => {
       expect(res.body.errorCode).toBe('TOKEN_EXPIRED');
     });
   });
+
+  // Task 2.23 — consolidates the remaining arch §20 DoD items touching auth
+  // that weren't already asserted end-to-end by an earlier task's own tests:
+  // a full login -> refresh -> logout round trip in one flow, and rate
+  // limiting on /auth/forgot-password (its own dedicated identity/IP limiter,
+  // distinct from /auth/login's — Task 2.16 tested forgot-password's
+  // response shape but never its throttling). Rate limiting on /auth/login
+  // itself and the JwtAuthGuard-specific DoD items (deactivation,
+  // findUnique-vs-findFirst, pre-ALS ordering) are covered by this file's
+  // own earlier "rate-limits repeated attempts..." test and by
+  // jwt-auth-guard.e2e-spec.ts respectively — not duplicated here.
+  describe('DoD integration sweep (Task 2.23)', () => {
+    it('full session round trip: login -> refresh -> logout, each step building on the last', async () => {
+      const { email } = await insertUser();
+
+      const loginRes = await request(app.getHttpServer()).post('/auth/login').send({ email, password: KNOWN_PASSWORD });
+      expect(loginRes.status).toBe(200);
+      const loginCookies = loginRes.headers['set-cookie'] as unknown as string[];
+      const refreshToken1 = extractCookie(loginCookies, 'refreshToken');
+      const csrf1 = extractCookie(loginCookies, 'csrf');
+
+      const refreshRes = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Cookie', [`refreshToken=${refreshToken1}`, `csrf=${csrf1}`])
+        .set('X-CSRF-Token', csrf1);
+      expect(refreshRes.status).toBe(200);
+      expect(refreshRes.body.accessToken).not.toBe(loginRes.body.accessToken);
+      const refreshCookies = refreshRes.headers['set-cookie'] as unknown as string[];
+      const refreshToken2 = extractCookie(refreshCookies, 'refreshToken');
+      const csrf2 = extractCookie(refreshCookies, 'csrf');
+      expect(refreshToken2).not.toBe(refreshToken1);
+
+      const logoutRes = await request(app.getHttpServer())
+        .post('/auth/logout')
+        .set('Authorization', `Bearer ${refreshRes.body.accessToken}`)
+        .set('Cookie', [`refreshToken=${refreshToken2}`, `csrf=${csrf2}`])
+        .set('X-CSRF-Token', csrf2);
+      expect(logoutRes.status).toBe(204);
+
+      // The session is now fully wound down — the last-issued refresh token no longer works.
+      const refreshAfterLogout = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Cookie', [`refreshToken=${refreshToken2}`, `csrf=${csrf2}`])
+        .set('X-CSRF-Token', csrf2);
+      expect(refreshAfterLogout.status).toBe(401);
+    });
+
+    it('rate-limits repeated /auth/forgot-password attempts against the same identity with 429 + Retry-After', async () => {
+      const email = `${randomUUID()}@example.com`;
+
+      for (let i = 0; i < 5; i += 1) {
+         
+        await request(app.getHttpServer()).post('/auth/forgot-password').send({ email });
+      }
+
+      const res = await request(app.getHttpServer()).post('/auth/forgot-password').send({ email });
+
+      expect(res.status).toBe(429);
+      const retryAfterHeader = Object.keys(res.headers).find((h) => h.toLowerCase().startsWith('retry-after'));
+      expect(retryAfterHeader).toBeDefined();
+    });
+  });
 });
