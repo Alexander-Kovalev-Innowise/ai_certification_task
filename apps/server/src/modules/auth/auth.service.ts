@@ -4,12 +4,17 @@ import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/c
 import type { User } from '@prisma/client';
 import type { Request, Response } from 'express';
 
+import { JOB_TYPES } from '../../shared/jobs/job-types.const';
+import { OutboxService } from '../../shared/jobs/outbox.service';
+import { buildPasswordResetEmailPayload } from '../../shared/mail/templates/password-reset.template';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { UsersRepository } from '../users/users.repository';
 
 import type { AuthSessionResponseDto, UserSummaryDto } from './dto/auth-session-response.dto';
+import type { ForgotPasswordDto } from './dto/forgot-password.dto';
 import type { LoginDto } from './dto/login.dto';
 import { generateOpaqueToken, hashOpaqueToken } from './opaque-token.util';
+import { PasswordResetTokenRepository } from './password-reset-token.repository';
 import { PasswordService } from './password.service';
 import { RefreshTokenRepository } from './refresh-token.repository';
 import {
@@ -21,6 +26,8 @@ import {
 } from './session-cookies.util';
 import { TokenRotationService } from './token-rotation.service';
 import { TokenService } from './token.service';
+
+const PASSWORD_RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour, arch §6.1
 
 interface TenantClaims {
   accountType: 'ADULT' | 'CHILD';
@@ -49,6 +56,8 @@ export class AuthService {
     private readonly tokenService: TokenService,
     private readonly tokenRotationService: TokenRotationService,
     private readonly refreshTokenRepository: RefreshTokenRepository,
+    private readonly passwordResetTokenRepository: PasswordResetTokenRepository,
+    private readonly outboxService: OutboxService,
   ) {}
 
   async login(dto: LoginDto, res: Response): Promise<AuthSessionResponseDto> {
@@ -136,6 +145,43 @@ export class AuthService {
     }
 
     clearSessionCookies(res);
+  }
+
+  /**
+   * Task 2.16 (FR-002 anti-enumeration). Always returns the same generic
+   * message regardless of whether the email exists — the not-found branch
+   * still pays for a dummy argon2 hash so response timing doesn't leak
+   * existence either. The token row + OutboxJob are written in the SAME
+   * transaction (arch §13.2): a rolled-back write leaves neither.
+   */
+  async forgotPassword(dto: ForgotPasswordDto): Promise<{ message: string }> {
+    const GENERIC_RESPONSE = { message: 'If that email exists, a reset link has been sent.' };
+
+    const user = await this.usersRepository.findByEmail(dto.email);
+    if (!user) {
+      await this.passwordService.dummyHash();
+      return GENERIC_RESPONSE;
+    }
+
+    const rawToken = generateOpaqueToken();
+    await this.prisma.$transaction(async (tx) => {
+      await this.passwordResetTokenRepository.create(
+        {
+          userId: user.id,
+          token: hashOpaqueToken(rawToken),
+          purpose: 'PASSWORD_RESET',
+          expiresAt: new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS),
+        },
+        tx,
+      );
+      await this.outboxService.enqueue(
+        tx,
+        JOB_TYPES.EMAIL_PASSWORD_RESET,
+        buildPasswordResetEmailPayload(user.email, { firstName: user.firstName, resetToken: rawToken }),
+      );
+    });
+
+    return GENERIC_RESPONSE;
   }
 
   /** Shared by login (Task 2.13) and, later, setup-completion (Task 2.20). */

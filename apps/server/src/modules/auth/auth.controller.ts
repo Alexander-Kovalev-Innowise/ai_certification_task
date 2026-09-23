@@ -11,6 +11,7 @@ import { RequiresCapability } from '../../shared/security/decorators/requires-ca
 
 import { AuthService } from './auth.service';
 import { AuthSessionResponseDto } from './dto/auth-session-response.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 
 // Task 2.13, first endpoint — extended by every later auth task
@@ -63,5 +64,15 @@ export class AuthController {
     @Query('everywhere') everywhere?: string,
   ): Promise<void> {
     return this.authService.logout(req, res, ctx.userId, everywhere === 'true');
+  }
+
+  @Public()
+  @Throttle({ 'auth-ip': {}, 'auth-identity': {} })
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Request a password reset link (always 202, anti-enumeration)' })
+  @ApiResponse({ status: 202 })
+  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<{ message: string }> {
+    return this.authService.forgotPassword(dto);
   }
 }

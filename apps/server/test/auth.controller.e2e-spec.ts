@@ -285,4 +285,44 @@ describe('AuthController (e2e, Task 2.13)', () => {
       expect(res.body.errorCode).toBe('CSRF_MISMATCH');
     });
   });
+
+  describe('POST /auth/forgot-password (Task 2.16)', () => {
+    it('existing and non-existing email produce byte-identical 202 responses', async () => {
+      const { email } = await insertUser();
+
+      const existing = await request(app.getHttpServer()).post('/auth/forgot-password').send({ email });
+      const nonExisting = await request(app.getHttpServer())
+        .post('/auth/forgot-password')
+        .send({ email: `${randomUUID()}@nowhere.example` });
+
+      expect(existing.status).toBe(202);
+      expect(nonExisting.status).toBe(202);
+      expect(existing.body).toEqual(nonExisting.body);
+      expect(existing.body).toEqual({ message: 'If that email exists, a reset link has been sent.' });
+    });
+
+    it('creates a PasswordResetToken row and a matching OutboxJob for an existing email', async () => {
+      const { id, email } = await insertUser();
+
+      await request(app.getHttpServer()).post('/auth/forgot-password').send({ email });
+
+      const tokens = await db.prisma.passwordResetToken.findMany({ where: { userId: id } });
+      expect(tokens).toHaveLength(1);
+      expect(tokens[0]!.purpose).toBe('PASSWORD_RESET');
+
+      const jobs = await db.prisma.outboxJob.findMany({ where: { type: 'EMAIL_PASSWORD_RESET' } });
+      expect(jobs).toHaveLength(1);
+    });
+
+    it('creates neither row for a non-existing email', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/forgot-password')
+        .send({ email: `${randomUUID()}@nowhere.example` });
+
+      const tokens = await db.prisma.passwordResetToken.findMany({});
+      const jobs = await db.prisma.outboxJob.findMany({ where: { type: 'EMAIL_PASSWORD_RESET' } });
+      expect(tokens).toHaveLength(0);
+      expect(jobs).toHaveLength(0);
+    });
+  });
 });
