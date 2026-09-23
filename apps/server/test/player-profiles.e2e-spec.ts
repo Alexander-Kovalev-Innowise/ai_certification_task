@@ -281,4 +281,88 @@ describe('PlayerProfilesController (e2e, Task 5.1)', () => {
       expect(res.body.id).toBe(profile.id);
     });
   });
+
+  describe('PATCH /player-profiles/:id (Task 5.4)', () => {
+    it('the owning adult can update basic fields -> 200', async () => {
+      const parent = await insertParent();
+      const profile = await db.prisma.playerProfile.create({
+        data: { accountUserId: parent.userId, name: 'Kid One', dateOfBirth: new Date('2016-01-01'), gender: 'FEMALE', isSelf: false },
+      });
+
+      const res = await request(app.getHttpServer())
+        .patch(`/player-profiles/${profile.id}`)
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send({ school: 'Lincoln Elementary', jerseyNumber: '7' });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ school: 'Lincoln Elementary', jerseyNumber: '7' });
+    });
+
+    it('the owning adult can set allowChildTokenSpendWithoutApproval -> 200', async () => {
+      const parent = await insertParent();
+      const profile = await db.prisma.playerProfile.create({
+        data: { accountUserId: parent.userId, name: 'Kid One', dateOfBirth: new Date('2016-01-01'), gender: 'FEMALE', isSelf: false },
+      });
+
+      const res = await request(app.getHttpServer())
+        .patch(`/player-profiles/${profile.id}`)
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send({ allowChildTokenSpendWithoutApproval: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body.allowChildTokenSpendWithoutApproval).toBe(true);
+    });
+
+    it('a child sending allowChildTokenSpendWithoutApproval -> 403 CHILD_FIELD_NOT_EDITABLE', async () => {
+      const parent = await insertParent();
+      const childUser = await insertUser({ role: 'PLAYER_PARENT' });
+      const profile = await db.prisma.playerProfile.create({
+        data: { accountUserId: parent.userId, childUserId: childUser.id, name: 'Kid One', dateOfBirth: new Date('2016-01-01'), gender: 'FEMALE', isSelf: false },
+      });
+      const childToken = await signToken(childUser, { typ: 'CHILD', gid: parent.userId });
+
+      const res = await request(app.getHttpServer())
+        .patch(`/player-profiles/${profile.id}`)
+        .set('Authorization', `Bearer ${childToken}`)
+        .send({ allowChildTokenSpendWithoutApproval: true });
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('CHILD_FIELD_NOT_EDITABLE');
+
+      const unchanged = await db.prisma.playerProfile.findUnique({ where: { id: profile.id } });
+      expect(unchanged?.allowChildTokenSpendWithoutApproval).toBe(false);
+    });
+
+    it('the child themself can still update other basic fields on their own profile -> 200', async () => {
+      const parent = await insertParent();
+      const childUser = await insertUser({ role: 'PLAYER_PARENT' });
+      const profile = await db.prisma.playerProfile.create({
+        data: { accountUserId: parent.userId, childUserId: childUser.id, name: 'Kid One', dateOfBirth: new Date('2016-01-01'), gender: 'FEMALE', isSelf: false },
+      });
+      const childToken = await signToken(childUser, { typ: 'CHILD', gid: parent.userId });
+
+      const res = await request(app.getHttpServer())
+        .patch(`/player-profiles/${profile.id}`)
+        .set('Authorization', `Bearer ${childToken}`)
+        .send({ school: 'Lincoln Elementary' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.school).toBe('Lincoln Elementary');
+    });
+
+    it('cross-ownership update -> 404', async () => {
+      const owner = await insertParent();
+      const stranger = await insertParent();
+      const profile = await db.prisma.playerProfile.create({
+        data: { accountUserId: owner.userId, name: 'Kid One', dateOfBirth: new Date('2016-01-01'), gender: 'FEMALE', isSelf: false },
+      });
+
+      const res = await request(app.getHttpServer())
+        .patch(`/player-profiles/${profile.id}`)
+        .set('Authorization', `Bearer ${stranger.accessToken}`)
+        .send({ school: 'Hacked Elementary' });
+
+      expect(res.status).toBe(404);
+    });
+  });
 });

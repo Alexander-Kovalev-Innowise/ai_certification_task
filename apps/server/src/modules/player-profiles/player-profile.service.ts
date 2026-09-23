@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { PlayerProfile } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
@@ -9,6 +9,7 @@ import { AssociationsRepository } from '../associations/associations.repository'
 
 import type { CreateChildProfileDto } from './dto/create-child-profile.dto';
 import { PlayerProfileResponseDto } from './dto/player-profile-response.dto';
+import type { UpdatePlayerProfileDto } from './dto/update-player-profile.dto';
 import { PlayerProfilesRepository } from './player-profiles.repository';
 
 // Task 5.1's response also needs a status code that varies per branch (`201`
@@ -137,6 +138,49 @@ export class PlayerProfileService {
       throw new NotFoundException({ message: 'Player profile not found', errorCode: 'NOT_FOUND' });
     }
     return this.toResponse(profile);
+  }
+
+  /**
+   * Task 5.4 (api §4.3 "PATCH /player-profiles/:id"). Same ownership gate
+   * as `getProfileById` (adult owner / the child themself / SUPER_ADMIN),
+   * reused rather than re-derived — a caller who can't read a profile
+   * certainly can't write it either. `allowChildTokenSpendWithoutApproval`
+   * is rejected outright for `typ: CHILD`, even on the child's own profile
+   * (FR-041: it's a parental control, not "their" setting to change) —
+   * `403 CHILD_FIELD_NOT_EDITABLE`, the same pattern PATCH /me uses
+   * (UsersService.updateMe).
+   */
+  async updateProfile(ctx: AuthContext, id: string, dto: UpdatePlayerProfileDto): Promise<PlayerProfileResponseDto> {
+    const profile = await this.playerProfilesRepository.findById(id);
+    if (!profile || !this.canRead(ctx, profile)) {
+      throw new NotFoundException({ message: 'Player profile not found', errorCode: 'NOT_FOUND' });
+    }
+
+    if (ctx.accountType === 'CHILD' && dto.allowChildTokenSpendWithoutApproval !== undefined) {
+      throw new ForbiddenException({
+        message: 'This field is not editable by a child login',
+        errorCode: 'CHILD_FIELD_NOT_EDITABLE',
+        details: [
+          {
+            field: 'allowChildTokenSpendWithoutApproval',
+            message: 'This is a parental control and cannot be edited by a child login',
+          },
+        ],
+      });
+    }
+
+    const updated = await this.playerProfilesRepository.update(id, {
+      ...(dto.name !== undefined ? { name: dto.name } : {}),
+      ...(dto.school !== undefined ? { school: dto.school } : {}),
+      ...(dto.jerseyNumber !== undefined ? { jerseyNumber: dto.jerseyNumber } : {}),
+      ...(dto.photoUrl !== undefined ? { photoUrl: dto.photoUrl } : {}),
+      ...(dto.emergencyContact !== undefined ? { emergencyContact: dto.emergencyContact } : {}),
+      ...(dto.allowChildTokenSpendWithoutApproval !== undefined
+        ? { allowChildTokenSpendWithoutApproval: dto.allowChildTokenSpendWithoutApproval }
+        : {}),
+    });
+
+    return this.toResponse(updated);
   }
 
   private canRead(ctx: AuthContext, profile: PlayerProfile): boolean {

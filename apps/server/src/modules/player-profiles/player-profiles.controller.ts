@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Res } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 
@@ -9,6 +9,7 @@ import { RequiresCapability } from '../../shared/security/decorators/requires-ca
 
 import { CreateChildProfileDto } from './dto/create-child-profile.dto';
 import { PlayerProfileResponseDto } from './dto/player-profile-response.dto';
+import { UpdatePlayerProfileDto } from './dto/update-player-profile.dto';
 import { PlayerProfileService } from './player-profile.service';
 
 // Task 5.1, extended in Tasks 5.2-5.5 (api §4.3). No `@Roles()` on any
@@ -64,5 +65,23 @@ export class PlayerProfilesController {
   @ApiResponse({ status: 404, description: 'Cross-ownership read (never 403)' })
   async getProfileById(@CurrentUser() ctx: AuthContext, @Param('id') id: string): Promise<PlayerProfileResponseDto> {
     return this.playerProfileService.getProfileById(ctx, id);
+  }
+
+  // Task 5.4 (api §4.3 "PATCH /player-profiles/:id"). Same ownership gate
+  // as GET /player-profiles/:id, plus the CHILD_FIELD_NOT_EDITABLE
+  // restriction on `allowChildTokenSpendWithoutApproval` (service layer).
+  @RequiresCapability(Capability.EDIT_OWN_PROFILE)
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update basic player-profile fields' })
+  @ApiResponse({ status: 200, type: PlayerProfileResponseDto })
+  @ApiResponse({ status: 400 })
+  @ApiResponse({ status: 403, description: 'CHILD_FIELD_NOT_EDITABLE (allowChildTokenSpendWithoutApproval)', schema: { example: { errorCode: 'CHILD_FIELD_NOT_EDITABLE' } } })
+  @ApiResponse({ status: 404 })
+  async updateProfile(
+    @CurrentUser() ctx: AuthContext,
+    @Param('id') id: string,
+    @Body() dto: UpdatePlayerProfileDto,
+  ): Promise<PlayerProfileResponseDto> {
+    return this.playerProfileService.updateProfile(ctx, id, dto);
   }
 }
