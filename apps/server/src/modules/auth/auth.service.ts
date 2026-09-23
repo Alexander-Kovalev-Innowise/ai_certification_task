@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, GoneException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import type { User } from '@prisma/client';
 import type { Request, Response } from 'express';
 
@@ -13,6 +13,7 @@ import { UsersRepository } from '../users/users.repository';
 import type { AuthSessionResponseDto, UserSummaryDto } from './dto/auth-session-response.dto';
 import type { ForgotPasswordDto } from './dto/forgot-password.dto';
 import type { LoginDto } from './dto/login.dto';
+import type { ResetPasswordDto } from './dto/reset-password.dto';
 import { generateOpaqueToken, hashOpaqueToken } from './opaque-token.util';
 import { PasswordResetTokenRepository } from './password-reset-token.repository';
 import { PasswordService } from './password.service';
@@ -182,6 +183,40 @@ export class AuthService {
     });
 
     return GENERIC_RESPONSE;
+  }
+
+  /**
+   * Task 2.17. Single-use, 1h expiry, purpose PASSWORD_RESET only. A
+   * password reset is itself "logout everywhere" (arch §6.4): tokenVersion
+   * bumps and every RefreshToken row for the user is revoked in the same
+   * transaction as the password write and the token being marked used.
+   */
+  async resetPassword(dto: ResetPasswordDto): Promise<{ message: string }> {
+    const tokenRow = await this.passwordResetTokenRepository.findByToken(hashOpaqueToken(dto.token));
+
+    // Generic 404 for "no such token" / already-used / wrong-purpose alike
+    // — doesn't distinguish reasons, per api §1.
+    if (!tokenRow || tokenRow.purpose !== 'PASSWORD_RESET' || tokenRow.usedAt) {
+      throw new NotFoundException({ message: 'Invalid or expired token', errorCode: 'NOT_FOUND' });
+    }
+
+    if (tokenRow.expiresAt.getTime() < Date.now()) {
+      throw new GoneException({ message: 'Invalid or expired token', errorCode: 'TOKEN_EXPIRED' });
+    }
+
+    const newPasswordHash = await this.passwordService.hash(dto.newPassword);
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.usersRepository.update(
+        tokenRow.userId,
+        { passwordHash: newPasswordHash, tokenVersion: { increment: 1 }, mustChangePassword: false },
+        tx,
+      );
+      await this.passwordResetTokenRepository.markUsed(tokenRow.id, tx);
+      await this.refreshTokenRepository.revokeAllForUser(tokenRow.userId, tx);
+    });
+
+    return { message: 'Password has been reset.' };
   }
 
   /** Shared by login (Task 2.13) and, later, setup-completion (Task 2.20). */

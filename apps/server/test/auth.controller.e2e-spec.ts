@@ -1,7 +1,8 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { ThrottlerStorage } from '@nestjs/throttler';
 import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -21,6 +22,7 @@ describe('AuthController (e2e, Task 2.13)', () => {
 
   let db: TestDatabase;
   let app: INestApplication;
+  let throttlerStorage: ThrottlerStorage;
 
   const originalDatabaseUrl = process.env.DATABASE_URL;
   const KNOWN_PASSWORD = 'CorrectHorseBattery1';
@@ -41,6 +43,8 @@ describe('AuthController (e2e, Task 2.13)', () => {
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     app.useGlobalFilters(new GlobalExceptionFilter());
     await app.init();
+
+    throttlerStorage = moduleRef.get(ThrottlerStorage);
   });
 
   afterAll(async () => {
@@ -51,6 +55,12 @@ describe('AuthController (e2e, Task 2.13)', () => {
 
   afterEach(async () => {
     await resetTestDatabase(db);
+    // Every test in this file shares one app/IP; without clearing this,
+    // `auth-ip`'s 20/15min ceiling (shared per route across the whole
+    // file, not per test) trips on later, unrelated tests purely from
+    // cumulative login calls. The rate-limit test itself explicitly checks
+    // the real, un-cleared behavior before this runs.
+    (throttlerStorage as unknown as { storage: Map<string, unknown> }).storage.clear();
   });
 
   function extractCookie(setCookieHeader: string[], name: string): string {
@@ -323,6 +333,91 @@ describe('AuthController (e2e, Task 2.13)', () => {
       const jobs = await db.prisma.outboxJob.findMany({ where: { type: 'EMAIL_PASSWORD_RESET' } });
       expect(tokens).toHaveLength(0);
       expect(jobs).toHaveLength(0);
+    });
+  });
+
+  describe('POST /auth/reset-password (Task 2.17)', () => {
+    async function insertResetToken(userId: string, overrides: Record<string, unknown> = {}) {
+      const rawToken = randomUUID();
+      const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+      await db.prisma.passwordResetToken.create({
+        data: {
+          userId,
+          token: tokenHash,
+          purpose: 'PASSWORD_RESET',
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+          ...overrides,
+        },
+      });
+      return rawToken;
+    }
+
+    it('valid token resets the password and revokes all sessions', async () => {
+      const { id, email } = await insertUser();
+      const { refreshToken, csrf } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+      const rawToken = await insertResetToken(id);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/reset-password')
+        .send({ token: rawToken, newPassword: 'BrandNewPassword1' });
+      expect(res.status).toBe(200);
+
+      // Old session's refresh token is now revoked (tokenVersion bump / family revoke).
+      const refreshAfter = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
+        .set('X-CSRF-Token', csrf);
+      expect(refreshAfter.status).toBe(401);
+
+      // New password works for login.
+      const loginRes = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email, password: 'BrandNewPassword1' });
+      expect(loginRes.status).toBe(200);
+    });
+
+    it('expired token -> 410 TOKEN_EXPIRED', async () => {
+      const { id } = await insertUser();
+      const rawToken = await insertResetToken(id, { expiresAt: new Date(Date.now() - 1000) });
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/reset-password')
+        .send({ token: rawToken, newPassword: 'BrandNewPassword1' });
+
+      expect(res.status).toBe(410);
+      expect(res.body.errorCode).toBe('TOKEN_EXPIRED');
+    });
+
+    it('already-used token -> 404 NOT_FOUND', async () => {
+      const { id } = await insertUser();
+      const rawToken = await insertResetToken(id, { usedAt: new Date() });
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/reset-password')
+        .send({ token: rawToken, newPassword: 'BrandNewPassword1' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.errorCode).toBe('NOT_FOUND');
+    });
+
+    it('unknown token -> 404 NOT_FOUND', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/reset-password')
+        .send({ token: 'does-not-exist', newPassword: 'BrandNewPassword1' });
+
+      expect(res.status).toBe(404);
+    });
+
+    it('weak password -> 400 VALIDATION_ERROR', async () => {
+      const { id } = await insertUser();
+      const rawToken = await insertResetToken(id);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/reset-password')
+        .send({ token: rawToken, newPassword: 'weak' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errorCode).toBe('VALIDATION_ERROR');
     });
   });
 });

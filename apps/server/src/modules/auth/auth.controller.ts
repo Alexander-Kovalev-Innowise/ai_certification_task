@@ -13,6 +13,7 @@ import { AuthService } from './auth.service';
 import { AuthSessionResponseDto } from './dto/auth-session-response.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 // Task 2.13, first endpoint — extended by every later auth task
 // (2.14–2.20) rather than re-created.
@@ -74,5 +75,17 @@ export class AuthController {
   @ApiResponse({ status: 202 })
   async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<{ message: string }> {
     return this.authService.forgotPassword(dto);
+  }
+
+  @Public()
+  @Throttle({ 'token-consume': {} })
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Consume a password reset token, setting a new password' })
+  @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 404, description: 'Invalid/unknown/already-used token' })
+  @ApiResponse({ status: 410, description: 'Expired token', schema: { example: { errorCode: 'TOKEN_EXPIRED' } } })
+  async resetPassword(@Body() dto: ResetPasswordDto): Promise<{ message: string }> {
+    return this.authService.resetPassword(dto);
   }
 }

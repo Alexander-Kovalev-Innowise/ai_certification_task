@@ -24,6 +24,10 @@ export const ERROR_CODES = {
   // there only implicitly, via §1's "403 FORBIDDEN (errorCode: CSRF_MISMATCH)"
   // prose) but is a distinct, client-meaningful code, so it belongs here.
   CSRF_MISMATCH: 'CSRF_MISMATCH',
+  // Task 2.17/2.20 (api §1) — `410 Gone` for a token that was valid in
+  // shape but has expired (distinct from `404 NOT_FOUND` for unknown/
+  // already-used/wrong-purpose, both generic on purpose).
+  TOKEN_EXPIRED: 'TOKEN_EXPIRED',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
