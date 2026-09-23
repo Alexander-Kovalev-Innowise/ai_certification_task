@@ -1,7 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 
+import { DomainEventsEmitter } from '../../shared/events/domain-events.emitter';
 import { buildPaginatedResponse, decodeCursor, PaginatedResponseDto } from '../../shared/http/pagination.dto';
+import { JOB_TYPES } from '../../shared/jobs/job-types.const';
+import { OutboxService } from '../../shared/jobs/outbox.service';
+import { buildChildApprovalDecisionEmailPayload } from '../../shared/mail/templates/child-approval-decision.template';
+import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { AuthContext } from '../../shared/security/auth-context.interface';
 
 import { ApprovalWithPlayerName, ChildApprovalsRepository } from './child-approvals.repository';
@@ -30,7 +35,12 @@ export interface CreateApprovalRequestInput {
 // verbatim).
 @Injectable()
 export class ChildPurchaseApprovalService {
-  constructor(private readonly childApprovalsRepository: ChildApprovalsRepository) {}
+  constructor(
+    private readonly childApprovalsRepository: ChildApprovalsRepository,
+    private readonly prisma: PrismaService,
+    private readonly outboxService: OutboxService,
+    private readonly domainEventsEmitter: DomainEventsEmitter,
+  ) {}
 
   /**
    * Task 5.12 (arch §9.3). **Internal method only** — no public endpoint in
@@ -74,6 +84,94 @@ export class ChildPurchaseApprovalService {
 
     const page = buildPaginatedResponse(rows, limit, (row) => ({ createdAt: row.requestedAt.toISOString(), id: row.id }));
     return { ...page, items: page.items.map((row) => toRow(row)) };
+  }
+
+  /**
+   * Task 5.13 (api §4.6 "POST /approvals/:id/approve", arch §9.3).
+   * Ownership-checked first (a generic `404` for "not found" and "not the
+   * caller's child" alike, same existence-disclosure posture used
+   * throughout this phase), then a conditional `updateMany` on
+   * `status = 'PENDING'` — race-safe against `ApprovalExpiryJob`'s own
+   * sweep hitting the same row concurrently; `result.count === 0` means the
+   * row was already resolved/expired, reported as `409 CONFLICT`, never a
+   * silent no-op or a double-transition. Emits `child-approval.approved`
+   * — no charge happens here; Epic-05 subscribes to the event later (G-09).
+   */
+  async approve(ctx: AuthContext, id: string, notes?: string): Promise<ApprovalRowDto> {
+    const existing = await this.assertOwned(ctx, id);
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await this.childApprovalsRepository.transitionIfPending(
+        id,
+        { status: 'APPROVED', respondedAt: new Date(), parentNotes: notes },
+        tx,
+      );
+      if (result.count === 0) {
+        throw new ConflictException({ message: 'This request has already been resolved or expired', errorCode: 'CONFLICT' });
+      }
+      return this.childApprovalsRepository.findById(id, tx);
+    });
+
+    this.domainEventsEmitter.emit('child-approval.approved', {
+      approvalId: id,
+      playerProfileId: existing.playerProfileId,
+      parentUserId: existing.parentUserId,
+    });
+
+    return toRow(updated!);
+  }
+
+  /**
+   * Task 5.13 (api §4.6 "POST /approvals/:id/deny"). Same ownership +
+   * race-safe conditional-update shape as `approve`. Notifies the child via
+   * `OutboxJob(EMAIL_CHILD_APPROVAL_DECISION)` — the profile's own login if
+   * it has one (`playerProfile.childLogin`), falling back to the guardian's
+   * email when the profile has no separate child login (there is nobody
+   * else to notify in that case, and a silent denial would be worse UX
+   * than telling the requesting parent).
+   */
+  async deny(ctx: AuthContext, id: string, notes?: string): Promise<ApprovalRowDto> {
+    await this.assertOwned(ctx, id);
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await this.childApprovalsRepository.transitionIfPending(
+        id,
+        { status: 'DENIED', respondedAt: new Date(), parentNotes: notes },
+        tx,
+      );
+      if (result.count === 0) {
+        throw new ConflictException({ message: 'This request has already been resolved or expired', errorCode: 'CONFLICT' });
+      }
+
+      const withTargets = await this.childApprovalsRepository.findByIdWithNotifyTargets(id, tx);
+      if (withTargets) {
+        const notifyTo = withTargets.playerProfile.childLogin?.email ?? withTargets.parent.email;
+        await this.outboxService.enqueue(
+          tx,
+          JOB_TYPES.EMAIL_CHILD_APPROVAL_DECISION,
+          buildChildApprovalDecisionEmailPayload(notifyTo, {
+            playerName: withTargets.playerProfile.name,
+            amount: withTargets.amount.toString(),
+            paymentType: withTargets.paymentType,
+            decision: 'DENIED',
+            parentNotes: notes ?? null,
+          }) as unknown as Prisma.InputJsonValue,
+        );
+      }
+
+      return this.childApprovalsRepository.findById(id, tx);
+    });
+
+    return toRow(updated!);
+  }
+
+  /** Ownership check shared by `approve`/`deny` — a generic 404 for both "unknown id" and "not the caller's child" (arch §8 Layer 3 posture, applied to family ownership). */
+  private async assertOwned(ctx: AuthContext, id: string): Promise<ApprovalWithPlayerName> {
+    const existing = await this.childApprovalsRepository.findById(id);
+    if (!existing || existing.parentUserId !== ctx.userId) {
+      throw new NotFoundException({ message: 'Approval request not found', errorCode: 'NOT_FOUND' });
+    }
+    return existing;
   }
 }
 
