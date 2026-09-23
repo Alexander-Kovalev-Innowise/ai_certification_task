@@ -3,6 +3,7 @@ import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 
 import { AppModule } from './app.module';
@@ -19,6 +20,10 @@ async function bootstrap() {
     origin: env.CLIENT_URL,
     credentials: true,
   });
+
+  // Task 2.14 — /auth/refresh and /auth/logout read the refreshToken/csrf
+  // cookies server-side (arch §6.4), so req.cookies must be populated.
+  app.use(cookieParser());
 
   // 3. global ValidationPipe
   app.useGlobalPipes(

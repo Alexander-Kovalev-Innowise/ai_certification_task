@@ -1,7 +1,7 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Res } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post, Req, Res } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 
 import { Public } from '../../shared/security/decorators/public.decorator';
 
@@ -26,5 +26,16 @@ export class AuthController {
   @ApiResponse({ status: 429, description: 'Too many attempts', headers: { 'Retry-After': { schema: { type: 'integer' } } } })
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response): Promise<AuthSessionResponseDto> {
     return this.authService.login(dto, res);
+  }
+
+  @Public()
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Rotate the refresh token cookie, issuing a fresh access token' })
+  @ApiResponse({ status: 200, type: AuthSessionResponseDto })
+  @ApiResponse({ status: 401, description: 'Missing/expired/reused refresh token' })
+  @ApiResponse({ status: 403, description: 'CSRF token missing or mismatched', schema: { example: { errorCode: 'CSRF_MISMATCH' } } })
+  async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<AuthSessionResponseDto> {
+    return this.authService.refresh(req, res);
   }
 }

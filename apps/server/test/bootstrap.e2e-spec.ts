@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import request from 'supertest';
 
@@ -20,6 +21,7 @@ describe('Bootstrap pipeline (e2e)', () => {
 
     app = moduleRef.createNestApplication();
     app.use(helmet());
+    app.use(cookieParser());
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );

@@ -1,17 +1,22 @@
 import { randomUUID } from 'node:crypto';
 
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import type { User } from '@prisma/client';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { UsersRepository } from '../users/users.repository';
 
-import type { AuthSessionResponseDto } from './dto/auth-session-response.dto';
+import type { AuthSessionResponseDto, UserSummaryDto } from './dto/auth-session-response.dto';
 import type { LoginDto } from './dto/login.dto';
 import { generateOpaqueToken, hashOpaqueToken } from './opaque-token.util';
 import { PasswordService } from './password.service';
-import { REFRESH_TOKEN_TTL_MS, setSessionCookies } from './session-cookies.util';
+import {
+  CSRF_COOKIE,
+  REFRESH_TOKEN_COOKIE,
+  REFRESH_TOKEN_TTL_MS,
+  setSessionCookies,
+} from './session-cookies.util';
 import { TokenRotationService } from './token-rotation.service';
 import { TokenService } from './token.service';
 
@@ -66,18 +71,48 @@ export class AuthService {
     return this.issueSession(user, res);
   }
 
-  /** Shared by login (Task 2.13) and, later, refresh/setup-completion. */
-  async issueSession(user: User, res: Response): Promise<AuthSessionResponseDto> {
-    const tenantClaims = await this.resolveTenantClaims(user);
+  /**
+   * Task 2.14. Cookie-only auth (no Bearer token — @Public() at the guard
+   * level, arch §6.4): reads the presented refresh token from the
+   * `refreshToken` cookie, requires the double-submit CSRF pair (`csrf`
+   * cookie === `X-CSRF-Token` header), rotates via TokenRotationService,
+   * and issues a fresh access token for whichever user the rotated row
+   * belongs to.
+   */
+  async refresh(req: Request, res: Response): Promise<AuthSessionResponseDto> {
+    this.assertCsrf(req);
 
-    const { accessToken, expiresIn } = await this.tokenService.issueAccessToken({
-      userId: user.id,
-      role: user.role,
-      accountType: tenantClaims.accountType,
-      guardianUserId: tenantClaims.guardianUserId,
-      trainerId: tenantClaims.trainerId,
-      tokenVersion: user.tokenVersion,
-    });
+    const presentedRawToken = (req.cookies as Record<string, string> | undefined)?.[REFRESH_TOKEN_COOKIE];
+    if (!presentedRawToken) {
+      throw new UnauthorizedException({ message: 'Missing refresh token', errorCode: 'UNAUTHORIZED' });
+    }
+
+    const newRawRefreshToken = generateOpaqueToken();
+    const rotated = await this.tokenRotationService.rotate(
+      hashOpaqueToken(presentedRawToken),
+      hashOpaqueToken(newRawRefreshToken),
+      new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+    );
+
+    // findFirst (soft-delete-respecting), not findUnique — a refresh
+    // presented for a GDPR-deleted user's old row should behave like any
+    // other "no such active user" case, not resurrect it.
+    const user = await this.usersRepository.findById(rotated.userId);
+    if (!user || user.status !== 'ACTIVE') {
+      throw new UnauthorizedException({ message: 'Account is inactive', errorCode: 'ACCOUNT_INACTIVE' });
+    }
+
+    const { accessToken, expiresIn, summary } = await this.buildAccessToken(user);
+
+    const newCsrfToken = generateOpaqueToken();
+    setSessionCookies(res, newRawRefreshToken, newCsrfToken);
+
+    return { accessToken, expiresIn, user: summary };
+  }
+
+  /** Shared by login (Task 2.13) and, later, setup-completion (Task 2.20). */
+  async issueSession(user: User, res: Response): Promise<AuthSessionResponseDto> {
+    const { accessToken, expiresIn, summary } = await this.buildAccessToken(user);
 
     const rawRefreshToken = generateOpaqueToken();
     await this.tokenRotationService.issueNewFamily(
@@ -92,10 +127,27 @@ export class AuthService {
 
     await this.usersRepository.update(user.id, { lastLoginAt: new Date() });
 
+    return { accessToken, expiresIn, user: summary };
+  }
+
+  private async buildAccessToken(
+    user: User,
+  ): Promise<{ accessToken: string; expiresIn: number; summary: UserSummaryDto }> {
+    const tenantClaims = await this.resolveTenantClaims(user);
+
+    const { accessToken, expiresIn } = await this.tokenService.issueAccessToken({
+      userId: user.id,
+      role: user.role,
+      accountType: tenantClaims.accountType,
+      guardianUserId: tenantClaims.guardianUserId,
+      trainerId: tenantClaims.trainerId,
+      tokenVersion: user.tokenVersion,
+    });
+
     return {
       accessToken,
       expiresIn,
-      user: {
+      summary: {
         id: user.id,
         email: user.email,
         role: user.role,
@@ -105,6 +157,16 @@ export class AuthService {
         mustChangePassword: user.mustChangePassword,
       },
     };
+  }
+
+  /** arch §6.4: the refresh cookie is the one ambient credential in this API. */
+  private assertCsrf(req: Request): void {
+    const csrfCookie = (req.cookies as Record<string, string> | undefined)?.[CSRF_COOKIE];
+    const csrfHeader = req.headers['x-csrf-token'];
+
+    if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
+      throw new ForbiddenException({ message: 'Missing or mismatched CSRF token', errorCode: 'CSRF_MISMATCH' });
+    }
   }
 
   private genericInvalidCredentials(): UnauthorizedException {

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import * as argon2 from 'argon2';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import request from 'supertest';
 
@@ -36,6 +37,7 @@ describe('AuthController (e2e, Task 2.13)', () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
     app.use(helmet());
+    app.use(cookieParser());
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     app.useGlobalFilters(new GlobalExceptionFilter());
     await app.init();
@@ -50,6 +52,22 @@ describe('AuthController (e2e, Task 2.13)', () => {
   afterEach(async () => {
     await resetTestDatabase(db);
   });
+
+  function extractCookie(setCookieHeader: string[], name: string): string {
+    const raw = setCookieHeader.find((c) => c.startsWith(`${name}=`));
+    if (!raw) throw new Error(`cookie ${name} not found in Set-Cookie header`);
+    return raw.split(';')[0]!.slice(name.length + 1);
+  }
+
+  async function loginAndGetCookies(email: string, password: string) {
+    const res = await request(app.getHttpServer()).post('/auth/login').send({ email, password });
+    const setCookieHeader = res.headers['set-cookie'] as unknown as string[];
+    return {
+      body: res.body,
+      refreshToken: extractCookie(setCookieHeader, 'refreshToken'),
+      csrf: extractCookie(setCookieHeader, 'csrf'),
+    };
+  }
 
   async function insertUser(overrides: Record<string, unknown> = {}): Promise<{ id: string; email: string }> {
     const id = randomUUID();
@@ -140,5 +158,70 @@ describe('AuthController (e2e, Task 2.13)', () => {
     expect(res.status).toBe(429);
     const retryAfterHeader = Object.keys(res.headers).find((h) => h.toLowerCase().startsWith('retry-after'));
     expect(retryAfterHeader).toBeDefined();
+  });
+
+  describe('POST /auth/refresh (Task 2.14)', () => {
+    it('valid refresh -> 200 with new rotated refreshToken + csrf cookies', async () => {
+      const { email } = await insertUser();
+      const { refreshToken, csrf } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
+        .set('X-CSRF-Token', csrf);
+
+      expect(res.status).toBe(200);
+      expect(res.body.accessToken).toEqual(expect.any(String));
+      const setCookieHeader = res.headers['set-cookie'] as unknown as string[];
+      const newRefreshToken = extractCookie(setCookieHeader, 'refreshToken');
+      expect(newRefreshToken).not.toBe(refreshToken);
+    });
+
+    it('missing CSRF header -> 403 CSRF_MISMATCH', async () => {
+      const { email } = await insertUser();
+      const { refreshToken, csrf } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`]);
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('CSRF_MISMATCH');
+    });
+
+    it('mismatched CSRF header -> 403 CSRF_MISMATCH', async () => {
+      const { email } = await insertUser();
+      const { refreshToken, csrf } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
+        .set('X-CSRF-Token', 'not-the-real-csrf-value');
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('CSRF_MISMATCH');
+    });
+
+    it('reusing an already-rotated (revoked) refresh token -> 401, and revokes the whole family (tokenVersion bumped)', async () => {
+      const { id, email } = await insertUser();
+      const { refreshToken, csrf } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+
+      // Ordinary rotation once — the original refreshToken is now revoked.
+      await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
+        .set('X-CSRF-Token', csrf);
+
+      // Re-present the now-revoked original token (e.g. a stolen cookie replayed).
+      const reuse = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
+        .set('X-CSRF-Token', csrf);
+
+      expect(reuse.status).toBe(401);
+
+      const user = await db.prisma.user.findUnique({ where: { id } });
+      expect(user!.tokenVersion).toBeGreaterThan(0);
+    });
   });
 });

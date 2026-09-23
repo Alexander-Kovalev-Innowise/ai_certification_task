@@ -19,6 +19,11 @@ export const ERROR_CODES = {
   // codes) but required as GlobalExceptionFilter's fallback for anything
   // unhandled, per Task 0.10's "unhandled -> 500 INTERNAL_ERROR" requirement.
   INTERNAL_ERROR: 'INTERNAL_ERROR',
+  // Task 2.14 (arch §6.4) — missing/mismatched double-submit CSRF pair on
+  // /auth/refresh and /auth/logout. Not in api §0.5's catalog table (added
+  // there only implicitly, via §1's "403 FORBIDDEN (errorCode: CSRF_MISMATCH)"
+  // prose) but is a distinct, client-meaningful code, so it belongs here.
+  CSRF_MISMATCH: 'CSRF_MISMATCH',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
