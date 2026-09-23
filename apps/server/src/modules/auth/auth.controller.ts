@@ -14,6 +14,7 @@ import { AuthSessionResponseDto } from './dto/auth-session-response.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 
 // Task 2.13, first endpoint — extended by every later auth task
 // (2.14–2.20) rather than re-created.
@@ -87,5 +88,28 @@ export class AuthController {
   @ApiResponse({ status: 410, description: 'Expired token', schema: { example: { errorCode: 'TOKEN_EXPIRED' } } })
   async resetPassword(@Body() dto: ResetPasswordDto): Promise<{ message: string }> {
     return this.authService.resetPassword(dto);
+  }
+
+  @Public()
+  @Throttle({ 'token-consume': {} })
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Consume an email-verification token (non-blocking, informational only)' })
+  @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 404, description: 'Invalid/unknown/already-used token' })
+  @ApiResponse({ status: 410, description: 'Expired token', schema: { example: { errorCode: 'TOKEN_EXPIRED' } } })
+  async verifyEmail(@Body() dto: VerifyEmailDto): Promise<{ emailVerified: true }> {
+    return this.authService.verifyEmail(dto);
+  }
+
+  @RequiresCapability(Capability.EDIT_OWN_PROFILE)
+  @Throttle({ 'token-consume': {} })
+  @Post('verify-email/resend')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Re-issue a fresh email-verification token, invalidating the previous one' })
+  @ApiResponse({ status: 202 })
+  @ApiResponse({ status: 409, description: 'Already verified', schema: { example: { errorCode: 'CONFLICT' } } })
+  async resendVerificationEmail(@CurrentUser() ctx: AuthContext): Promise<{ message: string }> {
+    return this.authService.resendVerificationEmail(ctx.userId);
   }
 }

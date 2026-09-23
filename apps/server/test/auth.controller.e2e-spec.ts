@@ -420,4 +420,77 @@ describe('AuthController (e2e, Task 2.13)', () => {
       expect(res.body.errorCode).toBe('VALIDATION_ERROR');
     });
   });
+
+  describe('POST /auth/verify-email + /verify-email/resend (Task 2.18)', () => {
+    async function insertVerificationToken(userId: string, overrides: Record<string, unknown> = {}) {
+      const rawToken = randomUUID();
+      const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+      await db.prisma.emailVerificationToken.create({
+        data: {
+          userId,
+          token: tokenHash,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          ...overrides,
+        },
+      });
+      return rawToken;
+    }
+
+    it('valid token sets emailVerifiedAt', async () => {
+      const { id } = await insertUser();
+      const rawToken = await insertVerificationToken(id);
+
+      const res = await request(app.getHttpServer()).post('/auth/verify-email').send({ token: rawToken });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ emailVerified: true });
+      const user = await db.prisma.user.findUnique({ where: { id } });
+      expect(user!.emailVerifiedAt).not.toBeNull();
+    });
+
+    it('expired token -> 410 TOKEN_EXPIRED', async () => {
+      const { id } = await insertUser();
+      const rawToken = await insertVerificationToken(id, { expiresAt: new Date(Date.now() - 1000) });
+
+      const res = await request(app.getHttpServer()).post('/auth/verify-email').send({ token: rawToken });
+
+      expect(res.status).toBe(410);
+      expect(res.body.errorCode).toBe('TOKEN_EXPIRED');
+    });
+
+    it('invalid/unknown token -> 404 NOT_FOUND', async () => {
+      const res = await request(app.getHttpServer()).post('/auth/verify-email').send({ token: 'nope' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.errorCode).toBe('NOT_FOUND');
+    });
+
+    it('resend re-issues a fresh token, invalidating the previous one, and 409s once already verified', async () => {
+      const { email } = await insertUser();
+      const { body } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+
+      const first = await request(app.getHttpServer())
+        .post('/auth/verify-email/resend')
+        .set('Authorization', `Bearer ${body.accessToken}`);
+      expect(first.status).toBe(202);
+
+      const second = await request(app.getHttpServer())
+        .post('/auth/verify-email/resend')
+        .set('Authorization', `Bearer ${body.accessToken}`);
+      expect(second.status).toBe(202);
+
+      const tokens = await db.prisma.emailVerificationToken.findMany({ where: { userId: body.user.id } });
+      expect(tokens).toHaveLength(2);
+      expect(tokens.filter((t: { usedAt: Date | null }) => t.usedAt === null)).toHaveLength(1);
+
+      // Now verify, then attempt resend again -> 409.
+      await db.prisma.user.update({ where: { id: body.user.id }, data: { emailVerifiedAt: new Date() } });
+
+      const thirdRes = await request(app.getHttpServer())
+        .post('/auth/verify-email/resend')
+        .set('Authorization', `Bearer ${body.accessToken}`);
+      expect(thirdRes.status).toBe(409);
+      expect(thirdRes.body.errorCode).toBe('CONFLICT');
+    });
+  });
 });

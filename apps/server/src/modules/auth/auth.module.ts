@@ -5,6 +5,7 @@ import { UsersModule } from '../users/users.module';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { EmailVerificationTokenRepository } from './email-verification-token.repository';
 import { PasswordResetTokenRepository } from './password-reset-token.repository';
 import { PasswordService } from './password.service';
 import { RefreshTokenRepository } from './refresh-token.repository';
@@ -25,6 +26,7 @@ import { TokenService } from './token.service';
     TokenRotationService,
     RefreshTokenRepository,
     PasswordResetTokenRepository,
+    EmailVerificationTokenRepository,
   ],
   exports: [AuthService, PasswordService, TokenService, TokenRotationService],
 })

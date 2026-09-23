@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto';
 
-import { ForbiddenException, GoneException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  GoneException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { User } from '@prisma/client';
 import type { Request, Response } from 'express';
 
@@ -14,6 +21,8 @@ import type { AuthSessionResponseDto, UserSummaryDto } from './dto/auth-session-
 import type { ForgotPasswordDto } from './dto/forgot-password.dto';
 import type { LoginDto } from './dto/login.dto';
 import type { ResetPasswordDto } from './dto/reset-password.dto';
+import type { VerifyEmailDto } from './dto/verify-email.dto';
+import { EmailVerificationTokenRepository } from './email-verification-token.repository';
 import { generateOpaqueToken, hashOpaqueToken } from './opaque-token.util';
 import { PasswordResetTokenRepository } from './password-reset-token.repository';
 import { PasswordService } from './password.service';
@@ -29,6 +38,7 @@ import { TokenRotationService } from './token-rotation.service';
 import { TokenService } from './token.service';
 
 const PASSWORD_RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour, arch §6.1
+const EMAIL_VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours, arch §6.1
 
 interface TenantClaims {
   accountType: 'ADULT' | 'CHILD';
@@ -58,6 +68,7 @@ export class AuthService {
     private readonly tokenRotationService: TokenRotationService,
     private readonly refreshTokenRepository: RefreshTokenRepository,
     private readonly passwordResetTokenRepository: PasswordResetTokenRepository,
+    private readonly emailVerificationTokenRepository: EmailVerificationTokenRepository,
     private readonly outboxService: OutboxService,
   ) {}
 
@@ -217,6 +228,55 @@ export class AuthService {
     });
 
     return { message: 'Password has been reset.' };
+  }
+
+  /**
+   * Task 2.18. Single-use, 24h expiry. Non-blocking (arch §6.5) — no guard
+   * anywhere checks `emailVerifiedAt`; this only ever sets it.
+   */
+  async verifyEmail(dto: VerifyEmailDto): Promise<{ emailVerified: true }> {
+    const tokenRow = await this.emailVerificationTokenRepository.findByToken(hashOpaqueToken(dto.token));
+
+    if (!tokenRow || tokenRow.usedAt) {
+      throw new NotFoundException({ message: 'Invalid or expired token', errorCode: 'NOT_FOUND' });
+    }
+    if (tokenRow.expiresAt.getTime() < Date.now()) {
+      throw new GoneException({ message: 'Invalid or expired token', errorCode: 'TOKEN_EXPIRED' });
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.usersRepository.update(tokenRow.userId, { emailVerifiedAt: new Date() }, tx);
+      await this.emailVerificationTokenRepository.markUsed(tokenRow.id, tx);
+    });
+
+    return { emailVerified: true };
+  }
+
+  /** Task 2.18. Authenticated — invalidates the previous token before issuing a fresh one. */
+  async resendVerificationEmail(userId: string): Promise<{ message: string }> {
+    const user = await this.usersRepository.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException({ message: 'Account is inactive', errorCode: 'ACCOUNT_INACTIVE' });
+    }
+    if (user.emailVerifiedAt) {
+      throw new ConflictException({ message: 'Email is already verified', errorCode: 'CONFLICT' });
+    }
+
+    const rawToken = generateOpaqueToken();
+    await this.prisma.$transaction(async (tx) => {
+      await this.emailVerificationTokenRepository.invalidateActiveForUser(user.id, tx);
+      await this.emailVerificationTokenRepository.create(
+        { userId: user.id, token: hashOpaqueToken(rawToken), expiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TOKEN_TTL_MS) },
+        tx,
+      );
+      await this.outboxService.enqueue(tx, JOB_TYPES.EMAIL_VERIFICATION, {
+        to: user.email,
+        subject: 'Verify your PracticePerfect email address',
+        templateData: { firstName: user.firstName, verificationToken: rawToken },
+      });
+    });
+
+    return { message: 'Verification email sent.' };
   }
 
   /** Shared by login (Task 2.13) and, later, setup-completion (Task 2.20). */
