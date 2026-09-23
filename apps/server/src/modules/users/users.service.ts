@@ -1,4 +1,5 @@
-import { ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { User } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
 
@@ -8,9 +9,16 @@ import type { AuthContext } from '../../shared/security/auth-context.interface';
 import type { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { MeResponseDto } from './dto/me-response.dto';
 import type { UpdateMeDto } from './dto/update-me.dto';
+import type { UpdateUserDto } from './dto/update-user.dto';
 import { UserDetailResponseDto } from './dto/user-detail-response.dto';
 import { UserDirectoryRowDto } from './dto/user-directory-row.dto';
 import { UsersRepository } from './users.repository';
+
+// Postgres unique-violation code, surfaced by Prisma as
+// PrismaClientKnownRequestError.code === 'P2002' — used by updateUser below
+// to translate a duplicate-email PATCH into 409 CONFLICT (api §3) rather
+// than letting the raw DB error escape as a 500.
+const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
 
 // Fields a CHILD login may never write via PATCH /me — FR-050 (api §3):
 // "update basic profile info (photo, preferences)" only. Guardian-owned
@@ -92,6 +100,43 @@ export class UsersService {
     return plainToInstance(
       UserDetailResponseDto,
       { ...user, accountType: isChild ? 'CHILD' : 'ADULT', emailVerified: user.emailVerifiedAt !== null },
+      { excludeExtraneousValues: true },
+    );
+  }
+
+  /**
+   * Task 3.3 (api §3 "PATCH /users/:id", FR-012). Superset of updateMe: no
+   * CHILD-field restriction (this is an admin action, not a self-service
+   * one) and additionally allows `email`. Deliberately never accepts
+   * `role` — see UpdateUserDto's own comment.
+   */
+  async updateUser(id: string, dto: UpdateUserDto): Promise<UserDetailResponseDto> {
+    const existing = await this.usersRepository.findById(id);
+    if (!existing) {
+      throw new NotFoundException({ message: 'User not found', errorCode: 'NOT_FOUND' });
+    }
+
+    let updated: User;
+    try {
+      updated = await this.usersRepository.update(id, {
+        ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
+        ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}),
+        ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
+        ...(dto.photoUrl !== undefined ? { photoUrl: dto.photoUrl } : {}),
+        ...(dto.notificationPrefs !== undefined ? { notificationPrefs: dto.notificationPrefs } : {}),
+        ...(dto.email !== undefined ? { email: dto.email } : {}),
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === UNIQUE_CONSTRAINT_VIOLATION) {
+        throw new ConflictException({ message: 'Email already in use', errorCode: 'CONFLICT' });
+      }
+      throw error;
+    }
+
+    const isChild = await this.usersRepository.isChildLogin(updated.id);
+    return plainToInstance(
+      UserDetailResponseDto,
+      { ...updated, accountType: isChild ? 'CHILD' : 'ADULT', emailVerified: updated.emailVerifiedAt !== null },
       { excludeExtraneousValues: true },
     );
   }

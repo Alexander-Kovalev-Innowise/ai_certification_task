@@ -170,4 +170,50 @@ describe('UsersController — Super Admin directory (e2e, Task 3.1)', () => {
     expect(res.body.deletedAt).not.toBeNull();
     expect(JSON.stringify(res.body)).not.toMatch(/passwordHash/i);
   });
+
+  it('PATCH /users/:id as Super Admin edits any user\'s fields', async () => {
+    const { email: adminEmail } = await insertUser({ role: 'SUPER_ADMIN' });
+    const accessToken = await login(adminEmail);
+    const target = await insertUser();
+
+    const res = await request(app.getHttpServer())
+      .patch(`/users/${target.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ firstName: 'Edited', lastName: 'ByAdmin' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: target.id, firstName: 'Edited', lastName: 'ByAdmin' });
+  });
+
+  it('PATCH /users/:id with a duplicate email -> 409 CONFLICT', async () => {
+    const { email: adminEmail } = await insertUser({ role: 'SUPER_ADMIN' });
+    const accessToken = await login(adminEmail);
+    const existing = await insertUser();
+    const target = await insertUser();
+
+    const res = await request(app.getHttpServer())
+      .patch(`/users/${target.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ email: existing.email });
+
+    expect(res.status).toBe(409);
+    expect(res.body.errorCode).toBe('CONFLICT');
+  });
+
+  it('PATCH /users/:id sending role -> 400 VALIDATION_ERROR (rejected, not silently ignored)', async () => {
+    const { email: adminEmail } = await insertUser({ role: 'SUPER_ADMIN' });
+    const accessToken = await login(adminEmail);
+    const target = await insertUser();
+
+    const res = await request(app.getHttpServer())
+      .patch(`/users/${target.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ role: 'SUPER_ADMIN' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errorCode).toBe('VALIDATION_ERROR');
+
+    const unchanged = await db.prisma.user.findUnique({ where: { id: target.id } });
+    expect(unchanged?.role).toBe('PLAYER_PARENT');
+  });
 });

@@ -12,6 +12,7 @@ import { Roles } from '../../shared/security/decorators/roles.decorator';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { MeResponseDto } from './dto/me-response.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { UserDetailResponseDto } from './dto/user-detail-response.dto';
 import { UserDirectoryRowDto } from './dto/user-directory-row.dto';
 import { UsersService } from './users.service';
@@ -65,5 +66,18 @@ export class UsersController {
   @ApiResponse({ status: 404 })
   async getUserById(@Param('id') id: string): Promise<UserDetailResponseDto> {
     return this.usersService.getUserById(id);
+  }
+
+  // Task 3.3 (api §3 "PATCH /users/:id", FR-012).
+  @Roles(Role.SUPER_ADMIN)
+  @RequiresCapability(Capability.MANAGE_ANY_USER)
+  @Patch('users/:id')
+  @ApiOperation({ summary: "Super Admin edits any user's account/profile fields" })
+  @ApiResponse({ status: 200, type: UserDetailResponseDto })
+  @ApiResponse({ status: 403 })
+  @ApiResponse({ status: 404 })
+  @ApiResponse({ status: 409, description: 'Duplicate email', schema: { example: { errorCode: 'CONFLICT' } } })
+  async updateUser(@Param('id') id: string, @Body() dto: UpdateUserDto): Promise<UserDetailResponseDto> {
+    return this.usersService.updateUser(id, dto);
   }
 }
