@@ -113,11 +113,11 @@ export class ShareLinksController {
   @Post('share-links/:code/redeem')
   @ApiOperation({ summary: 'Redeem a ShareLink — dispatches by auth state x typ x link type (arch §9.1)' })
   @ApiResponse({ status: 201, description: 'ANONYMOUS_REGISTRATION — auto-login session', type: AuthSessionResponseDto })
-  @ApiResponse({ status: 200, description: 'ASSOCIATE_EXISTING — one row per subjectProfileIds entry' })
+  @ApiResponse({ status: 200, description: 'ASSOCIATE_EXISTING (array) or COACH_ACCEPT authenticated ({trainerId, status})' })
   @ApiResponse({ status: 400 })
-  @ApiResponse({ status: 403, description: 'CHILD_SHARE_LINK_BLOCKED — typ:CHILD cannot redeem', schema: { example: { errorCode: 'CHILD_SHARE_LINK_BLOCKED' } } })
+  @ApiResponse({ status: 403, description: 'CHILD_SHARE_LINK_BLOCKED, or a COACH_ACCEPT target-email mismatch', schema: { example: { errorCode: 'CHILD_SHARE_LINK_BLOCKED' } } })
   @ApiResponse({ status: 404, description: 'Unknown code, or a subjectProfileIds entry not owned by the caller' })
-  @ApiResponse({ status: 409, description: 'Expired/exhausted/revoked link', schema: { example: { errorCode: 'SHARE_LINK_UNAVAILABLE' } } })
+  @ApiResponse({ status: 409, description: 'Expired/exhausted/revoked link, or BR-003 (coach already active elsewhere)', schema: { example: { errorCode: 'SHARE_LINK_UNAVAILABLE' } } })
   @ApiResponse({ status: 429, description: 'Too many attempts', headers: { 'Retry-After': { schema: { type: 'integer' } } } })
   async redeemShareLink(
     @Param('code') code: string,

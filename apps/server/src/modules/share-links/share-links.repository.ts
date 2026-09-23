@@ -113,4 +113,23 @@ export class ShareLinksRepository {
   async incrementUseCount(id: string, tx: Prisma.TransactionClient): Promise<void> {
     await tx.shareLink.update({ where: { id }, data: { useCount: { increment: 1 } } });
   }
+
+  /**
+   * Task 4.9 (BR-006, arch §9.1 "Single-use atomicity", exact shape).
+   * Conditional `updateMany`, never read-then-write: two concurrent callers
+   * racing the same `code` produce `count: 1` for exactly one of them and
+   * `count: 0` for the other, which the caller maps to `409
+   * SHARE_LINK_UNAVAILABLE`. Marks the link `EXPIRED` on a successful claim
+   * (not `REVOKED`) — "no longer usable" for a single-use link, same
+   * terminal-status vocabulary Task 4.14's maintenance sweep uses for
+   * time-based expiry. Always called inside the redemption flow's own
+   * `$transaction` — must commit atomically with whatever the claim gates
+   * (`User`+`CoachProfile` creation or update).
+   */
+  async claimSingleUse(code: string, tx: Prisma.TransactionClient): Promise<{ count: number }> {
+    return tx.shareLink.updateMany({
+      where: { code, status: 'ACTIVE', expiresAt: { gt: new Date() }, useCount: { lt: 1 } },
+      data: { useCount: { increment: 1 }, status: 'EXPIRED' },
+    });
+  }
 }

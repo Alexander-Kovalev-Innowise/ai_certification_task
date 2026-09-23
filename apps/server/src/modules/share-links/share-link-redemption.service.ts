@@ -40,7 +40,16 @@ export interface AssociatedProfileResultDto {
   alreadyConnected: boolean;
 }
 
-export type RedeemShareLinkResponse = AuthSessionResponseDto | AssociatedProfileResultDto[];
+// Task 4.9 (api §4.4 "COACH_ACCEPT", authenticated case). The anonymous case
+// returns AuthSessionResponseDto (auto-login, a brand-new User); an already-
+// authenticated COACH accepting a second invite needs no new session, just a
+// confirmation of which tenant they're now attached to.
+export interface CoachAcceptResultDto {
+  trainerId: string;
+  status: 'ACTIVE';
+}
+
+export type RedeemShareLinkResponse = AuthSessionResponseDto | AssociatedProfileResultDto[] | CoachAcceptResultDto;
 
 /**
  * Each branch returns a different HTTP status (`201` ANONYMOUS_REGISTRATION,
@@ -126,8 +135,8 @@ export class ShareLinkRedemptionService {
 
     if (!authContext) {
       if (link.type === 'COACH_UNIQUE') {
-        // Task 4.9.
-        throw new Error('COACH_ACCEPT (anonymous) is implemented in Task 4.9');
+        const session = await this.redeemCoachAcceptAnonymous(link, dto, res);
+        return { statusCode: 201, body: session };
       }
       const session = await this.redeemAnonymousRegistration(link, dto, res);
       return { statusCode: 201, body: session };
@@ -146,8 +155,13 @@ export class ShareLinkRedemptionService {
       return { statusCode: 200, body: results };
     }
 
-    // Task 4.9/4.10 (COACH_ACCEPT authenticated case, ROLE_CANNOT_REDEEM_SHARE_LINK).
-    throw new Error('COACH_ACCEPT/ROLE_CANNOT_REDEEM_SHARE_LINK are implemented in Tasks 4.9-4.10');
+    if (authContext.role === 'COACH') {
+      const result = await this.redeemCoachAcceptAuthenticated(link, authContext);
+      return { statusCode: 200, body: result };
+    }
+
+    // Task 4.10 (ROLE_CANNOT_REDEEM_SHARE_LINK for TRAINER|SUPER_ADMIN).
+    throw new Error('ROLE_CANNOT_REDEEM_SHARE_LINK is implemented in Task 4.10');
   }
 
   /**
@@ -323,6 +337,108 @@ export class ShareLinkRedemptionService {
       message: 'A child login cannot redeem a ShareLink',
       errorCode: 'CHILD_SHARE_LINK_BLOCKED',
     });
+  }
+
+  /**
+   * Task 4.9 (api §4.4, arch §9.1 "COACH_ACCEPT", anonymous case). No auth
+   * header, `link.type === 'COACH_UNIQUE'` (guaranteed by `redeem`'s
+   * dispatch). The target email is the link's own `targetEmail` — there is
+   * no `email` field in this branch's body (`{ password? }` only, per api
+   * §4.4's branch table), since a `COACH_UNIQUE` link is already bound to
+   * one specific invitee at creation time (Task 4.2). One `$transaction`
+   * (`AccountProvisioningService.createUserWithProfile`'s own): `User(COACH)`
+   * + `CoachProfile(trainerId, status: ACTIVE)` + the single-use claim, all
+   * committed together — if the claim loses the race, the whole transaction
+   * (including the `User`/`CoachProfile` insert) rolls back, so a losing
+   * concurrent request never leaves an orphan account behind.
+   */
+  private async redeemCoachAcceptAnonymous(
+    link: ShareLinkWithTrainer,
+    dto: RedeemShareLinkDto,
+    res: Response,
+  ): Promise<AuthSessionResponseDto> {
+    if (!link.targetEmail) {
+      // Structurally unreachable (COACH_UNIQUE always has a targetEmail,
+      // CreateShareLinkDto's own validation) — narrows the type below.
+      throw new NotFoundException({ message: 'Unknown ShareLink code', errorCode: 'NOT_FOUND' });
+    }
+    if (!dto.password) {
+      throw missingFieldError(['password']);
+    }
+
+    const targetEmail = link.targetEmail;
+    const trainerId = link.trainerId;
+    const code = link.code;
+    const passwordHash = await this.passwordService.hash(dto.password);
+
+    // Same unresolved-spec-gap category as `splitName` above: this branch's
+    // body carries no name field at all for the new coach. Falls back to
+    // the email's local-part, flagged for product sign-off.
+    const firstName = targetEmail.split('@')[0] ?? targetEmail;
+
+    const user = await this.accountProvisioningService.createUserWithProfile({
+      role: 'COACH',
+      email: targetEmail,
+      passwordHash,
+      firstName,
+      lastName: '',
+      createProfile: async (tx, userId) => {
+        await tx.coachProfile.create({ data: { userId, trainerId, status: 'ACTIVE' } });
+      },
+      afterCreate: async (tx) => {
+        const claimed = await this.shareLinksRepository.claimSingleUse(code, tx);
+        if (claimed.count === 0) {
+          throw new ShareLinkUnavailableError();
+        }
+      },
+    });
+
+    return this.authService.issueSession(user, res);
+  }
+
+  /**
+   * Task 4.9 (api §4.4, arch §9.1 "COACH_ACCEPT", authenticated case). Auth
+   * `role: COACH`. Asserts target-email match (the caller's own email must
+   * equal `link.targetEmail`) and BR-003 ("no existing ACTIVE CoachProfile
+   * for this user" — backstopped by the partial unique index from Task 1.2,
+   * but that index guards a plain `create`, not this method's `upsert` onto
+   * the caller's own already-unique-by-`userId` row, so the business check
+   * still has to be explicit here). The BR-003 read happens before the
+   * `$transaction` (an early, non-atomic rejection — acceptable per arch
+   * §9.1, which only calls out the single-use claim itself as needing true
+   * atomicity); the claim and the `CoachProfile` upsert are what actually
+   * commit together.
+   */
+  private async redeemCoachAcceptAuthenticated(
+    link: ShareLinkWithTrainer,
+    ctx: AuthContext,
+  ): Promise<CoachAcceptResultDto> {
+    const caller = await this.usersRepository.findById(ctx.userId);
+    if (!caller || !link.targetEmail || caller.email !== link.targetEmail) {
+      throw new ForbiddenException({ message: 'This invite is not addressed to you', errorCode: 'FORBIDDEN' });
+    }
+
+    const existingProfile = await this.prisma.coachProfile.findUnique({ where: { userId: ctx.userId } });
+    if (existingProfile?.status === 'ACTIVE') {
+      throw new ConflictException({
+        message: 'This coach already has an active trainer assignment',
+        errorCode: 'CONFLICT',
+      });
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const claimed = await this.shareLinksRepository.claimSingleUse(link.code, tx);
+      if (claimed.count === 0) {
+        throw new ShareLinkUnavailableError();
+      }
+      await tx.coachProfile.upsert({
+        where: { userId: ctx.userId },
+        create: { userId: ctx.userId, trainerId: link.trainerId, status: 'ACTIVE' },
+        update: { trainerId: link.trainerId, status: 'ACTIVE' },
+      });
+    });
+
+    return { trainerId: link.trainerId, status: 'ACTIVE' };
   }
 
   /**

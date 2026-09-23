@@ -550,4 +550,105 @@ describe('ShareLinksController (e2e, Task 4.2)', () => {
       expect(jobs[0].payload).toMatchObject({ to: guardian.email });
     });
   });
+
+  describe('POST /share-links/:code/redeem — COACH_ACCEPT (Task 4.9)', () => {
+    async function seedCoachUniqueLink(targetEmail: string): Promise<{ code: string; trainerId: string }> {
+      const trainer = await insertTrainer({ businessName: 'Coach Co' });
+      const link = await db.prisma.shareLink.create({
+        data: {
+          code: `coach-${randomUUID()}`,
+          type: 'COACH_UNIQUE',
+          trainerId: trainer.trainerId,
+          createdByUserId: trainer.userId,
+          targetEmail,
+          expiresAt: new Date(Date.now() + 60_000),
+        },
+      });
+      return { code: link.code, trainerId: trainer.trainerId };
+    }
+
+    it('anonymous, no existing user -> 201 auto-login session, creates User(COACH)+CoachProfile(ACTIVE), claims the link', async () => {
+      const targetEmail = `${randomUUID()}@example.com`;
+      const link = await seedCoachUniqueLink(targetEmail);
+
+      const res = await request(app.getHttpServer())
+        .post(`/share-links/${link.code}/redeem`)
+        .send({ password: 'Password1' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.accessToken).toEqual(expect.any(String));
+      expect(res.body.user).toMatchObject({ email: targetEmail, role: 'COACH' });
+
+      const user = await db.prisma.user.findUnique({ where: { email: targetEmail } });
+      const coachProfile = await db.prisma.coachProfile.findUnique({ where: { userId: user!.id } });
+      expect(coachProfile).toMatchObject({ trainerId: link.trainerId, status: 'ACTIVE' });
+
+      const refreshedLink = await db.prisma.shareLink.findUnique({ where: { code: link.code } });
+      expect(refreshedLink?.useCount).toBe(1);
+      expect(refreshedLink?.status).toBe('EXPIRED');
+    });
+
+    it('anonymous without a password -> 400 VALIDATION_ERROR', async () => {
+      const link = await seedCoachUniqueLink(`${randomUUID()}@example.com`);
+
+      const res = await request(app.getHttpServer()).post(`/share-links/${link.code}/redeem`).send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.errorCode).toBe('VALIDATION_ERROR');
+    });
+
+    it('authenticated COACH, target-email match, no existing ACTIVE profile -> 200 {trainerId, status:ACTIVE}', async () => {
+      const coach = await insertUser({ role: 'COACH' });
+      const link = await seedCoachUniqueLink(coach.email);
+      const accessToken = await signToken(coach, { role: 'COACH' });
+
+      const res = await request(app.getHttpServer())
+        .post(`/share-links/${link.code}/redeem`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({});
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ trainerId: link.trainerId, status: 'ACTIVE' });
+
+      const coachProfile = await db.prisma.coachProfile.findUnique({ where: { userId: coach.id } });
+      expect(coachProfile).toMatchObject({ trainerId: link.trainerId, status: 'ACTIVE' });
+    });
+
+    it('authenticated COACH, target-email mismatch -> 403 FORBIDDEN', async () => {
+      const coach = await insertUser({ role: 'COACH' });
+      const link = await seedCoachUniqueLink(`${randomUUID()}@example.com`); // different email
+      const accessToken = await signToken(coach, { role: 'COACH' });
+
+      const res = await request(app.getHttpServer())
+        .post(`/share-links/${link.code}/redeem`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({});
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('FORBIDDEN');
+
+      const refreshedLink = await db.prisma.shareLink.findUnique({ where: { code: link.code } });
+      expect(refreshedLink?.useCount).toBe(0);
+    });
+
+    it('authenticated COACH already ACTIVE elsewhere -> 409 CONFLICT, link never claimed', async () => {
+      const coach = await insertUser({ role: 'COACH' });
+      const otherTrainer = await insertTrainer();
+      await db.prisma.coachProfile.create({ data: { userId: coach.id, trainerId: otherTrainer.trainerId, status: 'ACTIVE' } });
+      const link = await seedCoachUniqueLink(coach.email);
+      const accessToken = await signToken(coach, { role: 'COACH' });
+
+      const res = await request(app.getHttpServer())
+        .post(`/share-links/${link.code}/redeem`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({});
+
+      expect(res.status).toBe(409);
+      expect(res.body.errorCode).toBe('CONFLICT');
+
+      const refreshedLink = await db.prisma.shareLink.findUnique({ where: { code: link.code } });
+      expect(refreshedLink?.useCount).toBe(0);
+      expect(refreshedLink?.status).toBe('ACTIVE');
+    });
+  });
 });
