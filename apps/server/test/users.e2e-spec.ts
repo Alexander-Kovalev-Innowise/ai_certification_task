@@ -131,4 +131,43 @@ describe('UsersController — Super Admin directory (e2e, Task 3.1)', () => {
     expect(res.body.items).toHaveLength(1);
     expect(res.body.items[0].id).toBe(target.id);
   });
+
+  it('GET /users/:id as a non-Super-Admin -> 403', async () => {
+    const { email } = await insertUser();
+    const target = await insertUser();
+    const accessToken = await login(email);
+
+    const res = await request(app.getHttpServer())
+      .get(`/users/${target.id}`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /users/:id unknown id -> 404', async () => {
+    const { email: adminEmail } = await insertUser({ role: 'SUPER_ADMIN' });
+    const accessToken = await login(adminEmail);
+
+    const res = await request(app.getHttpServer())
+      .get(`/users/${randomUUID()}`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /users/:id lets a Super Admin look up a soft-deleted user row', async () => {
+    const { email: adminEmail } = await insertUser({ role: 'SUPER_ADMIN' });
+    const accessToken = await login(adminEmail);
+
+    const target = await insertUser({ status: 'DELETED', deletedAt: new Date() });
+
+    const res = await request(app.getHttpServer())
+      .get(`/users/${target.id}`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: target.id, status: 'DELETED' });
+    expect(res.body.deletedAt).not.toBeNull();
+    expect(JSON.stringify(res.body)).not.toMatch(/passwordHash/i);
+  });
 });

@@ -74,6 +74,34 @@ export class UsersRepository {
   }
 
   /**
+   * Task 3.2 (api §3 "GET /users/:id"). Explicit `withDeleted: true` opt-in
+   * (arch §11.1 "historical/admin reads opt in explicitly") — the only
+   * place in this repository that ever sees a soft-deleted/GDPR-deleted
+   * row. `withDeleted` is an extension-only arg (soft-delete.extension.ts),
+   * not part of Prisma's generated types, hence the cast — same pattern as
+   * that extension's own spec.
+   */
+  async findByIdWithDeleted(id: string): Promise<User | null> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- withDeleted is an extension-only arg, not part of Prisma's generated types
+    return (this.prisma.extended.user.findFirst as any)({ where: { id }, withDeleted: true });
+  }
+
+  /**
+   * Whether `userId` is a CHILD login — i.e. it's the `childUserId` of some
+   * PlayerProfile. Mirrors AuthService.resolveTenantClaims's own check
+   * (Task 2.13); duplicated rather than shared because that method is
+   * private to the auth/session-issuing flow, and this repository has no
+   * dependency on the auth module. No Epic-01 flow before Phase 4
+   * (ShareLink redemption) can actually produce a CHILD user yet, so this
+   * always resolves false today — added now so UserDetailResponseDto's
+   * `accountType` is correct once Phase 4 lands, not a later rework.
+   */
+  async isChildLogin(userId: string): Promise<boolean> {
+    const child = await this.prisma.playerProfile.findUnique({ where: { childUserId: userId }, select: { id: true } });
+    return child !== null;
+  }
+
+  /**
    * Task 3.1 (api §3 "GET /users"). Keyset pagination on `(createdAt, id)`
    * DESC — never `OFFSET` (NFR-002) — via a row-tuple comparison
    * `("createdAt", "id") < (cursor.createdAt, cursor.id)`, the standard

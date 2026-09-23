@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import type { User } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
 
@@ -8,6 +8,7 @@ import type { AuthContext } from '../../shared/security/auth-context.interface';
 import type { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { MeResponseDto } from './dto/me-response.dto';
 import type { UpdateMeDto } from './dto/update-me.dto';
+import { UserDetailResponseDto } from './dto/user-detail-response.dto';
 import { UserDirectoryRowDto } from './dto/user-directory-row.dto';
 import { UsersRepository } from './users.repository';
 
@@ -72,6 +73,27 @@ export class UsersService {
 
   private toDirectoryRow(user: User): UserDirectoryRowDto {
     return plainToInstance(UserDirectoryRowDto, user, { excludeExtraneousValues: true });
+  }
+
+  /**
+   * Task 3.2 (api §3 "GET /users/:id"). Uses `findByIdWithDeleted` so a
+   * Super Admin can still look up a soft-deleted/GDPR-deleted row (arch
+   * §11.1's "historical/admin reads opt in explicitly") — unlike `getMe`,
+   * which deliberately can never see one.
+   */
+  async getUserById(id: string): Promise<UserDetailResponseDto> {
+    const user = await this.usersRepository.findByIdWithDeleted(id);
+    if (!user) {
+      throw new NotFoundException({ message: 'User not found', errorCode: 'NOT_FOUND' });
+    }
+
+    const isChild = await this.usersRepository.isChildLogin(user.id);
+
+    return plainToInstance(
+      UserDetailResponseDto,
+      { ...user, accountType: isChild ? 'CHILD' : 'ADULT', emailVerified: user.emailVerifiedAt !== null },
+      { excludeExtraneousValues: true },
+    );
   }
 
   private async loadUserOrThrow(userId: string): Promise<User> {

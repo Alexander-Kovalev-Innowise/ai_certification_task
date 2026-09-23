@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 
@@ -12,6 +12,7 @@ import { Roles } from '../../shared/security/decorators/roles.decorator';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { MeResponseDto } from './dto/me-response.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
+import { UserDetailResponseDto } from './dto/user-detail-response.dto';
 import { UserDirectoryRowDto } from './dto/user-directory-row.dto';
 import { UsersService } from './users.service';
 
@@ -52,5 +53,17 @@ export class UsersController {
   @ApiResponse({ status: 403 })
   async listUsers(@Query() query: ListUsersQueryDto): Promise<PaginatedResponseDto<UserDirectoryRowDto>> {
     return this.usersService.listUsers(query);
+  }
+
+  // Task 3.2 (api §3 "GET /users/:id"). withDeleted: true opt-in (arch §11.1).
+  @Roles(Role.SUPER_ADMIN)
+  @RequiresCapability(Capability.MANAGE_ANY_USER)
+  @Get('users/:id')
+  @ApiOperation({ summary: 'Look up any user by id, including soft-deleted rows' })
+  @ApiResponse({ status: 200, type: UserDetailResponseDto })
+  @ApiResponse({ status: 403 })
+  @ApiResponse({ status: 404 })
+  async getUserById(@Param('id') id: string): Promise<UserDetailResponseDto> {
+    return this.usersService.getUserById(id);
   }
 }
