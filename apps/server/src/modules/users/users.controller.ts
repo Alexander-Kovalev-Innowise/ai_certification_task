@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 
@@ -10,6 +10,7 @@ import { RequiresCapability } from '../../shared/security/decorators/requires-ca
 import { Roles } from '../../shared/security/decorators/roles.decorator';
 
 import { AccountLifecycleService } from './account-lifecycle.service';
+import { GdprDeleteUserDto } from './dto/gdpr-delete-user.dto';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { MeResponseDto } from './dto/me-response.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
@@ -113,5 +114,24 @@ export class UsersController {
   async reactivateUser(@Param('id') id: string): Promise<UserDetailResponseDto> {
     const user = await this.accountLifecycleService.reactivate(id);
     return this.usersService.toDetailResponse(user);
+  }
+
+  // Task 3.7 (api §3 "DELETE /users/:id", FR-014/SEC-005). GDPR anonymization.
+  @Roles(Role.SUPER_ADMIN)
+  @RequiresCapability(Capability.GDPR_DELETE_USER)
+  @Delete('users/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Irreversibly anonymize a user (GDPR erasure)' })
+  @ApiResponse({ status: 204 })
+  @ApiResponse({ status: 400, description: 'Missing reason' })
+  @ApiResponse({ status: 403 })
+  @ApiResponse({ status: 404 })
+  @ApiResponse({ status: 409, description: 'Already DELETED', schema: { example: { errorCode: 'CONFLICT' } } })
+  async gdprDeleteUser(
+    @Param('id') id: string,
+    @Body() dto: GdprDeleteUserDto,
+    @CurrentUser() ctx: AuthContext,
+  ): Promise<void> {
+    await this.accountLifecycleService.gdprDelete(id, dto.reason, ctx.userId);
   }
 }

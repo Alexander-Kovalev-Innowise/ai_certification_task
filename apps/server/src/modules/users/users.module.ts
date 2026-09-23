@@ -6,6 +6,7 @@ import { RefreshTokenRepository } from '../auth/refresh-token.repository';
 
 import { AccountLifecycleService } from './account-lifecycle.service';
 import { AccountProvisioningService } from './account-provisioning.service';
+import { UserDeletionLogRepository } from './user-deletion-log.repository';
 import { UsersAnonymizer } from './users.anonymizer';
 import { UsersController } from './users.controller';
 import { UsersRepository } from './users.repository';
@@ -18,7 +19,9 @@ import { UsersService } from './users.service';
 // every registered Anonymizer app-wide, not just this module's own.
 // RefreshTokenRepository (Task 3.5) is imported directly from the auth
 // module, not via an AuthModule import — see account-lifecycle.service.ts's
-// comment on why that would be circular.
+// comment on why that would be circular. DomainEventsEmitter (Task 3.7) is
+// NOT listed as a provider here — EventsModule is @Global() and imported
+// once in AppModule, so it's already available for injection everywhere.
 @Module({
   imports: [DiscoveryModule],
   controllers: [UsersController],
@@ -29,6 +32,7 @@ import { UsersService } from './users.service';
     UsersAnonymizer,
     AnonymizerRegistry,
     RefreshTokenRepository,
+    UserDeletionLogRepository,
     AccountLifecycleService,
   ],
   exports: [UsersRepository, AccountProvisioningService],

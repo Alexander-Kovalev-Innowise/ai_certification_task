@@ -5,6 +5,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { ConfigModule } from './shared/config/config.module';
+import { EventsModule } from './shared/events/events.module';
 import { JobsModule } from './shared/jobs/jobs.module';
 import { LoggerModule } from './shared/logging/logger.module';
 import { RequestContextMiddleware } from './shared/logging/request-context.middleware';
@@ -43,6 +44,7 @@ import { TenantContextInterceptor } from './shared/tenancy/tenant-context.interc
     LoggerModule,
     PrismaModule,
     SecurityModule,
+    EventsModule,
     JobsModule,
     DiscoveryModule,
     ThrottlerModule.forRoot(buildAuthThrottlerConfigs()),
