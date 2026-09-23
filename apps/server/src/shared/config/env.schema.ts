@@ -31,6 +31,12 @@ export const envSchema = z.object({
   // port so a bare `docker compose up -d && npm run dev` works out of the
   // box without every contributor adding this to their local .env.
   CLIENT_URL: z.string().min(1).default('http://localhost:3000'),
+  // Not in the plan's Task 0.8 var list, added in Task 1.10 — MailModule
+  // (shared/mail) reads this to pick the MailService adapter (INT-001's
+  // "pluggable provider" requirement). Defaults to 'console' since the SES
+  // adapter is a stub in Epic-01 (out of functional scope) — every
+  // environment gets the console adapter until a real provider is wired.
+  MAIL_PROVIDER: z.enum(['console', 'ses']).default('console'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
