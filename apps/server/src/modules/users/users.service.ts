@@ -95,13 +95,7 @@ export class UsersService {
       throw new NotFoundException({ message: 'User not found', errorCode: 'NOT_FOUND' });
     }
 
-    const isChild = await this.usersRepository.isChildLogin(user.id);
-
-    return plainToInstance(
-      UserDetailResponseDto,
-      { ...user, accountType: isChild ? 'CHILD' : 'ADULT', emailVerified: user.emailVerifiedAt !== null },
-      { excludeExtraneousValues: true },
-    );
+    return this.toDetailResponse(user);
   }
 
   /**
@@ -133,10 +127,21 @@ export class UsersService {
       throw error;
     }
 
-    const isChild = await this.usersRepository.isChildLogin(updated.id);
+    return this.toDetailResponse(updated);
+  }
+
+  /**
+   * Shared by getUserById/updateUser (Tasks 3.2/3.3) and, from Task 3.5
+   * onward, AccountLifecycleService's deactivate/reactivate/gdprDelete
+   * response mapping — every admin-facing endpoint that returns a full
+   * `UserDetailResponseDto` for an arbitrary user (not the caller's own
+   * profile, which is toMeResponse's job).
+   */
+  async toDetailResponse(user: User): Promise<UserDetailResponseDto> {
+    const isChild = await this.usersRepository.isChildLogin(user.id);
     return plainToInstance(
       UserDetailResponseDto,
-      { ...updated, accountType: isChild ? 'CHILD' : 'ADULT', emailVerified: updated.emailVerifiedAt !== null },
+      { ...user, accountType: isChild ? 'CHILD' : 'ADULT', emailVerified: user.emailVerifiedAt !== null },
       { excludeExtraneousValues: true },
     );
   }

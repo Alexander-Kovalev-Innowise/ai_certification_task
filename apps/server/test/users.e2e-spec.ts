@@ -216,4 +216,49 @@ describe('UsersController — Super Admin directory (e2e, Task 3.1)', () => {
     const unchanged = await db.prisma.user.findUnique({ where: { id: target.id } });
     expect(unchanged?.role).toBe('PLAYER_PARENT');
   });
+
+  it('POST /users/:id/deactivate rejects the target\'s already-issued access token on the very next request (DoD-critical)', async () => {
+    const { email: adminEmail } = await insertUser({ role: 'SUPER_ADMIN' });
+    const adminToken = await login(adminEmail);
+    const target = await insertUser();
+    const targetToken = await login(target.email);
+
+    const stillActive = await request(app.getHttpServer()).get('/me').set('Authorization', `Bearer ${targetToken}`);
+    expect(stillActive.status).toBe(200);
+
+    const deactivateRes = await request(app.getHttpServer())
+      .post(`/users/${target.id}/deactivate`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(deactivateRes.status).toBe(200);
+    expect(deactivateRes.body.status).toBe('INACTIVE');
+
+    const nextRequest = await request(app.getHttpServer()).get('/me').set('Authorization', `Bearer ${targetToken}`);
+    expect(nextRequest.status).toBe(401);
+    expect(nextRequest.body.errorCode).toBe('ACCOUNT_INACTIVE');
+  });
+
+  it('POST /users/:id/deactivate on an already-inactive target -> 409 CONFLICT', async () => {
+    const { email: adminEmail } = await insertUser({ role: 'SUPER_ADMIN' });
+    const adminToken = await login(adminEmail);
+    const target = await insertUser({ status: 'INACTIVE', deletedAt: new Date() });
+
+    const res = await request(app.getHttpServer())
+      .post(`/users/${target.id}/deactivate`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.errorCode).toBe('CONFLICT');
+  });
+
+  it('POST /users/:id/deactivate as a non-Super-Admin -> 403', async () => {
+    const { email } = await insertUser();
+    const target = await insertUser();
+    const accessToken = await login(email);
+
+    const res = await request(app.getHttpServer())
+      .post(`/users/${target.id}/deactivate`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(403);
+  });
 });

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 
@@ -9,6 +9,7 @@ import { CurrentUser } from '../../shared/security/decorators/current-user.decor
 import { RequiresCapability } from '../../shared/security/decorators/requires-capability.decorator';
 import { Roles } from '../../shared/security/decorators/roles.decorator';
 
+import { AccountLifecycleService } from './account-lifecycle.service';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { MeResponseDto } from './dto/me-response.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
@@ -26,7 +27,10 @@ import { UsersService } from './users.service';
 @ApiBearerAuth()
 @Controller()
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly accountLifecycleService: AccountLifecycleService,
+  ) {}
 
   @RequiresCapability(Capability.EDIT_OWN_PROFILE)
   @Get('me')
@@ -79,5 +83,20 @@ export class UsersController {
   @ApiResponse({ status: 409, description: 'Duplicate email', schema: { example: { errorCode: 'CONFLICT' } } })
   async updateUser(@Param('id') id: string, @Body() dto: UpdateUserDto): Promise<UserDetailResponseDto> {
     return this.usersService.updateUser(id, dto);
+  }
+
+  // Task 3.5 (api §3 "POST /users/:id/deactivate", FR-013/BR-011).
+  @Roles(Role.SUPER_ADMIN)
+  @RequiresCapability(Capability.DEACTIVATE_REACTIVATE_USER)
+  @Post('users/:id/deactivate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Deactivate a user — immediately rejects their next request' })
+  @ApiResponse({ status: 200, type: UserDetailResponseDto })
+  @ApiResponse({ status: 403 })
+  @ApiResponse({ status: 404 })
+  @ApiResponse({ status: 409, description: 'Already inactive/deleted', schema: { example: { errorCode: 'CONFLICT' } } })
+  async deactivateUser(@Param('id') id: string): Promise<UserDetailResponseDto> {
+    const user = await this.accountLifecycleService.deactivate(id);
+    return this.usersService.toDetailResponse(user);
   }
 }
