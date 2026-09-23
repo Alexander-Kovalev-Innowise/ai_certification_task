@@ -20,6 +20,7 @@ import { UsersRepository } from '../users/users.repository';
 
 import type { AuthSessionResponseDto, UserSummaryDto } from './dto/auth-session-response.dto';
 import type { ChangePasswordDto } from './dto/change-password.dto';
+import type { CompleteTrainerSetupDto } from './dto/complete-trainer-setup.dto';
 import type { ForgotPasswordDto } from './dto/forgot-password.dto';
 import type { LoginDto } from './dto/login.dto';
 import type { ResetPasswordDto } from './dto/reset-password.dto';
@@ -324,6 +325,43 @@ export class AuthService {
     });
 
     return { message: 'Password changed.' };
+  }
+
+  /**
+   * Task 2.20. Completes a Super-Admin-provisioned trainer's setup link
+   * (Task 3.8, which doesn't exist yet — implemented/tested here against a
+   * manually-seeded `PasswordResetToken(purpose: 'TRAINER_SETUP')` row per
+   * the plan's own note, to be re-verified end-to-end once Task 3.8 lands).
+   * Unlike reset-password (Task 2.17), this distinguishes 409 (already
+   * consumed) from 404 (unknown token) rather than collapsing both into a
+   * generic 404 — api §1 states this explicitly for /auth/register.
+   */
+  async completeTrainerSetup(dto: CompleteTrainerSetupDto, res: Response): Promise<AuthSessionResponseDto> {
+    const tokenRow = await this.passwordResetTokenRepository.findByToken(hashOpaqueToken(dto.setupToken));
+
+    if (!tokenRow || tokenRow.purpose !== 'TRAINER_SETUP') {
+      throw new NotFoundException({ message: 'Invalid setup token', errorCode: 'NOT_FOUND' });
+    }
+    if (tokenRow.usedAt) {
+      throw new ConflictException({ message: 'Setup token already used', errorCode: 'CONFLICT' });
+    }
+    if (tokenRow.expiresAt.getTime() < Date.now()) {
+      throw new GoneException({ message: 'Setup token expired', errorCode: 'TOKEN_EXPIRED' });
+    }
+
+    const newPasswordHash = await this.passwordService.hash(dto.password);
+
+    const user = await this.prisma.$transaction(async (tx) => {
+      const updated = await this.usersRepository.update(
+        tokenRow.userId,
+        { passwordHash: newPasswordHash, mustChangePassword: false },
+        tx,
+      );
+      await this.passwordResetTokenRepository.markUsed(tokenRow.id, tx);
+      return updated;
+    });
+
+    return this.issueSession(user, res);
   }
 
   /** Shared by login (Task 2.13) and, later, setup-completion (Task 2.20). */

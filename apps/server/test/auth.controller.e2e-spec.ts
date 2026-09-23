@@ -557,4 +557,84 @@ describe('AuthController (e2e, Task 2.13)', () => {
       expect(user!.tokenVersion).toBeGreaterThan(0);
     });
   });
+
+  describe('POST /auth/register — trainer setup-link completion (Task 2.20)', () => {
+    // Task 3.8 (Super-Admin provisions a trainer + sends a setup link)
+    // doesn't exist yet — manually seed a User(role=TRAINER) with a
+    // placeholder passwordHash and a PasswordResetToken(purpose:
+    // 'TRAINER_SETUP'), per the plan's own note for this task.
+    async function insertTrainerAwaitingSetup(overrides: Record<string, unknown> = {}) {
+      const id = randomUUID();
+      const email = `${id}@example.com`;
+      await db.prisma.user.create({
+        data: {
+          id,
+          email,
+          passwordHash: 'placeholder-not-a-real-hash',
+          role: 'TRAINER',
+          firstName: 'Trainer',
+          lastName: 'Setup',
+          status: 'ACTIVE',
+          mustChangePassword: true,
+        },
+      });
+      const rawToken = randomUUID();
+      const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+      await db.prisma.passwordResetToken.create({
+        data: {
+          userId: id,
+          token: tokenHash,
+          purpose: 'TRAINER_SETUP',
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+          ...overrides,
+        },
+      });
+      return { id, email, rawToken };
+    }
+
+    it('valid setup token -> 200 + auto-login cookies, clears mustChangePassword', async () => {
+      const { email, rawToken } = await insertTrainerAwaitingSetup();
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ setupToken: rawToken, password: 'BrandNewPassword1' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.accessToken).toEqual(expect.any(String));
+      expect(res.body.user).toMatchObject({ email, mustChangePassword: false });
+      const setCookieHeader = res.headers['set-cookie'] as unknown as string[];
+      expect(setCookieHeader.some((c) => c.startsWith('refreshToken='))).toBe(true);
+    });
+
+    it('unknown token -> 404 NOT_FOUND', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ setupToken: 'nope', password: 'BrandNewPassword1' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.errorCode).toBe('NOT_FOUND');
+    });
+
+    it('already-consumed token -> 409 CONFLICT', async () => {
+      const { rawToken } = await insertTrainerAwaitingSetup({ usedAt: new Date() });
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ setupToken: rawToken, password: 'BrandNewPassword1' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.errorCode).toBe('CONFLICT');
+    });
+
+    it('expired token -> 410 TOKEN_EXPIRED', async () => {
+      const { rawToken } = await insertTrainerAwaitingSetup({ expiresAt: new Date(Date.now() - 1000) });
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/register')
+        .send({ setupToken: rawToken, password: 'BrandNewPassword1' });
+
+      expect(res.status).toBe(410);
+      expect(res.body.errorCode).toBe('TOKEN_EXPIRED');
+    });
+  });
 });

@@ -12,6 +12,7 @@ import { RequiresCapability } from '../../shared/security/decorators/requires-ca
 import { AuthService } from './auth.service';
 import { AuthSessionResponseDto } from './dto/auth-session-response.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { CompleteTrainerSetupDto } from './dto/complete-trainer-setup.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -127,5 +128,21 @@ export class AuthController {
     @Body() dto: ChangePasswordDto,
   ): Promise<{ message: string }> {
     return this.authService.changePassword(ctx.userId, dto);
+  }
+
+  @Public()
+  @Throttle({ 'auth-ip': {} })
+  @Post('register')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Complete a Super-Admin-provisioned trainer's setup link (NOT public self-registration, BR-005)" })
+  @ApiResponse({ status: 200, type: AuthSessionResponseDto })
+  @ApiResponse({ status: 404, description: 'Unknown setup token' })
+  @ApiResponse({ status: 409, description: 'Setup token already used', schema: { example: { errorCode: 'CONFLICT' } } })
+  @ApiResponse({ status: 410, description: 'Setup token expired', schema: { example: { errorCode: 'TOKEN_EXPIRED' } } })
+  async register(
+    @Body() dto: CompleteTrainerSetupDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthSessionResponseDto> {
+    return this.authService.completeTrainerSetup(dto, res);
   }
 }
