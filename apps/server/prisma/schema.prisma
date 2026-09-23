@@ -1,0 +1,412 @@
+// NOTE (deviation from plan, Prisma 7.10.0 — Phase 0 pinned this major version):
+// - Prisma 7 removed `datasource.url` from schema.prisma; the connection string
+//   now lives in `prisma.config.ts` (used by the CLI) and is passed to a driver
+//   adapter at runtime (`PrismaService`, Task 1.4). See `apps/server/prisma.config.ts`.
+// - `multiSchema` is GA in Prisma 7, no longer a previewFeature (kept out of
+//   `previewFeatures` — including it now only emits a deprecation warning).
+// - Prisma 7's parser requires one enum value per line (no single-line enum
+//   bodies) and requires every enum to carry an explicit `@@schema(...)` when
+//   the datasource declares multiple `schemas`.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["public", "audit"]
+}
+
+enum Role {
+  SUPER_ADMIN
+  TRAINER
+  COACH
+  PLAYER_PARENT
+
+  @@schema("public")
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  DELETED
+
+  @@schema("public")
+}
+
+enum CoachStatus {
+  PENDING
+  ACTIVE
+
+  @@schema("public")
+}
+
+enum AssociationStatus {
+  ACTIVE
+  INACTIVE
+
+  @@schema("public")
+}
+
+enum ShareLinkType {
+  PLAYER_STATIC
+  COACH_UNIQUE
+
+  @@schema("public")
+}
+
+enum ShareLinkStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+
+  @@schema("public")
+}
+
+enum AvailabilitySubjectType {
+  PLAYER
+  COACH
+
+  @@schema("public")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+
+  @@schema("public")
+}
+
+enum SkillLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  ELITE
+
+  @@schema("public")
+}
+
+enum PaymentType {
+  USD
+  TOKEN
+
+  @@schema("public")
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  DENIED
+  EXPIRED
+
+  @@schema("public")
+}
+
+enum OutboxStatus {
+  PENDING
+  DONE
+  FAILED
+
+  @@schema("public")
+}
+
+model User {
+  id                 String     @id @default(uuid())
+  email              String     @unique
+  passwordHash       String
+  role               Role
+  status             UserStatus @default(ACTIVE)
+  firstName          String
+  lastName           String
+  phone              String?
+  photoUrl           String?
+  notificationPrefs  Json?
+  tokenVersion       Int        @default(0)
+  mustChangePassword Boolean    @default(false)
+  emailVerifiedAt    DateTime?
+  lastLoginAt        DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  deletedAt          DateTime?
+
+  trainerProfile          TrainerProfile?
+  coachProfile            CoachProfile?
+  ownedPlayerProfiles     PlayerProfile[]          @relation("AccountOwner")
+  childPlayerProfile      PlayerProfile?           @relation("ChildLogin")
+  refreshTokens           RefreshToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
+  createdShareLinks       ShareLink[]              @relation("ShareLinkCreator")
+  impersonationsAsAdmin   ImpersonationLog[]       @relation("Admin")
+  impersonationsAsTarget  ImpersonationLog[]       @relation("Target")
+  childPurchaseApprovals  ChildPurchaseApproval[]  @relation("Parent")
+  deletionLogsPerformed   UserDeletionLog[]        @relation("DeletedBy")
+
+  @@index([status, role, createdAt])
+  @@schema("public")
+}
+
+model TrainerProfile {
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  businessName       String
+  address            String?
+  website            String?
+  description        String?
+  logoUrl            String?
+  primaryColorHex    String?
+  derivedPaletteJson Json?
+  stripeCustomerId   String? // Epic-05 stub, nullable, written by nothing in Epic-01
+  subscriptionStatus String? // Epic-05 stub
+  platformFeePercent Decimal? @db.Decimal(5, 2) // Epic-05 stub
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user          User                        @relation(fields: [userId], references: [id])
+  coachProfiles CoachProfile[]
+  associations  PlayerTrainerAssociation[]
+  shareLinks    ShareLink[]
+  overrides     CoachAvailabilityOverride[]
+
+  @@schema("public")
+}
+
+model CoachProfile {
+  id             String      @id @default(uuid())
+  userId         String      @unique
+  trainerId      String
+  bio            String?
+  credentials    String?
+  certifications String?
+  publicProfile  Boolean     @default(false)
+  status         CoachStatus @default(PENDING)
+  joinedAt       DateTime    @default(now())
+
+  user         User                        @relation(fields: [userId], references: [id])
+  trainer      TrainerProfile              @relation(fields: [trainerId], references: [id])
+  availability Availability[]
+  overrides    CoachAvailabilityOverride[]
+  // Partial unique index WHERE status = 'ACTIVE' on (userId) is added as raw SQL in Task 1.2 —
+  // this is the DB-level enforcement of BR-003 (one active trainer per coach); Prisma cannot express a partial index.
+
+  @@index([trainerId, status])
+  @@schema("public")
+}
+
+model PlayerProfile {
+  id                                  String     @id @default(uuid())
+  accountUserId                       String
+  childUserId                         String?    @unique
+  name                                String
+  dateOfBirth                         DateTime
+  gender                              Gender
+  skillLevel                          SkillLevel @default(BEGINNER)
+  school                              String?
+  jerseyNumber                        String?
+  photoUrl                            String?
+  isSelf                              Boolean    @default(false)
+  allowChildTokenSpendWithoutApproval Boolean    @default(false)
+  emergencyContact                    Json?
+  createdAt                           DateTime   @default(now())
+  updatedAt                           DateTime   @updatedAt
+  deletedAt                           DateTime?
+
+  accountOwner User                       @relation("AccountOwner", fields: [accountUserId], references: [id])
+  childLogin   User?                      @relation("ChildLogin", fields: [childUserId], references: [id])
+  associations PlayerTrainerAssociation[]
+  availability Availability[]
+  approvals    ChildPurchaseApproval[]
+
+  @@index([accountUserId])
+  @@schema("public")
+}
+
+model PlayerTrainerAssociation {
+  id              String            @id @default(uuid())
+  trainerId       String
+  playerProfileId String
+  shareLinkId     String?
+  status          AssociationStatus @default(ACTIVE)
+  connectedAt     DateTime          @default(now())
+  disconnectedAt  DateTime?
+
+  trainer       TrainerProfile @relation(fields: [trainerId], references: [id])
+  playerProfile PlayerProfile  @relation(fields: [playerProfileId], references: [id])
+  shareLink     ShareLink?     @relation(fields: [shareLinkId], references: [id])
+
+  @@unique([trainerId, playerProfileId])
+  @@index([trainerId, status])
+  @@index([playerProfileId, status])
+  @@schema("public")
+}
+
+model ShareLink {
+  id              String          @id @default(uuid())
+  code            String          @unique
+  type            ShareLinkType
+  trainerId       String
+  createdByUserId String
+  targetEmail     String?
+  expiresAt       DateTime?
+  maxUses         Int?
+  useCount        Int             @default(0)
+  status          ShareLinkStatus @default(ACTIVE)
+  createdAt       DateTime        @default(now())
+
+  trainer      TrainerProfile             @relation(fields: [trainerId], references: [id])
+  createdBy    User                       @relation("ShareLinkCreator", fields: [createdByUserId], references: [id])
+  associations PlayerTrainerAssociation[]
+
+  @@index([trainerId, status])
+  @@schema("public")
+}
+
+model Availability {
+  id              String                  @id @default(uuid())
+  subjectType     AvailabilitySubjectType
+  playerProfileId String?
+  coachProfileId  String?
+  dayOfWeek       Int // 0-6
+  startTime       Int // minutes from midnight, 0-1440
+  endTime         Int
+  isAvailable     Boolean                 @default(true)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  playerProfile PlayerProfile? @relation(fields: [playerProfileId], references: [id])
+  coachProfile  CoachProfile?  @relation(fields: [coachProfileId], references: [id])
+  // CHECK (exactly one of playerProfileId/coachProfileId is non-null, and it agrees with subjectType)
+  // added as raw SQL in Task 1.2 — Prisma cannot express exclusive-arc constraints.
+
+  @@index([playerProfileId, dayOfWeek])
+  @@index([coachProfileId, dayOfWeek])
+  @@schema("public")
+}
+
+model CoachAvailabilityOverride {
+  id        String   @id @default(uuid())
+  eventId   String   @db.Uuid // opaque FK, no relation — Epic-02 forward reference (arch §18)
+  coachId   String
+  trainerId String
+  reason    String
+  createdAt DateTime @default(now())
+
+  coach   CoachProfile   @relation(fields: [coachId], references: [id])
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id])
+
+  @@index([eventId])
+  @@schema("public")
+}
+
+model ImpersonationLog {
+  id              String    @id @default(uuid())
+  adminUserId     String
+  targetUserId    String
+  startedAt       DateTime  @default(now())
+  endedAt         DateTime?
+  durationSeconds Int?
+  createdAt       DateTime  @default(now())
+
+  admin  User @relation("Admin", fields: [adminUserId], references: [id])
+  target User @relation("Target", fields: [targetUserId], references: [id])
+
+  @@index([adminUserId])
+  @@index([targetUserId])
+  @@schema("public")
+}
+
+model ChildPurchaseApproval {
+  id              String         @id @default(uuid())
+  playerProfileId String
+  parentUserId    String
+  eventId         String         @db.Uuid // opaque FK, no relation — Epic-02 forward reference
+  amount          Decimal        @db.Decimal(10, 2)
+  paymentType     PaymentType
+  status          ApprovalStatus @default(PENDING)
+  parentNotes     String?
+  requestedAt     DateTime       @default(now())
+  respondedAt     DateTime?
+  expiresAt       DateTime
+
+  playerProfile PlayerProfile @relation(fields: [playerProfileId], references: [id])
+  parent        User          @relation("Parent", fields: [parentUserId], references: [id])
+
+  @@index([parentUserId, status])
+  @@index([status, expiresAt])
+  @@schema("public")
+}
+
+model UserDeletionLog {
+  id              String   @id @default(uuid())
+  originalUserId  String
+  originalEmail   String
+  deletedByUserId String
+  reason          String
+  deletedAt       DateTime @default(now())
+  dataBackupJson  Json
+
+  deletedBy User @relation("DeletedBy", fields: [deletedByUserId], references: [id])
+
+  @@schema("audit") // write-only for the app's normal DB role — see Task 1.2's GRANT statements
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String // hashed at rest
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@schema("public")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String // hashed at rest
+  purpose   String    @default("PASSWORD_RESET") // "PASSWORD_RESET" | "TRAINER_SETUP" — see plan header note
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@schema("public")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String
+  familyId  String
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([tokenHash])
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@schema("public")
+}
+
+model OutboxJob {
+  id            String       @id @default(uuid())
+  type          String // job-type constants live in code, shared/jobs/job-types.const.ts (Task 1.12) — not a DB enum, kept extensible
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  nextAttemptAt DateTime     @default(now())
+  lastError     String?
+  createdAt     DateTime     @default(now())
+
+  @@index([status, nextAttemptAt])
+  @@schema("public")
+}
