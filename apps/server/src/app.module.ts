@@ -4,6 +4,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 
 import { AuthModule } from './modules/auth/auth.module';
 import { AvailabilityModule } from './modules/availability/availability.module';
+import { ChildApprovalsModule } from './modules/child-approvals/child-approvals.module';
 import { CoachesModule } from './modules/coaches/coaches.module';
 import { PlayerProfilesModule } from './modules/player-profiles/player-profiles.module';
 import { ShareLinksModule } from './modules/share-links/share-links.module';
@@ -60,6 +61,7 @@ import { TenantContextInterceptor } from './shared/tenancy/tenant-context.interc
     CoachesModule,
     PlayerProfilesModule,
     AvailabilityModule,
+    ChildApprovalsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthThrottlerGuard },
