@@ -2,10 +2,13 @@ import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/c
 import type { User } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
 
+import { buildPaginatedResponse, decodeCursor, type PaginatedResponseDto } from '../../shared/http/pagination.dto';
 import type { AuthContext } from '../../shared/security/auth-context.interface';
 
+import type { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { MeResponseDto } from './dto/me-response.dto';
 import type { UpdateMeDto } from './dto/update-me.dto';
+import { UserDirectoryRowDto } from './dto/user-directory-row.dto';
 import { UsersRepository } from './users.repository';
 
 // Fields a CHILD login may never write via PATCH /me — FR-050 (api §3):
@@ -47,6 +50,28 @@ export class UsersService {
     });
 
     return this.toMeResponse(updated, ctx.accountType);
+  }
+
+  /** Task 3.1 (api §3 "GET /users"). RBAC is a route-level @Roles(SUPER_ADMIN) concern (users.controller.ts), not this service's job. */
+  async listUsers(query: ListUsersQueryDto): Promise<PaginatedResponseDto<UserDirectoryRowDto>> {
+    const limit = query.limit ?? 50;
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
+
+    const rows = await this.usersRepository.findAllPaginated({
+      limit,
+      cursor,
+      search: query.search,
+      role: query.role,
+      status: query.status,
+    });
+
+    const page = buildPaginatedResponse(rows, limit, (u) => ({ createdAt: u.createdAt.toISOString(), id: u.id }));
+
+    return { ...page, items: page.items.map((u) => this.toDirectoryRow(u)) };
+  }
+
+  private toDirectoryRow(user: User): UserDirectoryRowDto {
+    return plainToInstance(UserDirectoryRowDto, user, { excludeExtraneousValues: true });
   }
 
   private async loadUserOrThrow(userId: string): Promise<User> {

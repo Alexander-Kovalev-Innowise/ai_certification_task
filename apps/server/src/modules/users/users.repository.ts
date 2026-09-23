@@ -1,7 +1,22 @@
 import { Injectable } from '@nestjs/common';
-import type { Prisma, User } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { Role, User, UserStatus } from '@prisma/client';
 
+import type { KeysetCursor } from '../../shared/http/pagination.dto';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+
+export interface FindAllUsersParams {
+  limit: number;
+  cursor?: KeysetCursor;
+  search?: string;
+  role?: Role;
+  status?: UserStatus;
+}
+
+// Directory-only column projection (api §3: "select is directory columns
+// only, never passwordHash") — used verbatim by the raw SQL in
+// findAllPaginated below.
+const DIRECTORY_COLUMNS = `id, email, role, status, "firstName", "lastName", "createdAt", "lastLoginAt"`;
 
 // Task 2.9. `PrismaService` injected directly — this IS a repository (the
 // documented "shared/ only" exception doesn't apply here; this is exactly
@@ -56,5 +71,53 @@ export class UsersRepository {
   async update(id: string, data: Prisma.UserUpdateInput, tx?: Prisma.TransactionClient): Promise<User> {
     const client = tx ?? this.prisma;
     return client.user.update({ where: { id }, data });
+  }
+
+  /**
+   * Task 3.1 (api §3 "GET /users"). Keyset pagination on `(createdAt, id)`
+   * DESC — never `OFFSET` (NFR-002) — via a row-tuple comparison
+   * `("createdAt", "id") < (cursor.createdAt, cursor.id)`, the standard
+   * keyset technique for a composite DESC ordering.
+   *
+   * Raw SQL, not the Prisma query builder: `search` must hit the `pg_trgm`
+   * GIN index from Task 1.2 (`user_email_trgm_idx` on `lower(email)`,
+   * `user_name_trgm_idx` on `lower(firstName || ' ' || lastName)`). Prisma's
+   * `contains`/`mode: 'insensitive'` compiles to a plain `ILIKE` on the raw
+   * column, not `lower(...) LIKE lower(...)` — it would never match either
+   * functional index. Matching the index's exact expression here is what
+   * lets a query plan (`EXPLAIN`) actually name the index.
+   *
+   * Fetches `limit + 1` rows (the caller, `buildPaginatedResponse`, uses the
+   * extra row to compute `hasMore` without a separate COUNT).
+   */
+  async findAllPaginated(params: FindAllUsersParams): Promise<User[]> {
+    const conditions: Prisma.Sql[] = [Prisma.sql`"deletedAt" IS NULL`];
+
+    if (params.role) {
+      conditions.push(Prisma.sql`"role" = ${params.role}::"Role"`);
+    }
+    if (params.status) {
+      conditions.push(Prisma.sql`"status" = ${params.status}::"UserStatus"`);
+    }
+    if (params.search) {
+      const pattern = `%${params.search}%`;
+      conditions.push(
+        Prisma.sql`(lower("email") LIKE lower(${pattern}) OR lower("firstName" || ' ' || "lastName") LIKE lower(${pattern}))`,
+      );
+    }
+    if (params.cursor) {
+      conditions.push(
+        Prisma.sql`("createdAt", "id") < (${new Date(params.cursor.createdAt)}::timestamp, ${params.cursor.id})`,
+      );
+    }
+
+    const where = Prisma.join(conditions, ' AND ');
+
+    return this.prisma.$queryRaw<User[]>`
+      SELECT ${Prisma.raw(DIRECTORY_COLUMNS)} FROM "User"
+      WHERE ${where}
+      ORDER BY "createdAt" DESC, "id" DESC
+      LIMIT ${params.limit + 1}
+    `;
   }
 }
