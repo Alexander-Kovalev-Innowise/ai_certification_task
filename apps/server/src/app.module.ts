@@ -2,6 +2,8 @@ import { MiddlewareConsumer, Module, NestModule, OnModuleInit } from '@nestjs/co
 import { APP_GUARD, APP_INTERCEPTOR, DiscoveryModule, DiscoveryService, MetadataScanner, Reflector } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 
+import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
 import { ConfigModule } from './shared/config/config.module';
 import { JobsModule } from './shared/jobs/jobs.module';
 import { LoggerModule } from './shared/logging/logger.module';
@@ -44,6 +46,8 @@ import { TenantContextInterceptor } from './shared/tenancy/tenant-context.interc
     JobsModule,
     DiscoveryModule,
     ThrottlerModule.forRoot(buildAuthThrottlerConfigs()),
+    UsersModule,
+    AuthModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthThrottlerGuard },
