@@ -174,7 +174,7 @@ export class PlayerProfileService {
       ...(dto.school !== undefined ? { school: dto.school } : {}),
       ...(dto.jerseyNumber !== undefined ? { jerseyNumber: dto.jerseyNumber } : {}),
       ...(dto.photoUrl !== undefined ? { photoUrl: dto.photoUrl } : {}),
-      ...(dto.emergencyContact !== undefined ? { emergencyContact: dto.emergencyContact } : {}),
+      ...(dto.emergencyContact !== undefined ? { emergencyContact: dto.emergencyContact as Prisma.InputJsonValue } : {}),
       ...(dto.allowChildTokenSpendWithoutApproval !== undefined
         ? { allowChildTokenSpendWithoutApproval: dto.allowChildTokenSpendWithoutApproval }
         : {}),
