@@ -28,6 +28,12 @@ export const ERROR_CODES = {
   // shape but has expired (distinct from `404 NOT_FOUND` for unknown/
   // already-used/wrong-purpose, both generic on purpose).
   TOKEN_EXPIRED: 'TOKEN_EXPIRED',
+  // Task 3.6 (api §3 "POST /users/:id/reactivate") — `409 CONFLICT` whose
+  // errorCode distinguishes "target is DELETED, irreversibly" from a
+  // generic CONFLICT so the client can render a different message than
+  // "already active". Not in api §0.5's shared catalog table (only named in
+  // §3's endpoint-specific prose), same category as CSRF_MISMATCH above.
+  CANNOT_REACTIVATE_DELETED_USER: 'CANNOT_REACTIVATE_DELETED_USER',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

@@ -99,4 +99,19 @@ export class UsersController {
     const user = await this.accountLifecycleService.deactivate(id);
     return this.usersService.toDetailResponse(user);
   }
+
+  // Task 3.6 (api §3 "POST /users/:id/reactivate").
+  @Roles(Role.SUPER_ADMIN)
+  @RequiresCapability(Capability.DEACTIVATE_REACTIVATE_USER)
+  @Post('users/:id/reactivate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reactivate a deactivated user (hard-rejects a GDPR-deleted target)' })
+  @ApiResponse({ status: 200, type: UserDetailResponseDto })
+  @ApiResponse({ status: 403 })
+  @ApiResponse({ status: 404 })
+  @ApiResponse({ status: 409, description: 'Target is DELETED', schema: { example: { errorCode: 'CANNOT_REACTIVATE_DELETED_USER' } } })
+  async reactivateUser(@Param('id') id: string): Promise<UserDetailResponseDto> {
+    const user = await this.accountLifecycleService.reactivate(id);
+    return this.usersService.toDetailResponse(user);
+  }
 }

@@ -261,4 +261,55 @@ describe('UsersController — Super Admin directory (e2e, Task 3.1)', () => {
 
     expect(res.status).toBe(403);
   });
+
+  it('POST /users/:id/reactivate restores login for a previously deactivated user', async () => {
+    const { email: adminEmail } = await insertUser({ role: 'SUPER_ADMIN' });
+    const adminToken = await login(adminEmail);
+    const target = await insertUser();
+
+    await request(app.getHttpServer())
+      .post(`/users/${target.id}/deactivate`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    const loginWhileInactive = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: target.email, password: KNOWN_PASSWORD });
+    expect(loginWhileInactive.status).toBe(401);
+
+    const reactivateRes = await request(app.getHttpServer())
+      .post(`/users/${target.id}/reactivate`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(reactivateRes.status).toBe(200);
+    expect(reactivateRes.body.status).toBe('ACTIVE');
+
+    const loginAfterReactivate = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: target.email, password: KNOWN_PASSWORD });
+    expect(loginAfterReactivate.status).toBe(200);
+  });
+
+  it('POST /users/:id/reactivate on a DELETED target -> 409 CANNOT_REACTIVATE_DELETED_USER', async () => {
+    const { email: adminEmail } = await insertUser({ role: 'SUPER_ADMIN' });
+    const adminToken = await login(adminEmail);
+    const target = await insertUser({ status: 'DELETED', deletedAt: new Date() });
+
+    const res = await request(app.getHttpServer())
+      .post(`/users/${target.id}/reactivate`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.errorCode).toBe('CANNOT_REACTIVATE_DELETED_USER');
+  });
+
+  it('POST /users/:id/reactivate as a non-Super-Admin -> 403', async () => {
+    const { email } = await insertUser();
+    const target = await insertUser({ status: 'INACTIVE', deletedAt: new Date() });
+    const accessToken = await login(email);
+
+    const res = await request(app.getHttpServer())
+      .post(`/users/${target.id}/reactivate`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(403);
+  });
 });

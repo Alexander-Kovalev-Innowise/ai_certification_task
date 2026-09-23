@@ -54,4 +54,35 @@ export class AccountLifecycleService {
       return updated;
     });
   }
+
+  /**
+   * Task 3.6 (api §3 "POST /users/:id/reactivate"). Hard-rejects a
+   * `DELETED` target — irreversibility is structural by construction: this
+   * is the only write path that could ever flip status away from DELETED,
+   * and it refuses to. (The Task 1.2 DB CHECK, `status != 'DELETED' OR
+   * deletedAt IS NOT NULL`, backstops the *other* direction — it cannot by
+   * itself forbid DELETED -> ACTIVE, since that transition leaves the
+   * CHECK's precondition false; a trigger would be needed for a literal
+   * DB-level bypass guard, which Task 3.6's file list doesn't call for.)
+   * No tokenVersion bump on the way back in — deactivate() already revoked
+   * every RefreshToken, so "restores login" means a fresh POST /auth/login,
+   * not a resurrected session.
+   */
+  async reactivate(id: string): Promise<User> {
+    const user = await this.usersRepository.findByIdWithDeleted(id);
+    if (!user) {
+      throw new NotFoundException({ message: 'User not found', errorCode: 'NOT_FOUND' });
+    }
+    if (user.status === 'DELETED') {
+      throw new ConflictException({
+        message: 'Cannot reactivate a GDPR-deleted user',
+        errorCode: 'CANNOT_REACTIVATE_DELETED_USER',
+      });
+    }
+    if (user.status === 'ACTIVE') {
+      throw new ConflictException({ message: 'User is already active', errorCode: 'CONFLICT' });
+    }
+
+    return this.usersRepository.update(id, { status: 'ACTIVE', deletedAt: null });
+  }
 }
