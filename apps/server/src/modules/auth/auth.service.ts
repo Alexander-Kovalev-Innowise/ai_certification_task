@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   GoneException,
@@ -18,6 +19,7 @@ import { PrismaService } from '../../shared/prisma/prisma.service';
 import { UsersRepository } from '../users/users.repository';
 
 import type { AuthSessionResponseDto, UserSummaryDto } from './dto/auth-session-response.dto';
+import type { ChangePasswordDto } from './dto/change-password.dto';
 import type { ForgotPasswordDto } from './dto/forgot-password.dto';
 import type { LoginDto } from './dto/login.dto';
 import type { ResetPasswordDto } from './dto/reset-password.dto';
@@ -277,6 +279,51 @@ export class AuthService {
     });
 
     return { message: 'Verification email sent.' };
+  }
+
+  /**
+   * Task 2.19. One of the three routes exempt from PASSWORD_CHANGE_REQUIRED
+   * blocking (Task 2.6, arch §6.6). `currentPassword` is optional only on
+   * the forced-first-change path (`mustChangePassword: true`); that check
+   * is data-dependent, so it lives here rather than on the DTO. arch §6.3
+   * lists "password reset/change" together as tokenVersion-incrementing
+   * events — a voluntary change gets the exact same "logout everywhere"
+   * treatment as reset-password (Task 2.17), since bumping tokenVersion
+   * alone would still let a live, non-revoked refresh token mint fresh
+   * access tokens at the new tokenVersion.
+   */
+  async changePassword(userId: string, dto: ChangePasswordDto): Promise<{ message: string }> {
+    const user = await this.usersRepository.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException({ message: 'Account is inactive', errorCode: 'ACCOUNT_INACTIVE' });
+    }
+
+    if (!user.mustChangePassword) {
+      if (!dto.currentPassword) {
+        throw new BadRequestException({
+          message: 'currentPassword is required',
+          errorCode: 'VALIDATION_ERROR',
+          details: [{ field: 'currentPassword', message: 'currentPassword is required' }],
+        });
+      }
+      const currentMatches = await this.passwordService.verify(user.passwordHash, dto.currentPassword);
+      if (!currentMatches) {
+        throw new UnauthorizedException({ message: 'Current password is incorrect', errorCode: 'UNAUTHORIZED' });
+      }
+    }
+
+    const newPasswordHash = await this.passwordService.hash(dto.newPassword);
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.usersRepository.update(
+        userId,
+        { passwordHash: newPasswordHash, mustChangePassword: false, tokenVersion: { increment: 1 } },
+        tx,
+      );
+      await this.refreshTokenRepository.revokeAllForUser(userId, tx);
+    });
+
+    return { message: 'Password changed.' };
   }
 
   /** Shared by login (Task 2.13) and, later, setup-completion (Task 2.20). */

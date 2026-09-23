@@ -493,4 +493,68 @@ describe('AuthController (e2e, Task 2.13)', () => {
       expect(thirdRes.body.errorCode).toBe('CONFLICT');
     });
   });
+
+  describe('POST /auth/change-password (Task 2.19)', () => {
+    it('forced-first-change path succeeds without currentPassword when mustChangePassword is true', async () => {
+      const { email } = await insertUser({ mustChangePassword: true });
+      const { body } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+      expect(body.user.mustChangePassword).toBe(true);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/change-password')
+        .set('Authorization', `Bearer ${body.accessToken}`)
+        .send({ newPassword: 'BrandNewPassword1' });
+
+      expect(res.status).toBe(200);
+
+      const loginRes = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email, password: 'BrandNewPassword1' });
+      expect(loginRes.status).toBe(200);
+      expect(loginRes.body.user.mustChangePassword).toBe(false);
+    });
+
+    it('voluntary path requires currentPassword and validates it', async () => {
+      const { email } = await insertUser();
+      const { body } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+
+      const missingCurrent = await request(app.getHttpServer())
+        .post('/auth/change-password')
+        .set('Authorization', `Bearer ${body.accessToken}`)
+        .send({ newPassword: 'BrandNewPassword1' });
+      expect(missingCurrent.status).toBe(400);
+      expect(missingCurrent.body.errorCode).toBe('VALIDATION_ERROR');
+
+      const wrongCurrent = await request(app.getHttpServer())
+        .post('/auth/change-password')
+        .set('Authorization', `Bearer ${body.accessToken}`)
+        .send({ currentPassword: 'NotTheRealOne1', newPassword: 'BrandNewPassword1' });
+      expect(wrongCurrent.status).toBe(401);
+
+      const correct = await request(app.getHttpServer())
+        .post('/auth/change-password')
+        .set('Authorization', `Bearer ${body.accessToken}`)
+        .send({ currentPassword: KNOWN_PASSWORD, newPassword: 'BrandNewPassword1' });
+      expect(correct.status).toBe(200);
+    });
+
+    it('bumps tokenVersion and revokes all refresh tokens (password-change-grade logout everywhere)', async () => {
+      const { id, email } = await insertUser();
+      const { body, refreshToken, csrf } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+
+      await request(app.getHttpServer())
+        .post('/auth/change-password')
+        .set('Authorization', `Bearer ${body.accessToken}`)
+        .send({ currentPassword: KNOWN_PASSWORD, newPassword: 'BrandNewPassword1' });
+
+      const refreshAfter = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
+        .set('X-CSRF-Token', csrf);
+      expect(refreshAfter.status).toBe(401);
+
+      const user = await db.prisma.user.findUnique({ where: { id } });
+      expect(user!.tokenVersion).toBeGreaterThan(0);
+    });
+  });
 });

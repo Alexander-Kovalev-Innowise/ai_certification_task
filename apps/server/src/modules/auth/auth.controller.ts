@@ -11,6 +11,7 @@ import { RequiresCapability } from '../../shared/security/decorators/requires-ca
 
 import { AuthService } from './auth.service';
 import { AuthSessionResponseDto } from './dto/auth-session-response.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -111,5 +112,20 @@ export class AuthController {
   @ApiResponse({ status: 409, description: 'Already verified', schema: { example: { errorCode: 'CONFLICT' } } })
   async resendVerificationEmail(@CurrentUser() ctx: AuthContext): Promise<{ message: string }> {
     return this.authService.resendVerificationEmail(ctx.userId);
+  }
+
+  // One of the three routes exempt from PASSWORD_CHANGE_REQUIRED (Task 2.6).
+  @RequiresCapability(Capability.EDIT_OWN_PROFILE)
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Change password (currentPassword optional only on the forced-first-change path)' })
+  @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 400 })
+  @ApiResponse({ status: 401, description: 'currentPassword is incorrect' })
+  async changePassword(
+    @CurrentUser() ctx: AuthContext,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<{ message: string }> {
+    return this.authService.changePassword(ctx.userId, dto);
   }
 }
