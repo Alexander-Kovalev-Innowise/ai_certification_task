@@ -236,4 +236,104 @@ describe('CoachesController (e2e, Task 4.11)', () => {
       expect(res.body.errorCode).toBe('NOT_FOUND');
     });
   });
+
+  describe('PATCH /coaches/:id (Task 4.13, dual-actor)', () => {
+    async function seedCoach(trainerId: string, overrides: Record<string, unknown> = {}) {
+      const user = await insertUser({ role: 'COACH' });
+      const coachProfile = await db.prisma.coachProfile.create({
+        data: { userId: user.id, trainerId, status: 'ACTIVE', bio: 'Original bio', ...overrides },
+      });
+      const accessToken = await signToken(user, { role: 'COACH', tid: trainerId });
+      return { user, coachProfile, accessToken };
+    }
+
+    it('trainer sending status -> 200, updates status', async () => {
+      const trainer = await insertTrainer();
+      const { coachProfile } = await seedCoach(trainer.trainerId, { status: 'PENDING' });
+
+      const res = await request(app.getHttpServer())
+        .patch(`/coaches/${coachProfile.id}`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`)
+        .send({ status: 'ACTIVE' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('ACTIVE');
+    });
+
+    it('trainer sending bio -> 403 FIELD_NOT_ALLOWED_FOR_ROLE, no change persisted', async () => {
+      const trainer = await insertTrainer();
+      const { coachProfile } = await seedCoach(trainer.trainerId);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/coaches/${coachProfile.id}`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`)
+        .send({ bio: 'Hijacked bio' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('FIELD_NOT_ALLOWED_FOR_ROLE');
+
+      const unchanged = await db.prisma.coachProfile.findUnique({ where: { id: coachProfile.id } });
+      expect(unchanged?.bio).toBe('Original bio');
+    });
+
+    it('coach sending bio/credentials/certifications/publicProfile -> 200, updates those fields', async () => {
+      const trainer = await insertTrainer();
+      const { coachProfile, accessToken } = await seedCoach(trainer.trainerId);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/coaches/${coachProfile.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ bio: 'New bio', credentials: 'CPR certified', certifications: 'USSF Level 1', publicProfile: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        bio: 'New bio',
+        credentials: 'CPR certified',
+        certifications: 'USSF Level 1',
+        publicProfile: true,
+      });
+    });
+
+    it('coach sending status -> 403 FIELD_NOT_ALLOWED_FOR_ROLE, no change persisted', async () => {
+      const trainer = await insertTrainer();
+      const { coachProfile, accessToken } = await seedCoach(trainer.trainerId);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/coaches/${coachProfile.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ status: 'PENDING' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('FIELD_NOT_ALLOWED_FOR_ROLE');
+
+      const unchanged = await db.prisma.coachProfile.findUnique({ where: { id: coachProfile.id } });
+      expect(unchanged?.status).toBe('ACTIVE');
+    });
+
+    it('a coach cannot update another coach’s profile under the same trainer -> 404', async () => {
+      const trainer = await insertTrainer();
+      const { coachProfile: otherCoachProfile } = await seedCoach(trainer.trainerId);
+      const { accessToken: myAccessToken } = await seedCoach(trainer.trainerId);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/coaches/${otherCoachProfile.id}`)
+        .set('Authorization', `Bearer ${myAccessToken}`)
+        .send({ bio: 'Should not work' });
+
+      expect(res.status).toBe(404);
+    });
+
+    it('trainer B cannot update trainer A’s coach -> 404', async () => {
+      const trainerA = await insertTrainer();
+      const trainerB = await insertTrainer();
+      const { coachProfile } = await seedCoach(trainerA.trainerId);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/coaches/${coachProfile.id}`)
+        .set('Authorization', `Bearer ${trainerB.accessToken}`)
+        .send({ status: 'PENDING' });
+
+      expect(res.status).toBe(404);
+    });
+  });
 });

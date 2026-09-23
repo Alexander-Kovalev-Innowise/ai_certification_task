@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import type { CoachProfile, Prisma } from '@prisma/client';
 
 import type { PaginatedResponseDto } from '../../shared/http/pagination.dto';
 import { JOB_TYPES } from '../../shared/jobs/job-types.const';
@@ -16,6 +16,10 @@ import { CoachRosterRowDto } from './dto/coach-roster-row.dto';
 import type { InviteCoachDto } from './dto/invite-coach.dto';
 import { InviteCoachResponseDto } from './dto/invite-coach.dto';
 import type { ListCoachesQueryDto } from './dto/list-coaches-query.dto';
+import { CoachProfileResponseDto, UpdateCoachDto } from './dto/update-coach.dto';
+
+const TRAINER_ALLOWED_FIELDS: readonly (keyof UpdateCoachDto)[] = ['status'];
+const COACH_ALLOWED_FIELDS: readonly (keyof UpdateCoachDto)[] = ['bio', 'credentials', 'certifications', 'publicProfile'];
 
 // Task 4.11, first method — extended in Task 4.12 (listCoaches) and Task
 // 4.13 (updateCoach).
@@ -167,5 +171,87 @@ export class CoachService {
       return;
     }
     throw new NotFoundException({ message: 'Trainer not found', errorCode: 'NOT_FOUND' });
+  }
+
+  /**
+   * Task 4.13 (api §4.2 "PATCH /coaches/:id", dual-actor). `:id` is the
+   * `CoachProfile.id`, not a `:trainerId` path param, so ownership can't be
+   * checked by comparing ids directly the way `assertOwnershipOrNotFound`
+   * does above — the row has to be read first.
+   * `CoachesRepository.findByIdForTrainer(id, ctx.trainerId)` only proves
+   * "same trainer" (both TRAINER and COACH tokens carry a `tid` for this
+   * endpoint, access-token-claims.interface.ts), which is the full ownership
+   * proof for a TRAINER caller but not yet for a COACH caller — the extra
+   * `coachProfile.userId !== ctx.userId` check below is what closes that gap
+   * for the "another coach under the same trainer" case. Both a genuinely
+   * unknown id and an ownership miss produce the same generic `404`
+   * (arch §8 Layer 3 existence-disclosure posture), never `403`.
+   */
+  async updateCoach(ctx: AuthContext, id: string, dto: UpdateCoachDto): Promise<CoachProfileResponseDto> {
+    if (!ctx.trainerId) {
+      throw new NotFoundException({ message: 'Coach not found', errorCode: 'NOT_FOUND' });
+    }
+
+    const coachProfile = await this.coachesRepository.findByIdForTrainer(id, ctx.trainerId);
+    if (!coachProfile) {
+      throw new NotFoundException({ message: 'Coach not found', errorCode: 'NOT_FOUND' });
+    }
+
+    if (ctx.role === 'TRAINER') {
+      this.assertOnlyFields(dto, TRAINER_ALLOWED_FIELDS);
+      const updated = await this.coachesRepository.update(id, {
+        ...(dto.status !== undefined ? { status: dto.status } : {}),
+      });
+      return this.toProfileResponse(updated);
+    }
+
+    if (ctx.role === 'COACH') {
+      if (coachProfile.userId !== ctx.userId) {
+        throw new NotFoundException({ message: 'Coach not found', errorCode: 'NOT_FOUND' });
+      }
+      this.assertOnlyFields(dto, COACH_ALLOWED_FIELDS);
+      const updated = await this.coachesRepository.update(id, {
+        ...(dto.bio !== undefined ? { bio: dto.bio } : {}),
+        ...(dto.credentials !== undefined ? { credentials: dto.credentials } : {}),
+        ...(dto.certifications !== undefined ? { certifications: dto.certifications } : {}),
+        ...(dto.publicProfile !== undefined ? { publicProfile: dto.publicProfile } : {}),
+      });
+      return this.toProfileResponse(updated);
+    }
+
+    // Unreachable via the real route (@Roles(TRAINER, COACH) excludes every
+    // other role) — defensive fallback, not a documented response shape.
+    throw new ForbiddenException({ message: 'Role cannot update a coach profile', errorCode: 'FORBIDDEN' });
+  }
+
+  /**
+   * Rejects (`403 FIELD_NOT_ALLOWED_FOR_ROLE`) any field the DTO carries
+   * that ISN'T in the caller's allowed set — never silently drops it (api
+   * §4.2: "the service rejects... rather than silently ignoring it").
+   */
+  private assertOnlyFields(dto: UpdateCoachDto, allowed: readonly (keyof UpdateCoachDto)[]): void {
+    const disallowed = (Object.keys(dto) as (keyof UpdateCoachDto)[]).filter(
+      (field) => dto[field] !== undefined && !allowed.includes(field),
+    );
+    if (disallowed.length > 0) {
+      throw new ForbiddenException({
+        message: `Field(s) not allowed for this role: ${disallowed.join(', ')}`,
+        errorCode: 'FIELD_NOT_ALLOWED_FOR_ROLE',
+        details: disallowed.map((field) => ({ field, message: 'Not allowed for this role' })),
+      });
+    }
+  }
+
+  private toProfileResponse(cp: CoachProfile): CoachProfileResponseDto {
+    const response = new CoachProfileResponseDto();
+    response.id = cp.id;
+    response.userId = cp.userId;
+    response.trainerId = cp.trainerId;
+    response.status = cp.status;
+    response.bio = cp.bio;
+    response.credentials = cp.credentials;
+    response.certifications = cp.certifications;
+    response.publicProfile = cp.publicProfile;
+    return response;
   }
 }

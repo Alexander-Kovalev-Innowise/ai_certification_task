@@ -40,6 +40,12 @@ export const ERROR_CODES = {
   // endpoint-specific branch table only, same category as
   // CANNOT_REACTIVATE_DELETED_USER above.
   ROLE_CANNOT_REDEEM_SHARE_LINK: 'ROLE_CANNOT_REDEEM_SHARE_LINK',
+  // Task 4.13 (api §4.2 "PATCH /coaches/:id", dual-actor field restriction)
+  // — `403` whose errorCode distinguishes "wrong role entirely" (generic
+  // FORBIDDEN) from "right role, but this field belongs to the OTHER actor"
+  // (e.g. a TRAINER sending `bio`, or a COACH sending `status`). Named in
+  // the endpoint-specific prose only, same category as the two entries above.
+  FIELD_NOT_ALLOWED_FOR_ROLE: 'FIELD_NOT_ALLOWED_FOR_ROLE',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

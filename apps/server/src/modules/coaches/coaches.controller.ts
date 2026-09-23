@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 
@@ -13,6 +13,7 @@ import { CoachService } from './coach.service';
 import { CoachRosterRowDto } from './dto/coach-roster-row.dto';
 import { InviteCoachDto, InviteCoachResponseDto } from './dto/invite-coach.dto';
 import { ListCoachesQueryDto } from './dto/list-coaches-query.dto';
+import { CoachProfileResponseDto, UpdateCoachDto } from './dto/update-coach.dto';
 
 // Task 4.11, first endpoint — extended in Task 4.12 (GET /trainers/:id/coaches)
 // and Task 4.13 (PATCH /coaches/:id). Empty `@Controller()` prefix (matching
@@ -55,5 +56,25 @@ export class CoachesController {
     @Query() query: ListCoachesQueryDto,
   ): Promise<PaginatedResponseDto<CoachRosterRowDto>> {
     return this.coachService.listCoaches(ctx, id, query);
+  }
+
+  // Task 4.13 (api §4.2 "PATCH /coaches/:id", dual-actor field restriction).
+  // Owning TRAINER may send `status` only; the COACH themself may send
+  // `bio`/`credentials`/`certifications`/`publicProfile` only — enforced in
+  // CoachService.updateCoach (`403 FIELD_NOT_ALLOWED_FOR_ROLE`), not here.
+  @Roles(Role.TRAINER, Role.COACH)
+  @RequiresCapability(Capability.MANAGE_COACH_PROFILE)
+  @Patch('coaches/:id')
+  @ApiOperation({ summary: 'Update a coach profile — dual actor: TRAINER sets status, COACH sets their own bio/credentials/certifications/publicProfile' })
+  @ApiResponse({ status: 200, type: CoachProfileResponseDto })
+  @ApiResponse({ status: 400 })
+  @ApiResponse({ status: 403, description: 'Field not allowed for this role', schema: { example: { errorCode: 'FIELD_NOT_ALLOWED_FOR_ROLE' } } })
+  @ApiResponse({ status: 404 })
+  async updateCoach(
+    @CurrentUser() ctx: AuthContext,
+    @Param('id') id: string,
+    @Body() dto: UpdateCoachDto,
+  ): Promise<CoachProfileResponseDto> {
+    return this.coachService.updateCoach(ctx, id, dto);
   }
 }
