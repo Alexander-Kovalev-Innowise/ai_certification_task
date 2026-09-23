@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Res } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 
@@ -53,5 +53,16 @@ export class PlayerProfilesController {
   @ApiResponse({ status: 200, type: [PlayerProfileResponseDto] })
   async listProfiles(@CurrentUser() ctx: AuthContext): Promise<PlayerProfileResponseDto[]> {
     return this.playerProfileService.listProfiles(ctx);
+  }
+
+  // Task 5.3 (api §4.3 "GET /player-profiles/:id"). Ownership-checked in
+  // the service; cross-ownership is 404, never 403.
+  @RequiresCapability(Capability.EDIT_OWN_PROFILE)
+  @Get(':id')
+  @ApiOperation({ summary: 'Read one player profile (adult owner, the child themself, or SUPER_ADMIN)' })
+  @ApiResponse({ status: 200, type: PlayerProfileResponseDto })
+  @ApiResponse({ status: 404, description: 'Cross-ownership read (never 403)' })
+  async getProfileById(@CurrentUser() ctx: AuthContext, @Param('id') id: string): Promise<PlayerProfileResponseDto> {
+    return this.playerProfileService.getProfileById(ctx, id);
   }
 }

@@ -234,4 +234,51 @@ describe('PlayerProfilesController (e2e, Task 5.1)', () => {
       expect(res.body[0].id).toBe(childProfile.id);
     });
   });
+
+  describe('GET /player-profiles/:id (Task 5.3)', () => {
+    it('the owning adult can read it -> 200', async () => {
+      const parent = await insertParent();
+      const profile = await db.prisma.playerProfile.create({
+        data: { accountUserId: parent.userId, name: 'Kid One', dateOfBirth: new Date('2016-01-01'), gender: 'FEMALE', isSelf: false },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/player-profiles/${profile.id}`)
+        .set('Authorization', `Bearer ${parent.accessToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(profile.id);
+    });
+
+    it('cross-ownership read -> 404 (not 403)', async () => {
+      const owner = await insertParent();
+      const stranger = await insertParent();
+      const profile = await db.prisma.playerProfile.create({
+        data: { accountUserId: owner.userId, name: 'Kid One', dateOfBirth: new Date('2016-01-01'), gender: 'FEMALE', isSelf: false },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/player-profiles/${profile.id}`)
+        .set('Authorization', `Bearer ${stranger.accessToken}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.errorCode).toBe('NOT_FOUND');
+    });
+
+    it('the child themself can read their own profile -> 200', async () => {
+      const parent = await insertParent();
+      const childUser = await insertUser({ role: 'PLAYER_PARENT' });
+      const profile = await db.prisma.playerProfile.create({
+        data: { accountUserId: parent.userId, childUserId: childUser.id, name: 'Kid One', dateOfBirth: new Date('2016-01-01'), gender: 'FEMALE', isSelf: false },
+      });
+      const childToken = await signToken(childUser, { typ: 'CHILD', gid: parent.userId });
+
+      const res = await request(app.getHttpServer())
+        .get(`/player-profiles/${profile.id}`)
+        .set('Authorization', `Bearer ${childToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(profile.id);
+    });
+  });
 });

@@ -123,6 +123,32 @@ export class PlayerProfileService {
     return Promise.all(profiles.map((profile) => this.toResponseWithTrainerCount(profile)));
   }
 
+  /**
+   * Task 5.3 (api §4.3 "GET /player-profiles/:id"). Ownership-checked: the
+   * adult owner (`accountUserId`), the child themself
+   * (`childUserId = caller`), or `SUPER_ADMIN`. A cross-ownership read is a
+   * generic `404`, never `403` — same existence-disclosure posture as the
+   * tenant-isolation 404s elsewhere in this codebase (arch §8 Layer 3),
+   * applied here to family ownership rather than trainer tenancy.
+   */
+  async getProfileById(ctx: AuthContext, id: string): Promise<PlayerProfileResponseDto> {
+    const profile = await this.playerProfilesRepository.findById(id);
+    if (!profile || !this.canRead(ctx, profile)) {
+      throw new NotFoundException({ message: 'Player profile not found', errorCode: 'NOT_FOUND' });
+    }
+    return this.toResponse(profile);
+  }
+
+  private canRead(ctx: AuthContext, profile: PlayerProfile): boolean {
+    if (ctx.role === 'SUPER_ADMIN') {
+      return true;
+    }
+    if (ctx.accountType === 'CHILD') {
+      return profile.childUserId === ctx.userId;
+    }
+    return profile.accountUserId === ctx.userId;
+  }
+
   private async listChildOwnProfile(childUserId: string): Promise<PlayerProfile[]> {
     const own = await this.playerProfilesRepository.findByChildUserId(childUserId);
     return own ? [own] : [];
