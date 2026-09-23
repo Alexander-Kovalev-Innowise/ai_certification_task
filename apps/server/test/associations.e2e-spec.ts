@@ -290,4 +290,53 @@ describe('AssociationsController (e2e, Task 5.7)', () => {
       expect(res.body.errorCode).toBe('CHILD_CAPABILITY_DENIED');
     });
   });
+
+  describe('DELETE /player-profiles/:id/trainers/:trainerId (Task 5.9)', () => {
+    it('marks the association INACTIVE -> 204', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const profile = await insertProfile(parent.userId);
+      const association = await db.prisma.playerTrainerAssociation.create({
+        data: { trainerId: trainer.trainerId, playerProfileId: profile.id },
+      });
+
+      const res = await request(app.getHttpServer())
+        .delete(`/player-profiles/${profile.id}/trainers/${trainer.trainerId}`)
+        .set('Authorization', `Bearer ${parent.accessToken}`);
+
+      expect(res.status).toBe(204);
+
+      const row = await db.prisma.playerTrainerAssociation.findUnique({ where: { id: association.id } });
+      expect(row).toMatchObject({ status: 'INACTIVE' });
+      expect(row?.disconnectedAt).not.toBeNull();
+    });
+
+    it('unknown association -> 404', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const profile = await insertProfile(parent.userId);
+
+      const res = await request(app.getHttpServer())
+        .delete(`/player-profiles/${profile.id}/trainers/${trainer.trainerId}`)
+        .set('Authorization', `Bearer ${parent.accessToken}`);
+
+      expect(res.status).toBe(404);
+    });
+
+    it('a CHILD token -> 403 CHILD_CAPABILITY_DENIED', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const childUser = await insertUser({ role: 'PLAYER_PARENT' });
+      const profile = await insertProfile(parent.userId, { childUserId: childUser.id });
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.trainerId, playerProfileId: profile.id } });
+      const childToken = await signToken(childUser, { typ: 'CHILD', gid: parent.userId });
+
+      const res = await request(app.getHttpServer())
+        .delete(`/player-profiles/${profile.id}/trainers/${trainer.trainerId}`)
+        .set('Authorization', `Bearer ${childToken}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('CHILD_CAPABILITY_DENIED');
+    });
+  });
 });

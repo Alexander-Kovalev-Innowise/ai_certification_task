@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 
@@ -53,5 +53,23 @@ export class AssociationsController {
   ): Promise<void> {
     const result = await this.associationsService.addTrainerAssociation(ctx, id, dto);
     res.status(result.statusCode).json(result.body);
+  }
+
+  // Task 5.9 (api §4.3 "DELETE /player-profiles/:id/trainers/:trainerId",
+  // FR-032). Soft-delete-with-cascade, unconditional (no server-side
+  // confirmation step).
+  @RequiresCapability(Capability.MANAGE_TRAINER_ASSOCIATIONS)
+  @Delete('player-profiles/:id/trainers/:trainerId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Remove a trainer association (soft — status becomes INACTIVE)' })
+  @ApiResponse({ status: 204 })
+  @ApiResponse({ status: 403, description: 'Denied for typ: CHILD tokens', schema: { example: { errorCode: 'CHILD_CAPABILITY_DENIED' } } })
+  @ApiResponse({ status: 404 })
+  async removeTrainerAssociation(
+    @CurrentUser() ctx: AuthContext,
+    @Param('id') id: string,
+    @Param('trainerId') trainerId: string,
+  ): Promise<void> {
+    await this.associationsService.removeTrainerAssociation(ctx, id, trainerId);
   }
 }

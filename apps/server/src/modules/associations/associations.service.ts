@@ -117,6 +117,30 @@ export class AssociationsService {
       },
     };
   }
+
+  /**
+   * Task 5.9 (api §4.3 "DELETE /player-profiles/:id/trainers/:trainerId",
+   * FR-032 "Remove Child from Trainer"). CHILD tokens never reach this
+   * method (same deny-list capability as Task 5.8). Soft-delete-with-cascade
+   * unconditionally on call — the client is expected to have already shown
+   * the "this cancels upcoming RSVPs" confirmation; there is no
+   * server-side confirmation step, and RSVP cancellation itself is an
+   * Epic-02 concern out of scope here beyond marking the association
+   * `INACTIVE` (api §4.3).
+   */
+  async removeTrainerAssociation(ctx: AuthContext, playerProfileId: string, trainerId: string): Promise<void> {
+    const profile = await this.associationsRepository.findOwnedPlayerProfile(playerProfileId, ctx.userId);
+    if (!profile) {
+      throw new NotFoundException({ message: 'Player profile not found', errorCode: 'NOT_FOUND' });
+    }
+
+    const association = await this.associationsRepository.findActive(trainerId, playerProfileId);
+    if (!association) {
+      throw new NotFoundException({ message: 'Trainer association not found', errorCode: 'NOT_FOUND' });
+    }
+
+    await this.associationsRepository.disconnect(association.id);
+  }
 }
 
 function toEntry(row: ContextRow): ContextEntryDto {
