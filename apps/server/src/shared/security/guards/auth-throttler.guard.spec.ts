@@ -35,13 +35,28 @@ describe('authIdentityTracker (Task 2.7)', () => {
   });
 });
 
-describe('impersonationTracker (Task 2.7)', () => {
-  it("uses AuthContext.userId (the acting admin's effective id)", () => {
+describe('impersonationTracker (Task 2.7, fallback fixed Task 7.1)', () => {
+  it("uses AuthContext.userId (the acting admin's effective id) when already present", () => {
     expect(impersonationTracker({ authContext: { userId: 'admin-1' } })).toBe('admin-1');
   });
 
-  it('falls back to a stable value when there is no AuthContext', () => {
+  it('falls back to a stable value when there is no AuthContext and no bearer token', () => {
     expect(impersonationTracker({})).toBe('anonymous');
+  });
+
+  // AuthThrottlerGuard runs BEFORE JwtAuthGuard in the real pipeline (arch
+  // §5), so `request.authContext` is never actually set when this tracker
+  // runs against a real request — only in a hand-built object like the two
+  // tests above. This is the path that's really exercised in production.
+  it("decodes `sub` straight off the bearer token when AuthContext isn't set yet (the real pipeline order)", () => {
+    const payload = Buffer.from(JSON.stringify({ sub: 'admin-42', role: 'SUPER_ADMIN' })).toString('base64url');
+    const fakeToken = `header.${payload}.signature`;
+
+    expect(impersonationTracker({ headers: { authorization: `Bearer ${fakeToken}` } })).toBe('admin-42');
+  });
+
+  it('falls back to anonymous for a malformed bearer token', () => {
+    expect(impersonationTracker({ headers: { authorization: 'Bearer not-a-jwt' } })).toBe('anonymous');
   });
 });
 

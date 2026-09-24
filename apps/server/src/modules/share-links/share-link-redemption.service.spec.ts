@@ -70,6 +70,8 @@ describe('ShareLinkRedemptionService.redeem (Tasks 4.6, 4.9)', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let EmailVerificationTokenRepository: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let TenantClaimsResolver: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let AuthSnapshotRepository: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let JwtService: any;
@@ -101,6 +103,7 @@ describe('ShareLinkRedemptionService.redeem (Tasks 4.6, 4.9)', () => {
     ({ RefreshTokenRepository } = require('../auth/refresh-token.repository') as typeof import('../auth/refresh-token.repository'));
     ({ PasswordResetTokenRepository } = require('../auth/password-reset-token.repository') as typeof import('../auth/password-reset-token.repository'));
     ({ EmailVerificationTokenRepository } = require('../auth/email-verification-token.repository') as typeof import('../auth/email-verification-token.repository'));
+    ({ TenantClaimsResolver } = require('../auth/tenant-claims.resolver') as typeof import('../auth/tenant-claims.resolver'));
     ({ AuthService } = require('../auth/auth.service') as typeof import('../auth/auth.service'));
     ({ AuthSnapshotRepository } = require('../../shared/security/auth-snapshot.repository') as typeof import('../../shared/security/auth-snapshot.repository'));
     ({ JwtService } = require('@nestjs/jwt') as typeof import('@nestjs/jwt'));
@@ -140,6 +143,7 @@ describe('ShareLinkRedemptionService.redeem (Tasks 4.6, 4.9)', () => {
     const tokenRotationService = new TokenRotationService(prismaService, refreshTokenRepository, usersRepository);
     const passwordResetTokenRepository = new PasswordResetTokenRepository(prismaService);
     const emailVerificationTokenRepository = new EmailVerificationTokenRepository(prismaService);
+    const tenantClaimsResolver = new TenantClaimsResolver(prismaService);
     const authService = new AuthService(
       prismaService,
       usersRepository,
@@ -150,6 +154,7 @@ describe('ShareLinkRedemptionService.redeem (Tasks 4.6, 4.9)', () => {
       passwordResetTokenRepository,
       emailVerificationTokenRepository,
       outboxService,
+      tenantClaimsResolver,
     );
 
     return new ShareLinkRedemptionService(

@@ -60,9 +60,49 @@ export function authIdentityTracker(req: Record<string, unknown>): string {
   return sha256(`${route}:${email}`);
 }
 
+// Decodes a JWT's payload without verifying its signature — deliberately:
+// this is a rate-limit bucket KEY, not an authorization decision. A forged
+// `sub` just buys the caller their own throttle bucket; JwtAuthGuard still
+// rejects the token itself with 401 immediately afterward regardless of
+// which bucket it was counted against. Same trust level authIdentityTracker
+// already gives the raw, unverified `req.body.email`.
+function decodeJwtSubUnsafe(token: string): string | undefined {
+  try {
+    const payloadSegment = token.split('.')[1];
+    if (!payloadSegment) {
+      return undefined;
+    }
+    const payload = JSON.parse(Buffer.from(payloadSegment, 'base64url').toString('utf8')) as { sub?: unknown };
+    return typeof payload.sub === 'string' ? payload.sub : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Bug found while implementing Phase 7 (the first real consumer of this
+// named limiter — Task 7.1's `POST /impersonation/start`): `AuthContext` is
+// NEVER populated when this tracker runs. `AuthThrottlerGuard` is pipeline
+// position 1 (arch §5 step 4); `JwtAuthGuard`, the guard that actually sets
+// `request.authContext`, is position 2 (step 5) — strictly AFTER. So in the
+// real app `authContext` is always `undefined` here, and every caller fell
+// into the `'anonymous'` fallback, making "10/h, keyed by adminUserId"
+// (arch §12) a single GLOBAL 10-per-hour bucket shared by every admin
+// instead. The existing unit tests above only ever exercised this function
+// directly with a hand-built `{authContext: {...}}` object, which is why
+// this went unnoticed since Task 2.7 — nothing had called the real endpoint
+// through the real pipeline until now. Fixed by falling back to reading
+// `sub` straight off the bearer token when `authContext` isn't there yet,
+// rather than reordering the global guard pipeline (out of this task's
+// scope and would touch every other named limiter too).
 export function impersonationTracker(req: Record<string, unknown>): string {
   const authContext = (req as unknown as AuthenticatedRequest).authContext;
-  return authContext?.userId ?? 'anonymous';
+  if (authContext?.userId) {
+    return authContext.userId;
+  }
+
+  const header = (req as { headers?: Record<string, unknown> }).headers?.authorization;
+  const token = typeof header === 'string' && header.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined;
+  return (token && decodeJwtSubUnsafe(token)) ?? 'anonymous';
 }
 
 const FIFTEEN_MINUTES_MS = 15 * 60_000;
