@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Headers, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiExtraModels, ApiHeader, ApiOperation, ApiResponse, ApiTags, getSchemaPath } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 
 import type { PaginatedResponseDto } from '../../shared/http/pagination.dto';
@@ -12,6 +12,13 @@ import { Roles } from '../../shared/security/decorators/roles.decorator';
 import { AccountLifecycleService } from './account-lifecycle.service';
 import { GdprDeleteUserDto } from './dto/gdpr-delete-user.dto';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
+import {
+  CoachBootstrapDto,
+  type MeBootstrapResponseDto,
+  PlayerParentBootstrapDto,
+  SuperAdminBootstrapDto,
+  TrainerBootstrapDto,
+} from './dto/me-bootstrap-response.dto';
 import { MeResponseDto } from './dto/me-response.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -48,6 +55,47 @@ export class UsersController {
   @ApiResponse({ status: 403, description: 'typ: CHILD attempted to edit a guardian-owned field', schema: { example: { errorCode: 'CHILD_FIELD_NOT_EDITABLE' } } })
   async updateMe(@CurrentUser() ctx: AuthContext, @Body() dto: UpdateMeDto): Promise<MeResponseDto> {
     return this.usersService.updateMe(ctx, dto);
+  }
+
+  // Gap-fill: api §5 "GET /me/bootstrap" (OQ-4, approved as a first-class
+  // aggregate endpoint; arch §14/NFR-001 — one round trip, not an N+1
+  // waterfall). Phase 9's DoD sweep found this endpoint had been referenced
+  // as existing infrastructure by every prior phase without any phase ever
+  // implementing it; this route is that gap closed. Sibling route on this
+  // same controller (not a new module) — same `EDIT_OWN_PROFILE` capability
+  // as `GET /me` above, since it anchors on the same "own identity" concern.
+  @RequiresCapability(Capability.EDIT_OWN_PROFILE)
+  @Get('me/bootstrap')
+  @ApiExtraModels(SuperAdminBootstrapDto, TrainerBootstrapDto, CoachBootstrapDto, PlayerParentBootstrapDto)
+  @ApiOperation({ summary: 'Aggregate, per-role dashboard bootstrap payload — one round trip (arch §14, NFR-001)' })
+  @ApiHeader({
+    name: 'X-Trainer-Context',
+    required: false,
+    description:
+      'Optional here (unlike most player-facing routes): absent, `activeContext` is null and the client picks one from `contexts`; if supplied, it is validated against the caller\'s active associations and echoed back as `activeContext`.',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      oneOf: [
+        { $ref: getSchemaPath(SuperAdminBootstrapDto) },
+        { $ref: getSchemaPath(TrainerBootstrapDto) },
+        { $ref: getSchemaPath(CoachBootstrapDto) },
+        { $ref: getSchemaPath(PlayerParentBootstrapDto) },
+      ],
+      discriminator: { propertyName: 'role' },
+    },
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'X-Trainer-Context supplied but does not match an active association',
+    schema: { example: { errorCode: 'TENANT_CONTEXT_INVALID' } },
+  })
+  async getMeBootstrap(
+    @CurrentUser() ctx: AuthContext,
+    @Headers('x-trainer-context') trainerContext?: string,
+  ): Promise<MeBootstrapResponseDto> {
+    return this.usersService.getMeBootstrap(ctx, trainerContext);
   }
 
   // Task 3.1 (api §3 "GET /users", FR-011). Super Admin's global directory.
