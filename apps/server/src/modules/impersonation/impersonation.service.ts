@@ -1,14 +1,18 @@
 import { ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import type { User } from '@prisma/client';
 
+import { buildPaginatedResponse, decodeCursor, type PaginatedResponseDto } from '../../shared/http/pagination.dto';
 import type { AuthContext } from '../../shared/security/auth-context.interface';
+import type { UserSummaryDto } from '../auth/dto/auth-session-response.dto';
 import { TenantClaimsResolver } from '../auth/tenant-claims.resolver';
 import { TokenService } from '../auth/token.service';
 import { UsersRepository } from '../users/users.repository';
 
+import { ImpersonationLogResponseDto } from './dto/impersonation-log-response.dto';
 import { ImpersonationStartResponseDto } from './dto/impersonation-start-response.dto';
+import { ListImpersonationHistoryQueryDto } from './dto/list-impersonation-history-query.dto';
 import { StartImpersonationDto } from './dto/start-impersonation.dto';
-import { ImpersonationRepository } from './impersonation.repository';
+import { ImpersonationRepository, ImpersonationLogWithUsers } from './impersonation.repository';
 
 // Task 7.1 (api §2, arch §10), extended in Task 7.2 (`end`) and Task 7.3
 // (`getHistory`).
@@ -123,5 +127,62 @@ export class ImpersonationService {
     const endedAt = new Date();
     const durationSeconds = Math.max(0, Math.floor((endedAt.getTime() - log.startedAt.getTime()) / 1000));
     await this.impersonationRepository.markEnded(log.id, endedAt, durationSeconds);
+  }
+
+  /**
+   * Task 7.3 (api §2 "GET /impersonation/history"). Super Admin only
+   * (enforced by the controller's `@Roles`/`@RequiresCapability`, not
+   * repeated here — this service has no ownership/tenancy filtering of its
+   * own to add beyond the query params, unlike e.g. `AvailabilityService`).
+   */
+  async getHistory(query: ListImpersonationHistoryQueryDto): Promise<PaginatedResponseDto<ImpersonationLogResponseDto>> {
+    const limit = query.limit ?? 50;
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
+
+    const rows = await this.impersonationRepository.listHistory({
+      limit,
+      cursor,
+      adminUserId: query.adminUserId,
+      targetUserId: query.targetUserId,
+      dateFrom: query.dateFrom ? new Date(query.dateFrom) : undefined,
+      dateTo: query.dateTo ? new Date(query.dateTo) : undefined,
+    });
+
+    const page = buildPaginatedResponse(rows, limit, (row) => ({ createdAt: row.startedAt.toISOString(), id: row.id }));
+
+    const items = await Promise.all(page.items.map((row) => this.toHistoryRow(row)));
+    return { ...page, items };
+  }
+
+  private async toHistoryRow(row: ImpersonationLogWithUsers): Promise<ImpersonationLogResponseDto> {
+    const [admin, target] = await Promise.all([this.toUserSummary(row.admin), this.toUserSummary(row.target)]);
+    return {
+      id: row.id,
+      admin,
+      target,
+      startedAt: row.startedAt,
+      endedAt: row.endedAt,
+      durationSeconds: row.durationSeconds,
+    };
+  }
+
+  /**
+   * `adminUserId` is always a SUPER_ADMIN (the only role `/impersonation/
+   * start` ever writes there), which can never be a CHILD login — so this
+   * only issues the extra `isChildLogin` lookup for a `PLAYER_PARENT`
+   * target, the one role that can be (same short-circuit
+   * `TenantClaimsResolver.resolve` uses for the same reason).
+   */
+  private async toUserSummary(user: User): Promise<UserSummaryDto> {
+    const accountType = user.role === 'PLAYER_PARENT' && (await this.usersRepository.isChildLogin(user.id)) ? 'CHILD' : 'ADULT';
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      accountType,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      mustChangePassword: user.mustChangePassword,
+    };
   }
 }

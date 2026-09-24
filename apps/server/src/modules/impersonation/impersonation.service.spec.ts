@@ -62,8 +62,9 @@ describe('ImpersonationService (Task 7.1)', () => {
       create: jest.fn(),
       findById: jest.fn(),
       markEnded: jest.fn(),
+      listHistory: jest.fn(),
     } as unknown as jest.Mocked<ImpersonationRepository>;
-    const usersRepository = { findById: jest.fn() } as unknown as jest.Mocked<UsersRepository>;
+    const usersRepository = { findById: jest.fn(), isChildLogin: jest.fn() } as unknown as jest.Mocked<UsersRepository>;
     const tenantClaimsResolver = { resolve: jest.fn() } as unknown as jest.Mocked<TenantClaimsResolver>;
     const tokenService = { issueImpersonationToken: jest.fn() } as unknown as jest.Mocked<TokenService>;
 
@@ -204,6 +205,54 @@ describe('ImpersonationService (Task 7.1)', () => {
       expect(id).toBe('log-1');
       expect(endedAt).toBeInstanceOf(Date);
       expect(durationSeconds).toBeGreaterThanOrEqual(120);
+    });
+  });
+
+  // Task 7.3 (api §2 "GET /impersonation/history"). Pagination/filter
+  // correctness against real rows is covered in impersonation.e2e-spec.ts
+  // (Testcontainers) — this unit level only exercises the
+  // admin/target -> UserSummaryDto mapping, in particular the
+  // PLAYER_PARENT-only `isChildLogin` short-circuit.
+  describe('getHistory', () => {
+    function makeLogRow(overrides: { admin?: Partial<User>; target?: Partial<User> } = {}) {
+      return {
+        id: 'log-1',
+        adminUserId: 'admin-1',
+        targetUserId: 'target-1',
+        startedAt: new Date('2026-01-01T00:00:00.000Z'),
+        endedAt: null,
+        durationSeconds: null,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        admin: makeUser({ id: 'admin-1', role: 'SUPER_ADMIN', ...overrides.admin }),
+        target: makeUser({ id: 'target-1', role: 'TRAINER', ...overrides.target }),
+      };
+    }
+
+    it('never calls isChildLogin for a SUPER_ADMIN admin or a non-PLAYER_PARENT target', async () => {
+      const { service, impersonationRepository, usersRepository } = makeService();
+      impersonationRepository.listHistory.mockResolvedValue([makeLogRow()]);
+
+      const page = await service.getHistory({});
+
+      expect(usersRepository.isChildLogin).not.toHaveBeenCalled();
+      expect(page.items[0]).toMatchObject({
+        id: 'log-1',
+        admin: { id: 'admin-1', accountType: 'ADULT' },
+        target: { id: 'target-1', accountType: 'ADULT' },
+      });
+    });
+
+    it('resolves accountType: CHILD for a PLAYER_PARENT target that is a child login', async () => {
+      const { service, impersonationRepository, usersRepository } = makeService();
+      impersonationRepository.listHistory.mockResolvedValue([
+        makeLogRow({ target: { id: 'target-1', role: 'PLAYER_PARENT' } }),
+      ]);
+      usersRepository.isChildLogin.mockResolvedValue(true);
+
+      const page = await service.getHistory({});
+
+      expect(usersRepository.isChildLogin).toHaveBeenCalledWith('target-1');
+      expect(page.items[0].target.accountType).toBe('CHILD');
     });
   });
 });

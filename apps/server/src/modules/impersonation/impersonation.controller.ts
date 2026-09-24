@@ -1,15 +1,18 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 
+import type { PaginatedResponseDto } from '../../shared/http/pagination.dto';
 import type { AuthContext } from '../../shared/security/auth-context.interface';
 import { Capability } from '../../shared/security/capability.enum';
 import { CurrentUser } from '../../shared/security/decorators/current-user.decorator';
 import { RequiresCapability } from '../../shared/security/decorators/requires-capability.decorator';
 import { Roles } from '../../shared/security/decorators/roles.decorator';
 
+import { ImpersonationLogResponseDto } from './dto/impersonation-log-response.dto';
 import { ImpersonationStartResponseDto } from './dto/impersonation-start-response.dto';
+import { ListImpersonationHistoryQueryDto } from './dto/list-impersonation-history-query.dto';
 import { StartImpersonationDto } from './dto/start-impersonation.dto';
 import { ImpersonationService } from './impersonation.service';
 
@@ -60,5 +63,20 @@ export class ImpersonationController {
   @ApiResponse({ status: 404, description: 'Log row missing (defensive; should not happen)' })
   async end(@CurrentUser() ctx: AuthContext): Promise<void> {
     await this.impersonationService.end(ctx);
+  }
+
+  // Task 7.3 (api §2 "GET /impersonation/history"). Super Admin only, same
+  // `@Roles`/`@RequiresCapability` pair as `/start` — an impersonation
+  // token can never satisfy `@Roles(SUPER_ADMIN)` either (arch §10), so
+  // this route is unreachable mid-impersonation the same way `/start` is,
+  // consistent with it needing no blast-radius exemption (unlike `/end`).
+  @Roles(Role.SUPER_ADMIN)
+  @RequiresCapability(Capability.IMPERSONATE_USER)
+  @Get('history')
+  @ApiOperation({ summary: 'Impersonation audit history (keyset paginated, filterable by admin/target/date)' })
+  @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 403 })
+  async getHistory(@Query() query: ListImpersonationHistoryQueryDto): Promise<PaginatedResponseDto<ImpersonationLogResponseDto>> {
+    return this.impersonationService.getHistory(query);
   }
 }

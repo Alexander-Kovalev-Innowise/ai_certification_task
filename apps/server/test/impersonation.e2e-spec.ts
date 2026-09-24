@@ -231,4 +231,113 @@ describe('ImpersonationController (e2e, Phase 7)', () => {
       expect(res.body.errorCode).toBe('IMPERSONATION_NOT_ALLOWED');
     });
   });
+
+  describe('GET /impersonation/history (Task 7.3)', () => {
+    it('lists past sessions newest-first, each row shaped as {id, admin, target, startedAt, endedAt, durationSeconds}', async () => {
+      const admin = await insertSuperAdmin();
+      const targetA = await insertTrainer();
+      const targetB = await insertTrainer();
+
+      const startA = await request(app.getHttpServer())
+        .post('/impersonation/start')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ targetUserId: targetA.userId });
+      await request(app.getHttpServer())
+        .post('/impersonation/end')
+        .set('Authorization', `Bearer ${startA.body.accessToken}`);
+
+      const startB = await request(app.getHttpServer())
+        .post('/impersonation/start')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ targetUserId: targetB.userId });
+
+      const res = await request(app.getHttpServer())
+        .get('/impersonation/history')
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.items).toHaveLength(2);
+      // newest-first: targetB's still-open session was started after targetA's.
+      expect(res.body.items[0]).toMatchObject({
+        id: startB.body.impersonationLogId,
+        admin: { id: admin.userId, role: 'SUPER_ADMIN' },
+        target: { id: targetB.userId, role: 'TRAINER' },
+        endedAt: null,
+        durationSeconds: null,
+      });
+      expect(res.body.items[1]).toMatchObject({
+        id: startA.body.impersonationLogId,
+        target: { id: targetA.userId },
+        durationSeconds: expect.any(Number),
+      });
+    });
+
+    it('filters by targetUserId', async () => {
+      const admin = await insertSuperAdmin();
+      const targetA = await insertTrainer();
+      const targetB = await insertTrainer();
+
+      await request(app.getHttpServer())
+        .post('/impersonation/start')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ targetUserId: targetA.userId });
+      await request(app.getHttpServer())
+        .post('/impersonation/start')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ targetUserId: targetB.userId });
+
+      const res = await request(app.getHttpServer())
+        .get('/impersonation/history')
+        .query({ targetUserId: targetA.userId })
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.items).toHaveLength(1);
+      expect(res.body.items[0].target.id).toBe(targetA.userId);
+    });
+
+    it('paginates via nextCursor/hasMore (limit=1)', async () => {
+      const admin = await insertSuperAdmin();
+      const targetA = await insertTrainer();
+      const targetB = await insertTrainer();
+
+      await request(app.getHttpServer())
+        .post('/impersonation/start')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ targetUserId: targetA.userId });
+      await request(app.getHttpServer())
+        .post('/impersonation/start')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ targetUserId: targetB.userId });
+
+      const page1 = await request(app.getHttpServer())
+        .get('/impersonation/history')
+        .query({ limit: 1 })
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+
+      expect(page1.body.items).toHaveLength(1);
+      expect(page1.body.hasMore).toBe(true);
+      expect(page1.body.nextCursor).toEqual(expect.any(String));
+
+      const page2 = await request(app.getHttpServer())
+        .get('/impersonation/history')
+        .query({ limit: 1, cursor: page1.body.nextCursor })
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+
+      expect(page2.body.items).toHaveLength(1);
+      expect(page2.body.hasMore).toBe(false);
+      expect(page2.body.items[0].target.id).not.toBe(page1.body.items[0].target.id);
+    });
+
+    it('non-Super-Admin caller -> 403', async () => {
+      const trainer = await insertTrainer();
+      const trainerToken = await signToken({ id: trainer.userId, role: 'TRAINER' }, { role: 'TRAINER', tid: trainer.trainerId });
+
+      const res = await request(app.getHttpServer())
+        .get('/impersonation/history')
+        .set('Authorization', `Bearer ${trainerToken}`);
+
+      expect(res.status).toBe(403);
+    });
+  });
 });
