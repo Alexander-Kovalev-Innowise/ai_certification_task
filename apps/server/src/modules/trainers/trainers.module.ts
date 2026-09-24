@@ -5,6 +5,7 @@ import { PasswordResetTokenRepository } from '../auth/password-reset-token.repos
 import { PasswordService } from '../auth/password.service';
 import { UsersModule } from '../users/users.module';
 
+import { PortalBrandingService } from './portal-branding.service';
 import { TrainerService } from './trainer.service';
 import { TrainersAnonymizer } from './trainers.anonymizer';
 import { TrainersController } from './trainers.controller';
@@ -23,7 +24,14 @@ import { TrainersRepository } from './trainers.repository';
 @Module({
   imports: [UsersModule, JobsModule],
   controllers: [TrainersController],
-  providers: [TrainersRepository, TrainerService, PasswordResetTokenRepository, PasswordService, TrainersAnonymizer],
+  providers: [
+    TrainersRepository,
+    TrainerService,
+    PortalBrandingService,
+    PasswordResetTokenRepository,
+    PasswordService,
+    TrainersAnonymizer,
+  ],
   exports: [TrainersRepository],
 })
 export class TrainersModule {}

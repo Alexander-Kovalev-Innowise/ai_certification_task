@@ -33,8 +33,20 @@ export class TrainersRepository {
     return this.prisma.extended.trainerProfile.findFirst({ where: { id } });
   }
 
-  /** Task 3.9 (api §4.1 "PATCH /trainers/:id"). Same ownership precondition as findById. */
-  async update(id: string, data: Prisma.TrainerProfileUpdateInput): Promise<TrainerProfile> {
-    return this.prisma.extended.trainerProfile.update({ where: { id }, data });
+  /**
+   * Task 3.9 (api §4.1 "PATCH /trainers/:id"). Same ownership precondition
+   * as findById. `tx` added in Task 8.1 (PortalBrandingService.updateBranding
+   * needs the TrainerProfile update to commit atomically with the
+   * MEDIA_LOGO_RESIZE outbox enqueue) — optional and last, per the plan's
+   * global repository convention. When `tx` is provided the tenant-guard
+   * extension (Layer 2) is deliberately NOT re-applied inside it (same
+   * trade-off UsersRepository's tx-taking methods already make): Layer 1
+   * (TrainerService/PortalBrandingService's own assertOwnershipOrNotFound)
+   * has already run by the time any caller reaches this method, so Layer 2
+   * would only be re-checking a precondition already guaranteed.
+   */
+  async update(id: string, data: Prisma.TrainerProfileUpdateInput, tx?: Prisma.TransactionClient): Promise<TrainerProfile> {
+    const client = tx ?? this.prisma.extended;
+    return client.trainerProfile.update({ where: { id }, data });
   }
 }

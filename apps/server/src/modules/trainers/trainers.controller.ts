@@ -8,9 +8,12 @@ import { CurrentUser } from '../../shared/security/decorators/current-user.decor
 import { RequiresCapability } from '../../shared/security/decorators/requires-capability.decorator';
 import { Roles } from '../../shared/security/decorators/roles.decorator';
 
+import { BrandingResponseDto } from './dto/branding-response.dto';
 import { CreateTrainerDto } from './dto/create-trainer.dto';
 import { TrainerCreatedResponseDto, TrainerResponseDto } from './dto/trainer-response.dto';
+import { UpdateBrandingDto } from './dto/update-branding.dto';
 import { UpdateTrainerDto } from './dto/update-trainer.dto';
+import { PortalBrandingService } from './portal-branding.service';
 import { TrainerService } from './trainer.service';
 
 // Task 3.8, first endpoint — extended in Task 3.9 (GET/PATCH /trainers/:id).
@@ -18,7 +21,10 @@ import { TrainerService } from './trainer.service';
 @ApiBearerAuth()
 @Controller('trainers')
 export class TrainersController {
-  constructor(private readonly trainerService: TrainerService) {}
+  constructor(
+    private readonly trainerService: TrainerService,
+    private readonly portalBrandingService: PortalBrandingService,
+  ) {}
 
   // Task 3.8 (api §4.1 "POST /trainers", FR-010/BR-005). Only Super Admin.
   @Roles(Role.SUPER_ADMIN)
@@ -63,5 +69,29 @@ export class TrainersController {
     @Body() dto: UpdateTrainerDto,
   ): Promise<TrainerResponseDto> {
     return this.trainerService.updateTrainer(ctx, id, dto);
+  }
+
+  // Task 8.1 (api §4.1 "PATCH /trainers/:id/branding", FR-071/OQ-7). Same
+  // @Roles/ownership shape as PATCH /trainers/:id above, but its own
+  // capability (MANAGE_PORTAL_BRANDING) and its own DTO/service — branding
+  // has different validation and a different FR (api §4.1 footnote at the
+  // top of that section). NOT_FOUND, not FORBIDDEN, for a non-owning
+  // trainer's :id — arch §8 Layer 3's "never 403, to avoid existence
+  // disclosure" applies to every tenant-owned resource in this controller,
+  // this endpoint included (matches PATCH /trainers/:id immediately above).
+  @Roles(Role.TRAINER, Role.SUPER_ADMIN)
+  @RequiresCapability(Capability.MANAGE_PORTAL_BRANDING)
+  @Patch(':id/branding')
+  @ApiOperation({ summary: "Update a trainer's portal branding — logo/primary color (own tenant for TRAINER, any for SUPER_ADMIN)" })
+  @ApiResponse({ status: 200, type: BrandingResponseDto })
+  @ApiResponse({ status: 400 })
+  @ApiResponse({ status: 403 })
+  @ApiResponse({ status: 404 })
+  async updateBranding(
+    @CurrentUser() ctx: AuthContext,
+    @Param('id') id: string,
+    @Body() dto: UpdateBrandingDto,
+  ): Promise<BrandingResponseDto> {
+    return this.portalBrandingService.updateBranding(ctx, id, dto);
   }
 }
