@@ -340,4 +340,84 @@ describe('ImpersonationController (e2e, Phase 7)', () => {
       expect(res.status).toBe(403);
     });
   });
+
+  describe('Blast radius (Task 7.5)', () => {
+    /**
+     * All three routes ARE 403 with an impersonation token, matching the
+     * plan's literal "→ 403" acceptance criteria — but the errorCode
+     * observed here is `FORBIDDEN` (from `RolesGuard`), not
+     * `IMPERSONATION_NOT_ALLOWED`: all three also carry `@Roles(SUPER_ADMIN)`,
+     * and an impersonation token's effective role can never satisfy that
+     * (`assertNotTargetingSuperAdmin`, Task 7.1, plus `RolesGuard`'s own
+     * locked-in "always uses the effective role, never the impersonation
+     * actor role", `roles.guard.spec.ts`) — so `RolesGuard` (pipeline step
+     * 6) rejects the request before `CapabilitiesGuard`'s blast-radius check
+     * (step 7, Task 7.5) is ever reached. The `IMPERSONATION_NOT_ALLOWED`
+     * code IS genuinely produced by that check — proven directly against
+     * `CapabilitiesGuard` in `capabilities.guard.spec.ts`, the level at
+     * which it's actually reachable today (defense-in-depth for a future
+     * capability/route that doesn't also carry a conflicting `@Roles`
+     * gate). See that guard's own comment for the full explanation.
+     */
+    async function startImpersonation(): Promise<{ impersonationToken: string; adminToken: string }> {
+      const admin = await insertSuperAdmin();
+      const target = await insertTrainer();
+      const res = await request(app.getHttpServer())
+        .post('/impersonation/start')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ targetUserId: target.userId });
+      return { impersonationToken: res.body.accessToken as string, adminToken: admin.accessToken };
+    }
+
+    it('POST /impersonation/start with an impersonation token -> 403', async () => {
+      const { impersonationToken } = await startImpersonation();
+      const anotherTarget = await insertTrainer();
+
+      const res = await request(app.getHttpServer())
+        .post('/impersonation/start')
+        .set('Authorization', `Bearer ${impersonationToken}`)
+        .send({ targetUserId: anotherTarget.userId });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('DELETE /users/:id with an impersonation token -> 403', async () => {
+      const { impersonationToken } = await startImpersonation();
+      const victim = await insertUser({ role: 'PLAYER_PARENT' });
+
+      const res = await request(app.getHttpServer())
+        .delete(`/users/${victim.id}`)
+        .set('Authorization', `Bearer ${impersonationToken}`)
+        .send({ reason: 'blast radius test' });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('POST /trainers with an impersonation token -> 403', async () => {
+      const { impersonationToken } = await startImpersonation();
+
+      const res = await request(app.getHttpServer())
+        .post('/trainers')
+        .set('Authorization', `Bearer ${impersonationToken}`)
+        .send({
+          businessName: 'Blast Radius Co',
+          firstName: 'A',
+          lastName: 'B',
+          email: `${randomUUID()}@example.com`,
+          phone: '+14155552671',
+        });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('POST /impersonation/end still works with the blast-radius wiring live (the exemption)', async () => {
+      const { impersonationToken } = await startImpersonation();
+
+      const res = await request(app.getHttpServer())
+        .post('/impersonation/end')
+        .set('Authorization', `Bearer ${impersonationToken}`);
+
+      expect(res.status).toBe(204);
+    });
+  });
 });
