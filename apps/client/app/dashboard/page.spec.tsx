@@ -64,10 +64,7 @@ describe('DashboardPage (fe §3, unified /dashboard route)', () => {
     expect(screen.queryByRole('heading')).not.toBeInTheDocument();
   });
 
-  it.each([
-    ['SUPER_ADMIN', /super admin dashboard/i],
-    ['COACH', /coach dashboard/i],
-  ] as const)('renders the %s shell for a %s session', async (role, expectedCopy) => {
+  it.each([['SUPER_ADMIN', /super admin dashboard/i]] as const)('renders the %s shell for a %s session', async (role, expectedCopy) => {
     const user = userWithRole(role);
     useAuthStore.getState().setSession({ accessToken: 't', user, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, { role, user }));
@@ -76,6 +73,31 @@ describe('DashboardPage (fe §3, unified /dashboard route)', () => {
 
     await waitFor(() => expect(screen.getByText(expectedCopy)).toBeInTheDocument());
     expect(screen.getByRole('heading', { name: /welcome, alex/i })).toBeInTheDocument();
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  // Task 15.2 — CoachDashboardShell now has real content (employing-trainer
+  // card, availabilitySet prompt), so it needs the full `CoachBootstrapDto`
+  // shape rather than the placeholder `{ role, user }` body (same reasoning
+  // as the TRAINER/PLAYER_PARENT shells above, Tasks 13.4/14.2).
+  it('renders the COACH shell with an employing-trainer card and availabilitySet prompt for a COACH session', async () => {
+    const user = userWithRole('COACH');
+    useAuthStore.getState().setSession({ accessToken: 't', user, expiresAt: Date.now() + 60_000 });
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockResponse(200, {
+        role: 'COACH',
+        user,
+        coachProfile: { id: 'coach-1', userId: user.id, trainerId: 'trainer-1', status: 'ACTIVE', bio: null, credentials: null, certifications: null, publicProfile: false },
+        employingTrainer: { id: 'trainer-1', businessName: 'Ace Tennis Academy', logoUrl: null, primaryColorHex: null },
+        availabilitySet: false,
+      }),
+    );
+
+    renderDashboard();
+
+    await waitFor(() => expect(screen.getByText('Ace Tennis Academy')).toBeInTheDocument());
+    expect(screen.getByRole('heading', { name: /welcome, alex/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /set.*availability/i })).toHaveAttribute('href', '/my-times');
     expect(replaceMock).not.toHaveBeenCalled();
   });
 
