@@ -106,16 +106,29 @@ describe('DashboardPage (fe §3, unified /dashboard route)', () => {
     expect(replaceMock).not.toHaveBeenCalled();
   });
 
-  it('renders the player/parent shell for a PLAYER_PARENT session', async () => {
+  // Task 14.2 — PlayerDashboardShell now has real content (pendingApprovalsCount
+  // tile for adult accounts, quick link to /profiles), so it needs the full
+  // `PlayerParentBootstrapDto` shape rather than the placeholder `{ role, user }` body.
+  it('renders the player/parent shell with a pendingApprovalsCount tile for an ADULT PLAYER_PARENT session', async () => {
     const user = userWithRole('PLAYER_PARENT');
     useAuthStore.getState().setSession({ accessToken: 't', user, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock).mockResolvedValueOnce(
-      mockResponse(200, { role: 'PLAYER_PARENT', accountType: 'ADULT', user, contexts: [], activeContext: null }),
+      mockResponse(200, {
+        role: 'PLAYER_PARENT',
+        accountType: 'ADULT',
+        user,
+        playerProfiles: [],
+        contexts: [],
+        activeContext: null,
+        pendingApprovalsCount: 2,
+      }),
     );
 
     renderDashboard();
 
-    await waitFor(() => expect(screen.getByText(/dashboard — content coming/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/pending approvals/i)).toBeInTheDocument());
+    expect(screen.getByRole('heading', { name: /welcome, alex/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /manage profiles/i })).toHaveAttribute('href', '/profiles');
     expect(replaceMock).not.toHaveBeenCalled();
   });
 
