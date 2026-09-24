@@ -66,7 +66,6 @@ describe('DashboardPage (fe §3, unified /dashboard route)', () => {
 
   it.each([
     ['SUPER_ADMIN', /super admin dashboard/i],
-    ['TRAINER', /trainer dashboard/i],
     ['COACH', /coach dashboard/i],
   ] as const)('renders the %s shell for a %s session', async (role, expectedCopy) => {
     const user = userWithRole(role);
@@ -77,6 +76,33 @@ describe('DashboardPage (fe §3, unified /dashboard route)', () => {
 
     await waitFor(() => expect(screen.getByText(expectedCopy)).toBeInTheDocument());
     expect(screen.getByRole('heading', { name: /welcome, alex/i })).toBeInTheDocument();
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  // Task 13.4 — TrainerDashboardShell now has real content (branding
+  // preview, coachCount/activePlayerCount stat tiles, quick links), so it
+  // needs the full `TrainerBootstrapDto` shape rather than the other two
+  // shells' still-placeholder `{ role, user }` body.
+  it('renders the TRAINER shell with branding preview, stat tiles and quick links for a TRAINER session', async () => {
+    const user = userWithRole('TRAINER');
+    useAuthStore.getState().setSession({ accessToken: 't', user, expiresAt: Date.now() + 60_000 });
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockResponse(200, {
+        role: 'TRAINER',
+        user,
+        trainerProfile: { id: 'trainer-1', businessName: 'Ace Tennis Academy' },
+        branding: { logoUrl: null, primaryColorHex: null },
+        coachCount: 3,
+        activePlayerCount: 27,
+      }),
+    );
+
+    renderDashboard();
+
+    await waitFor(() => expect(screen.getByText('Ace Tennis Academy')).toBeInTheDocument());
+    expect(screen.getByRole('heading', { name: /welcome, alex/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /manage coaches/i })).toHaveAttribute('href', '/coaches');
+    expect(screen.getByRole('link', { name: /manage share links/i })).toHaveAttribute('href', '/share-links');
     expect(replaceMock).not.toHaveBeenCalled();
   });
 
