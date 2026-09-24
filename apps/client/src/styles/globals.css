@@ -39,3 +39,28 @@ body {
 .font-numeric {
   font-variant-numeric: tabular-nums;
 }
+
+/* fe §1.3/§5.2 — the "spotlight moves" cross-fade: when ContextSwitcher
+   (Task 14.1) writes a new active trainer, BrandingProvider recomputes
+   --brand-primary/-soft/-deep/-rgb on the [data-branding] wrapper it owns
+   (fe §8) and every element under it that reads one of those custom
+   properties for its own color/background/border should ease into the new
+   value over 180ms rather than snap — this is "the single animation every
+   player/parent user will see repeatedly," so it's declared once here
+   rather than per-component. `motion-reduce` honors prefers-reduced-motion
+   (accessibility checklist) by disabling the transition outright. */
+[data-branding],
+[data-branding] * {
+  transition:
+    background-color 180ms ease-in-out,
+    border-color 180ms ease-in-out,
+    color 180ms ease-in-out,
+    fill 180ms ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-branding],
+  [data-branding] * {
+    transition: none;
+  }
+}
