@@ -1,9 +1,10 @@
 'use client';
 
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { SkeletonCard } from '../../../src/components/shared/Skeleton';
+import { CreateTrainerModal } from '../../../src/components/super-admin/CreateTrainerModal';
 import { UserFilters, type UserFiltersValue } from '../../../src/components/super-admin/UserFilters';
 import { UsersTable, type UserDirectoryRow } from '../../../src/components/super-admin/UsersTable';
 import { apiRequest } from '../../../src/lib/api/apiClient';
@@ -51,6 +52,8 @@ async function fetchUsers(filters: UserFiltersValue, cursor: string | null): Pro
 // re-guard.
 export default function UsersPage() {
   const [filters, setFilters] = useState<UserFiltersValue>(EMPTY_FILTERS);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ['users', filters],
@@ -63,7 +66,16 @@ export default function UsersPage() {
 
   return (
     <section className="flex flex-col gap-lg p-lg">
-      <h1 className="text-xl font-semibold text-[var(--text-primary)]">Users</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold text-[var(--text-primary)]">Users</h1>
+        <button
+          type="button"
+          onClick={() => setIsCreateModalOpen(true)}
+          className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary"
+        >
+          Create Trainer
+        </button>
+      </div>
 
       <UserFilters value={filters} onChange={setFilters} />
 
@@ -78,6 +90,12 @@ export default function UsersPage() {
       {!isLoading && !isError && (
         <UsersTable items={items} hasMore={!!hasNextPage} isFetchingNextPage={isFetchingNextPage} onLoadMore={() => void fetchNextPage()} />
       )}
+
+      <CreateTrainerModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onCreated={() => void queryClient.invalidateQueries({ queryKey: ['users'] })}
+      />
     </section>
   );
 }
