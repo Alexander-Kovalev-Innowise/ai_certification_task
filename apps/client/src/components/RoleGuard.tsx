@@ -6,16 +6,16 @@ import { useEffect, type ReactNode } from 'react';
 import { useAuthStore } from '../stores/useAuthStore';
 import type { Role } from '../types/auth';
 
-// fe §3 — every role route group ((super-admin)/dashboard, (trainer)/
-// dashboard, (coach)/dashboard, (player)/dashboard) documents its dashboard
-// page at the *same* leaf segment. Next.js route groups (parenthesized
-// segment names) never add a URL path segment, so all four resolve to the
-// literal same `/dashboard` URL — which is exactly right for "redirect to
-// the caller's own dashboard" here, but also means the four
-// `dashboard/page.tsx` files as documented cannot coexist (Next.js rejects
-// two page files resolving to the same path at build time). Flagged for
-// whoever builds Phase 11's route groups — out of Phase 10's scope to fix,
-// since no page.tsx files exist yet to collide.
+// fe §3 (2026-09-24 correction) — `/dashboard` is a single unified route
+// (`app/dashboard/page.tsx`, outside every `(role)` group), not four
+// route-grouped `dashboard/page.tsx` leaves. It used to be documented as one
+// leaf per role group ((super-admin)/dashboard, (trainer)/dashboard, etc.),
+// but Next.js route groups (parenthesized segment names) never add a URL
+// path segment, so all four would have resolved to the literal same
+// `/dashboard` URL and Next.js rejects two page files resolving to the same
+// path at build time. This constant's value is exactly right either way —
+// "redirect to the caller's own dashboard" was always meant to mean this one
+// shared URL.
 const DASHBOARD_PATH = '/dashboard';
 const LOGIN_PATH = '/login';
 

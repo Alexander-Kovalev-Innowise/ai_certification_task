@@ -157,9 +157,13 @@ app/
 ├── (force-password-change)/
 │   └── change-password/page.tsx        # forced landing when mustChangePassword=true; excluded from RoleGuard's normal redirect table
 │
+├── dashboard/page.tsx                  # SINGLE unified route for all 4 roles (see 2026-09-24 note below) — reads
+│                                        # GET /me/bootstrap, dispatches on the response's `role` discriminant to
+│                                        # SuperAdminDashboardShell / TrainerDashboardShell / CoachDashboardShell /
+│                                        # PlayerDashboardShell. Not inside any (role) route group — see note.
+│
 ├── (super-admin)/
 │   ├── layout.tsx                      # RoleGuard(SUPER_ADMIN), SA nav shell
-│   ├── dashboard/page.tsx              # minimal — GET /me/bootstrap SUPER_ADMIN shape has no stats block (api-spec §5)
 │   ├── users/
 │   │   ├── page.tsx                    # directory, GET /users
 │   │   └── [id]/page.tsx               # detail/edit, GET+PATCH /users/:id, deactivate/reactivate/GDPR-delete actions
@@ -167,7 +171,6 @@ app/
 │
 ├── (trainer)/
 │   ├── layout.tsx                      # RoleGuard(TRAINER), trainer nav shell, BrandingProvider reads own trainerProfile
-│   ├── dashboard/page.tsx              # GET /me/bootstrap TRAINER shape
 │   ├── coaches/page.tsx                # GET /trainers/:id/coaches + invite form + PATCH /coaches/:id (status)
 │   ├── players/page.tsx                # GET /trainers/:id/players, day/time filter
 │   ├── share-links/page.tsx            # GET /trainers/:id/share-links + generator modal (POST /share-links) + revoke (DELETE)
@@ -175,13 +178,11 @@ app/
 │
 ├── (coach)/
 │   ├── layout.tsx                      # RoleGuard(COACH), coach nav shell
-│   ├── dashboard/page.tsx              # GET /me/bootstrap COACH shape
 │   ├── my-times/page.tsx               # GET+PUT /coaches/:id/availability — reuses <AvailabilityGrid>
 │   └── profile/page.tsx                # PATCH /coaches/:id (self-fields branch, FR-064)
 │
 ├── (player)/
 │   ├── layout.tsx                      # RoleGuard(PLAYER_PARENT), player/parent nav shell, mounts <ContextSwitcher>
-│   ├── dashboard/page.tsx              # GET /me/bootstrap PLAYER_PARENT (adult|child) shape
 │   ├── profiles/
 │   │   ├── page.tsx                    # GET /player-profiles — list, +Add Child
 │   │   └── [id]/
@@ -194,9 +195,15 @@ app/
         └── profile/page.tsx            # GET/PATCH /me — role-aware fields, every authenticated role
 ```
 
-**Route count: 23 pages** (6 public + 1 forced-password-change + 3 Super Admin + 5 trainer + 3 coach + 4 player/parent + 1 shared), plus the always-mounted layout-level components (`ImpersonationBanner`, `ContextSwitcher`, `BrandingProvider`, 4× `RoleGuard` shells) — reconciling to "~20" from the requirements doc's estimate, adjusted up by three routes the API spec surfaced that the requirements doc didn't separately enumerate: `/register` (trainer-setup, not public signup — §8.4 of the api spec), `/change-password` (forced landing for `mustChangePassword`, api-spec §6.6/§1's `PASSWORD_CHANGE_REQUIRED`), and `/verify-email` as its own route rather than folded into login (non-blocking per architecture §6.5, but still needs a link target).
+**Route count: 20 pages** (6 public + 1 forced-password-change + 1 unified dashboard + 2 Super Admin + 4 trainer + 2 coach + 3 player/parent + 1 shared), plus the always-mounted layout-level components (`ImpersonationBanner`, `ContextSwitcher`, `BrandingProvider`, 4× `RoleGuard` shells) — reconciling to "~20" from the requirements doc's estimate. (Prior to the 2026-09-24 correction below, this line read "23 pages," counting `dashboard/page.tsx` once per role group; merging the four into one shared `dashboard/page.tsx` nets −3.) The three routes the API spec surfaced that the requirements doc didn't separately enumerate: `/register` (trainer-setup, not public signup — §8.4 of the api spec), `/change-password` (forced landing for `mustChangePassword`, api-spec §6.6/§1's `PASSWORD_CHANGE_REQUIRED`), and `/verify-email` as its own route rather than folded into login (non-blocking per architecture §6.5, but still needs a link target).
 
 **Deliberately not routes:** `/coaches/accept/[code]` — api-spec §8.6 confirms this was dropped; coach acceptance is one branch of `/join/[code]`'s dispatch, not a separate page (§4.2). `POST /users` create-any-role UI — api-spec §8.5 confirms this endpoint doesn't exist; the Super Admin create flow is `/users` page's "Create Trainer" modal calling `POST /trainers` only, there is no generic "create user" affordance.
+
+---
+
+**2026-09-24 correction — why `/dashboard` is a single unified route, not four route-grouped pages:** the route map above originally documented each role's dashboard as a `dashboard/page.tsx` leaf inside that role's own route group — `(super-admin)/dashboard/page.tsx`, `(trainer)/dashboard/page.tsx`, `(coach)/dashboard/page.tsx`, `(player)/dashboard/page.tsx`. Next.js App Router route groups (`(name)`) are purely organizational and never add a URL segment (see [Next.js route-groups docs](https://nextjs.org/docs/app/api-reference/file-conventions/route-groups)'s own "Conflicting paths" caveat), so all four leaves resolved to the identical URL `/dashboard` — Next.js rejects this at build time once more than one of the four page files exists ("duplicate page" error), not merely at runtime. `RoleGuard` (`apps/client/src/components/RoleGuard.tsx`, Phase 10) already documented this exact collision in a code comment and deliberately redirects to the literal string `/dashboard` for every role, which only makes sense for a single shared route.
+
+The fix: **one route**, `app/dashboard/page.tsx`, living outside every `(role)` group. It authenticates via `RoleGuard` (allowing all four roles — i.e. "any signed-in user", since there is no longer a single role to gate on at this leaf), reads `GET /me/bootstrap` (the discriminated-union payload api-spec §5 already defines, keyed on `role`), and renders `SuperAdminDashboardShell` / `TrainerDashboardShell` / `CoachDashboardShell` / `PlayerDashboardShell` based on that `role` field — the same per-role shell components §4.3–§4.6 below already named, just dispatched from one physical file instead of four. Each role group's own route group (`(super-admin)`, `(trainer)`, `(coach)`, `(player)`) keeps every *other* route it owns (`/users`, `/coaches`, `/my-times`, `/profiles`, etc.) — only the colliding `dashboard/page.tsx` leaf moved out. This is a routing/structure fix only; the four shells' actual content (stat tiles, quick links, per-role data) remains each later phase's job per §4.3–§4.6.
 
 ---
 
