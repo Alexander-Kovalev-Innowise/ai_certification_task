@@ -23,6 +23,8 @@ describe('ImpersonationController (e2e, Phase 7)', () => {
   let app: INestApplication;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamically required after DATABASE_URL is set
   let jwtService: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- kept for Task 7.6's DI-wiring check (resolving ImpersonationMaintenanceJob for real)
+  let moduleRef: any;
 
   const originalDatabaseUrl = process.env.DATABASE_URL;
   const KNOWN_PASSWORD = 'CorrectHorseBattery1';
@@ -37,7 +39,7 @@ describe('ImpersonationController (e2e, Phase 7)', () => {
     const { JwtService } = require('@nestjs/jwt') as typeof import('@nestjs/jwt');
     /* eslint-enable @typescript-eslint/no-require-imports */
 
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
     app.use(helmet());
     app.use(cookieParser());
@@ -418,6 +420,140 @@ describe('ImpersonationController (e2e, Phase 7)', () => {
         .set('Authorization', `Bearer ${impersonationToken}`);
 
       expect(res.status).toBe(204);
+    });
+  });
+
+  describe('Full round trip (Task 7.6)', () => {
+    function extractCookie(setCookieHeader: string[], name: string): string {
+      const raw = setCookieHeader.find((c) => c.startsWith(`${name}=`));
+      if (!raw) throw new Error(`cookie ${name} not found in Set-Cookie header`);
+      return raw.split(';')[0]!;
+    }
+
+    /**
+     * The one place in this file that legitimately uses a real `/auth/login`
+     * (per the plan's own pitfall note) — a signed test token has no
+     * `RefreshToken` DB row or real cookie behind it, and this test's whole
+     * point is proving the admin's ACTUAL refresh cookie survives an
+     * impersonation session untouched.
+     */
+    it('start -> act as target -> end -> refresh -> back to admin, sub/role/tv unchanged', async () => {
+      const adminId = randomUUID();
+      const adminEmail = `${adminId}@example.com`;
+      await db.prisma.user.create({
+        data: {
+          id: adminId,
+          email: adminEmail,
+          passwordHash: await argon2.hash(KNOWN_PASSWORD),
+          role: 'SUPER_ADMIN',
+          firstName: 'Admin',
+          lastName: 'Root',
+          status: 'ACTIVE',
+        },
+      });
+      const target = await insertTrainer();
+
+      // 1. Real login — the admin's actual refresh cookie/CSRF pair.
+      const loginRes = await request(app.getHttpServer()).post('/auth/login').send({ email: adminEmail, password: KNOWN_PASSWORD });
+      expect(loginRes.status).toBe(200);
+      const adminAccessTokenBefore = loginRes.body.accessToken as string;
+      const loginCookies = loginRes.headers['set-cookie'] as unknown as string[];
+      const refreshCookie = extractCookie(loginCookies, 'refreshToken');
+      const csrfCookie = extractCookie(loginCookies, 'csrf');
+      const csrfToken = csrfCookie.split('=')[1];
+      const claimsBefore = await jwtService.decode(adminAccessTokenBefore);
+
+      // 2. Start impersonation.
+      const startRes = await request(app.getHttpServer())
+        .post('/impersonation/start')
+        .set('Authorization', `Bearer ${adminAccessTokenBefore}`)
+        .send({ targetUserId: target.userId });
+      expect(startRes.status).toBe(201);
+      const impersonationToken = startRes.body.accessToken as string;
+      const logId = startRes.body.impersonationLogId as string;
+
+      // 3. Do something AS the target — GET /me proves the effective
+      // identity, PATCH /me is a genuine write made "during the session".
+      // `AUDIT_STAMPED_MODELS` (audit-stamp.extension.ts, Task 1.7) is
+      // deliberately empty for the whole of Epic-01 — no model yet carries
+      // an `actorUserId`/`impersonationLogId` column pair to assert against
+      // — so the concrete, persisted "both ids" audit record for Epic-01 is
+      // the `ImpersonationLog` row itself (asserted below), and what THIS
+      // step proves is the other half of SEC-003: the write actually lands
+      // on the target's own row, under the target's own authorization,
+      // never the admin's — the real guard pipeline (JwtAuthGuard ->
+      // RolesGuard -> CapabilitiesGuard -> TenantContextInterceptor) acting
+      // on a genuine impersonation-token request, not a hand-built
+      // AuthContext like audit-stamp.extension.spec.ts's own unit tests.
+      const meRes = await request(app.getHttpServer()).get('/me').set('Authorization', `Bearer ${impersonationToken}`);
+      expect(meRes.status).toBe(200);
+      expect(meRes.body.id).toBe(target.userId);
+      expect(meRes.body.role).toBe('TRAINER');
+
+      const patchRes = await request(app.getHttpServer())
+        .patch('/me')
+        .set('Authorization', `Bearer ${impersonationToken}`)
+        .send({ firstName: 'Impersonated-Edit' });
+      expect(patchRes.status).toBe(200);
+
+      const targetRowAfterWrite = await db.prisma.user.findUniqueOrThrow({ where: { id: target.userId } });
+      expect(targetRowAfterWrite.firstName).toBe('Impersonated-Edit');
+      const adminRowUnaffected = await db.prisma.user.findUniqueOrThrow({ where: { id: adminId } });
+      expect(adminRowUnaffected.firstName).toBe('Admin');
+
+      // 4. End — discard the impersonation token client-side afterward.
+      const endRes = await request(app.getHttpServer()).post('/impersonation/end').set('Authorization', `Bearer ${impersonationToken}`);
+      expect(endRes.status).toBe(204);
+
+      const log = await db.prisma.impersonationLog.findUniqueOrThrow({ where: { id: logId } });
+      expect(log.adminUserId).toBe(adminId);
+      expect(log.targetUserId).toBe(target.userId);
+      expect(log.endedAt).not.toBeNull();
+      expect(log.durationSeconds).toEqual(expect.any(Number));
+
+      // 5. Refresh on the admin's ORIGINAL, never-touched refresh cookie —
+      // zero re-login, sub/role/tv exactly what they were before.
+      const refreshRes = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Cookie', [refreshCookie, csrfCookie])
+        .set('X-CSRF-Token', csrfToken);
+
+      expect(refreshRes.status).toBe(200);
+      const claimsAfter = await jwtService.decode(refreshRes.body.accessToken);
+      expect(claimsAfter.sub).toBe(claimsBefore.sub);
+      expect(claimsAfter.role).toBe(claimsBefore.role);
+      expect(claimsAfter.tv).toBe(claimsBefore.tv);
+      expect('act' in claimsAfter).toBe(false);
+    });
+  });
+
+  describe('Stale-session cron, wired through the real app (Task 7.4 + 7.6)', () => {
+    it('ImpersonationMaintenanceJob, resolved from the real DI container, closes a session past its 60-minute cap', async () => {
+      const admin = await insertSuperAdmin();
+      const target = await insertTrainer();
+
+      const startRes = await request(app.getHttpServer())
+        .post('/impersonation/start')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ targetUserId: target.userId });
+      const logId = startRes.body.impersonationLogId as string;
+
+      // Simulate a crashed client: never called /end, and the session
+      // started well past the 60-minute cap.
+      await db.prisma.impersonationLog.update({
+        where: { id: logId },
+        data: { startedAt: new Date(Date.now() - 90 * 60_000) },
+      });
+
+      /* eslint-disable @typescript-eslint/no-require-imports -- deliberate, matches this file's own beforeAll dance */
+      const { ImpersonationMaintenanceJob } = require('../src/modules/impersonation/impersonation-maintenance.job') as typeof import('../src/modules/impersonation/impersonation-maintenance.job');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      const job = moduleRef.get(ImpersonationMaintenanceJob);
+      await job.sweep();
+
+      const log = await db.prisma.impersonationLog.findUniqueOrThrow({ where: { id: logId } });
+      expect(log.endedAt).not.toBeNull();
+      expect(log.durationSeconds).toBe(3600);
     });
   });
 });
