@@ -499,6 +499,12 @@ After completion, agent suggests: `/code-reviewer [context]`
 
 This section covers running the PracticePerfect application itself (`apps/server` + `apps/client`), as scaffolded by the Epic-01 implementation plan — separate from the Accelerator Core tooling documented above.
 
+> ### ⚠️ Single-replica constraint — read this before deploying
+>
+> **This deployment is single-process only. Do not run two instances of `apps/server` at once.** Scheduled jobs (`@nestjs/schedule` `@Cron` — the outbox pump plus four maintenance sweeps) fire in *every* process that registers them; a second replica means duplicate side effects (e.g. duplicate expiry emails to parents), not just duplicate log lines. There is no distributed lock or leader election here — none is needed at one replica, and none is built.
+>
+> **Emergency stopgap only:** set `SCHEDULER_ENABLED=false` (typed in `apps/server/src/shared/config/env.schema.ts`, default `true`) on every replica but one to bring up a second process without double-firing today. This is not a scaling design — it makes the scheduler a single point of failure. See `specs/architect-architecture.md` §21 for the real exit criteria and minimum change required before scaling past one replica.
+
 ### Prerequisites
 
 - **Node.js** 20+ and **npm** 10+ (npm workspaces — not pnpm/yarn)
@@ -547,6 +553,4 @@ npm run test:e2e     # integration/e2e tests (apps/server)
 
 `test:e2e` uses Testcontainers to spin up a real PostgreSQL container per test run — **Docker must be running** for these to pass.
 
-### ⚠️ Single-replica constraint
-
-This deployment is single-process only. Do not run two instances of `apps/server` — scheduled jobs (`@nestjs/schedule` `@Cron`) will double-fire. See `specs/architect-architecture.md` §21 before scaling out.
+See the single-replica warning at the top of this section before running more than one instance of `apps/server`.
