@@ -104,6 +104,32 @@ export async function logout(everywhere = false): Promise<void> {
 }
 
 /**
+ * fe §4.1 (Task 11.1+) — a sibling to apiRequest() for the handful of
+ * endpoints where a 401 does NOT mean "this session's access token
+ * expired": POST /auth/login's own invalid-credentials/ACCOUNT_INACTIVE 401
+ * (there is no session yet to refresh) and POST /auth/change-password's
+ * wrong-currentPassword 401 (the session is perfectly valid — the *password*
+ * was wrong). Routing either through apiRequest() would trigger its
+ * refresh-then-redirect-to-/login flow on a normal, expected business
+ * response, which is exactly the bug this avoids. Same header-attachment
+ * behavior as apiRequest() (Authorization when a token is in memory,
+ * `credentials: 'include'` for cookies) — just without the 401 special
+ * case. Same reasoning as refreshSession()/logout() above already being
+ * hand-rolled fetches instead of going through apiRequest().
+ */
+export async function publicApiRequest(path: string, options: ApiRequestOptions = {}): Promise<Response> {
+  const { accessToken } = useAuthStore.getState();
+  const { headers: callerHeaders, ...rest } = options;
+
+  const headers: Record<string, string> = {
+    ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
+    ...callerHeaders,
+  };
+
+  return fetch(`${API_BASE_URL}${path}`, { ...rest, headers, credentials: 'include' });
+}
+
+/**
  * fe §6.2 — the single fetch wrapper every API call in the app goes
  * through. `Authorization` and `X-Trainer-Context` are attached
  * automatically from the Zustand stores — no call site threads either

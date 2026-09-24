@@ -2,7 +2,7 @@ import { useAuthStore } from '../../stores/useAuthStore';
 import { useTrainerContextStore } from '../../stores/useTrainerContextStore';
 import type { UserSummaryDto } from '../../types/auth';
 
-import { apiRequest, SessionExpiredError } from './apiClient';
+import { apiRequest, publicApiRequest, SessionExpiredError } from './apiClient';
 
 const testUser: UserSummaryDto = {
   id: 'user-1',
@@ -114,5 +114,35 @@ describe('apiRequest', () => {
 
     // Only the original request — no /auth/refresh call at all.
     expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('publicApiRequest', () => {
+  beforeEach(() => {
+    useAuthStore.getState().clear();
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('does not retry or clear the session on a 401 — Task 11.1/11.6\'s own business-logic 401s are not "session expired"', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(401, { errorCode: 'ACCOUNT_INACTIVE' }));
+
+    const res = await publicApiRequest('/auth/login');
+
+    expect(res.status).toBe(401);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('attaches Authorization when an access token is present, but never X-Trainer-Context', async () => {
+    useAuthStore.getState().setSession({ accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200));
+
+    await publicApiRequest('/auth/change-password');
+
+    const [, options] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(options.headers.Authorization).toBe('Bearer token-abc');
   });
 });
