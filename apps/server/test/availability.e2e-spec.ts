@@ -7,6 +7,7 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import request from 'supertest';
 
+import { seedTrainerPair } from './helpers/tenant-isolation.helper';
 import { resetTestDatabase, startTestDatabase, stopTestDatabase, TestDatabase } from './setup/testcontainers.setup';
 
 // Task 5.11 (api §4.5, player half), extended in Phase 6 (Tasks 6.1-6.3,
@@ -473,6 +474,119 @@ describe('AvailabilityController (e2e, Task 5.11 + Phase 6)', () => {
         .send({ eventId: randomUUID(), reason: 'Coach trying to log their own override' });
 
       expect(coachRes.status).toBe(403);
+    });
+  });
+
+  // Task 6.5. CRUD correctness for both subjects (player already covered
+  // above by Task 5.11's own suite, so this sweep's CRUD case is the coach
+  // full-replace round trip), override authorization + logging (the audit
+  // row + outbox enqueue that Tasks 6.1-6.3's own describe blocks only
+  // checked via HTTP status codes), and cross-tenant isolation using the
+  // Task 3.12 `seedTrainerPair` fixture across the whole coach-availability
+  // surface (GET/PUT/check/override).
+  describe('Task 6.5 — CRUD sweep, override logging, cross-tenant isolation', () => {
+    it('coach PUT -> GET round trip reflects full-replace semantics', async () => {
+      const coach = await insertCoach();
+      await db.prisma.availability.create({
+        data: { subjectType: 'COACH', coachProfileId: coach.coachId, dayOfWeek: 5, startTime: 60, endTime: 120, isAvailable: true },
+      });
+
+      const putRes = await request(app.getHttpServer())
+        .put(`/coaches/${coach.coachId}/availability`)
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .send({ slots: validSlots });
+      expect(putRes.status).toBe(200);
+
+      const getRes = await request(app.getHttpServer())
+        .get(`/coaches/${coach.coachId}/availability`)
+        .set('Authorization', `Bearer ${coach.accessToken}`);
+
+      expect(getRes.status).toBe(200);
+      expect(getRes.body.coachProfileId).toBe(coach.coachId);
+      // The old dayOfWeek-5 slot from before the PUT is gone (delete +
+      // recreate, not merge) — only the `validSlots` payload remains.
+      expect(getRes.body.slots).toHaveLength(1);
+      expect(getRes.body.slots[0]).toMatchObject(validSlots[0]);
+
+      const rows = await db.prisma.availability.findMany({ where: { subjectType: 'COACH', coachProfileId: coach.coachId } });
+      expect(rows).toHaveLength(1);
+    });
+
+    it('an override persists the full audit row (event_id/coach_id/trainer_id/reason) and enqueues the notify email', async () => {
+      const coach = await insertCoach();
+      const trainerToken = await trainerAccessToken(coach.trainerId);
+      const eventId = randomUUID();
+
+      const res = await request(app.getHttpServer())
+        .post(`/coaches/${coach.coachId}/availability/override`)
+        .set('Authorization', `Bearer ${trainerToken}`)
+        .send({ eventId, reason: 'Regular coach called in sick' });
+
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({
+        eventId,
+        coachId: coach.coachId,
+        trainerId: coach.trainerId,
+        reason: 'Regular coach called in sick',
+      });
+      expect(res.body.id).toBeDefined();
+      expect(res.body.createdAt).toBeDefined();
+
+      const row = await db.prisma.coachAvailabilityOverride.findUnique({ where: { id: res.body.id } });
+      expect(row).toMatchObject({
+        eventId,
+        coachId: coach.coachId,
+        trainerId: coach.trainerId,
+        reason: 'Regular coach called in sick',
+      });
+
+      const jobs = await db.prisma.outboxJob.findMany({ where: { type: 'EMAIL_COACH_OVERRIDE_NOTIFY' } });
+      expect(jobs).toHaveLength(1);
+      const payload = jobs[0].payload as { to?: string; templateData?: { reason?: string } };
+      expect(payload.templateData?.reason).toBe('Regular coach called in sick');
+    });
+
+    it('tenant isolation (Task 3.12 fixture): trainer B cannot GET/PUT trainer A\'s coach -> 404/403', async () => {
+      const { trainerA, trainerB } = await seedTrainerPair(db.prisma);
+      const coachUser = await insertUser({ role: 'COACH' });
+      const coachId = randomUUID();
+      await db.prisma.coachProfile.create({ data: { id: coachId, userId: coachUser.id, trainerId: trainerA.trainerId, status: 'ACTIVE' } });
+      const accessTokenB = await signToken({ id: trainerB.userId, role: 'TRAINER' }, { role: 'TRAINER', tid: trainerB.trainerId });
+
+      const getRes = await request(app.getHttpServer())
+        .get(`/coaches/${coachId}/availability`)
+        .set('Authorization', `Bearer ${accessTokenB}`);
+      expect(getRes.status).toBe(404);
+      expect(getRes.body.errorCode).toBe('NOT_FOUND');
+
+      const putRes = await request(app.getHttpServer())
+        .put(`/coaches/${coachId}/availability`)
+        .set('Authorization', `Bearer ${accessTokenB}`)
+        .send({ slots: validSlots });
+      expect(putRes.status).toBe(403);
+    });
+
+    it('tenant isolation (Task 3.12 fixture): trainer B cannot check/override trainer A\'s coach -> 403', async () => {
+      const { trainerA, trainerB } = await seedTrainerPair(db.prisma);
+      const coachUser = await insertUser({ role: 'COACH' });
+      const coachId = randomUUID();
+      await db.prisma.coachProfile.create({ data: { id: coachId, userId: coachUser.id, trainerId: trainerA.trainerId, status: 'ACTIVE' } });
+      const accessTokenB = await signToken({ id: trainerB.userId, role: 'TRAINER' }, { role: 'TRAINER', tid: trainerB.trainerId });
+
+      const checkRes = await request(app.getHttpServer())
+        .get(`/coaches/${coachId}/availability/check`)
+        .query({ dayOfWeek: 1, startTime: 60, endTime: 120 })
+        .set('Authorization', `Bearer ${accessTokenB}`);
+      expect(checkRes.status).toBe(403);
+
+      const overrideRes = await request(app.getHttpServer())
+        .post(`/coaches/${coachId}/availability/override`)
+        .set('Authorization', `Bearer ${accessTokenB}`)
+        .send({ eventId: randomUUID(), reason: 'Trainer B trying to override trainer A\'s coach' });
+      expect(overrideRes.status).toBe(403);
+
+      const overrideRows = await db.prisma.coachAvailabilityOverride.count({ where: { coachId } });
+      expect(overrideRows).toBe(0);
     });
   });
 });
