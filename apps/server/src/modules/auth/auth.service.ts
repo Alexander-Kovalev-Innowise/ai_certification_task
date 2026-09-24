@@ -37,17 +37,12 @@ import {
   REFRESH_TOKEN_TTL_MS,
   setSessionCookies,
 } from './session-cookies.util';
+import { TenantClaimsResolver } from './tenant-claims.resolver';
 import { TokenRotationService } from './token-rotation.service';
 import { TokenService } from './token.service';
 
 const PASSWORD_RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour, arch §6.1
 const EMAIL_VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours, arch §6.1
-
-interface TenantClaims {
-  accountType: 'ADULT' | 'CHILD';
-  trainerId: string | null;
-  guardianUserId: string | null;
-}
 
 // Task 2.13. Owns session/token lifecycle (RefreshToken, and — from Task
 // 2.16 onward — EmailVerificationToken/PasswordResetToken); never touches
@@ -73,6 +68,7 @@ export class AuthService {
     private readonly passwordResetTokenRepository: PasswordResetTokenRepository,
     private readonly emailVerificationTokenRepository: EmailVerificationTokenRepository,
     private readonly outboxService: OutboxService,
+    private readonly tenantClaimsResolver: TenantClaimsResolver,
   ) {}
 
   async login(dto: LoginDto, res: Response): Promise<AuthSessionResponseDto> {
@@ -394,7 +390,7 @@ export class AuthService {
   private async buildAccessToken(
     user: User,
   ): Promise<{ accessToken: string; expiresIn: number; summary: UserSummaryDto }> {
-    const tenantClaims = await this.resolveTenantClaims(user);
+    const tenantClaims = await this.tenantClaimsResolver.resolve(user);
 
     const { accessToken, expiresIn } = await this.tokenService.issueAccessToken({
       userId: user.id,
@@ -436,29 +432,4 @@ export class AuthService {
     return new UnauthorizedException({ message: 'Invalid email or password.', errorCode: 'UNAUTHORIZED' });
   }
 
-  private async resolveTenantClaims(user: User): Promise<TenantClaims> {
-    if (user.role === 'TRAINER') {
-      const trainerProfile = await this.prisma.trainerProfile.findUnique({ where: { userId: user.id } });
-      return { accountType: 'ADULT', trainerId: trainerProfile?.id ?? null, guardianUserId: null };
-    }
-
-    if (user.role === 'COACH') {
-      const coachProfile = await this.prisma.coachProfile.findUnique({ where: { userId: user.id } });
-      return { accountType: 'ADULT', trainerId: coachProfile?.trainerId ?? null, guardianUserId: null };
-    }
-
-    if (user.role === 'PLAYER_PARENT') {
-      const childOf = await this.prisma.playerProfile.findUnique({
-        where: { childUserId: user.id },
-        select: { accountUserId: true },
-      });
-      if (childOf) {
-        return { accountType: 'CHILD', trainerId: null, guardianUserId: childOf.accountUserId };
-      }
-      return { accountType: 'ADULT', trainerId: null, guardianUserId: null };
-    }
-
-    // SUPER_ADMIN
-    return { accountType: 'ADULT', trainerId: null, guardianUserId: null };
-  }
 }

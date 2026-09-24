@@ -10,6 +10,7 @@ import { EmailVerificationTokenRepository } from './email-verification-token.rep
 import { PasswordResetTokenRepository } from './password-reset-token.repository';
 import { PasswordService } from './password.service';
 import { RefreshTokenRepository } from './refresh-token.repository';
+import { TenantClaimsResolver } from './tenant-claims.resolver';
 import { TokenMaintenanceJob } from './token-maintenance.job';
 import { TokenRotationService } from './token-rotation.service';
 import { TokenService } from './token.service';
@@ -32,8 +33,9 @@ import { TokenService } from './token.service';
     RefreshTokenRepository,
     PasswordResetTokenRepository,
     EmailVerificationTokenRepository,
+    TenantClaimsResolver,
     ...(env.SCHEDULER_ENABLED ? [TokenMaintenanceJob] : []),
   ],
-  exports: [AuthService, PasswordService, TokenService, TokenRotationService],
+  exports: [AuthService, PasswordService, TokenService, TokenRotationService, TenantClaimsResolver],
 })
 export class AuthModule {}
