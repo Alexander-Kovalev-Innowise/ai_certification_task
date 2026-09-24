@@ -148,6 +148,20 @@ export class AssociationsRepository {
     return rows.map((row) => row.playerProfile);
   }
 
+  /**
+   * `GET /me/bootstrap`'s TRAINER branch — `activePlayerCount` (api §5).
+   * Goes through `.extended` for the tenant-guard runtime net (arch §8
+   * Layer 2), same convention `listActivePlayersForTrainer` below
+   * documents. A plain count, deliberately not a reuse of
+   * `listActivePlayersForTrainer` (which joins in each player's full
+   * `Availability` rows for the roster view) — the bootstrap dashboard tile
+   * only ever needs the number, and NFR-001 is exactly why this stays a
+   * lean, single-purpose query rather than `.length` on a heavier one.
+   */
+  async countActiveForTrainer(trainerId: string): Promise<number> {
+    return this.prisma.extended.playerTrainerAssociation.count({ where: { trainerId, status: 'ACTIVE' } });
+  }
+
   /** Task 5.8 — validates a bare `trainerId` (the "pick from My Trainers" branch, no ShareLink code involved). */
   async findTrainerById(trainerId: string, tx?: Prisma.TransactionClient): Promise<{ id: string } | null> {
     const client = tx ?? this.prisma;

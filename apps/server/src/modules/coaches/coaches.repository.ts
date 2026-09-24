@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import type { CoachProfile, CoachStatus, Prisma, User } from '@prisma/client';
+import type { CoachProfile, CoachStatus, Prisma, TrainerProfile, User } from '@prisma/client';
 
 import { PrismaService } from '../../shared/prisma/prisma.service';
 
 export type CoachProfileWithUser = CoachProfile & { user: User };
+export type CoachProfileWithTrainer = CoachProfile & { trainer: TrainerProfile };
 
 // Task 4.11 skeleton, filled in for Task 4.12 (`listByTrainer`) and Task
 // 4.13 (the dual-actor `PATCH /coaches/:id` read/update) — same
@@ -66,5 +67,33 @@ export class CoachesRepository {
    */
   async findById(id: string): Promise<CoachProfileWithUser | null> {
     return this.prisma.coachProfile.findUnique({ where: { id }, include: { user: true } });
+  }
+
+  /**
+   * `GET /me/bootstrap`'s COACH branch (api §5, gap-fill for the endpoint
+   * Phase 9's DoD sweep found was never built). Base client, unscoped by
+   * tenant — same reasoning as `findById` above: this resolves the CALLER's
+   * own `CoachProfile` by their own `userId` (the unique FK, schema.prisma),
+   * before any tenant/ownership question is even relevant. Includes
+   * `trainer` (not `user`, unlike the sibling lookups above) — the bootstrap
+   * COACH shape needs `employingTrainer: {id, businessName, logoUrl,
+   * primaryColorHex}`, and resolving it via the relation here avoids a
+   * second `.extended` call (and the TenantScope precondition that would
+   * come with it) just to read one trainer row the caller already owns via
+   * their own `tid` claim.
+   */
+  async findByUserId(userId: string): Promise<CoachProfileWithTrainer | null> {
+    return this.prisma.coachProfile.findUnique({ where: { userId }, include: { trainer: true } });
+  }
+
+  /**
+   * `GET /me/bootstrap`'s TRAINER branch — `coachCount` (api §5). Goes
+   * through `.extended` for the tenant-guard runtime net (arch §8 Layer 2),
+   * same convention `listByTrainer` above documents — the caller's own
+   * `ctx.trainerId` (a TRAINER's own tenant anchor) is always what's passed
+   * in here.
+   */
+  async countActiveByTrainer(trainerId: string): Promise<number> {
+    return this.prisma.extended.coachProfile.count({ where: { trainerId, status: 'ACTIVE' } });
   }
 }

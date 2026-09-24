@@ -62,6 +62,15 @@ export class ChildApprovalsRepository {
     return client.childPurchaseApproval.updateMany({ where: { id, status: 'PENDING' }, data });
   }
 
+  /**
+   * `GET /me/bootstrap`'s PLAYER_PARENT (ADULT) branch — `pendingApprovalsCount`
+   * (api §5). Same `parentUserId` scoping as `listForParent` below, but a
+   * plain count — the dashboard tile only needs the number, not the rows.
+   */
+  async countPendingForParent(parentUserId: string): Promise<number> {
+    return this.prisma.childPurchaseApproval.count({ where: { parentUserId, status: 'PENDING' } });
+  }
+
   /** Task 5.13 — `ApprovalExpiryJob`'s sweep target list: still-`PENDING` rows whose `expiresAt` has passed. */
   async findExpiredPendingIds(now: Date): Promise<string[]> {
     const rows = await this.prisma.childPurchaseApproval.findMany({
