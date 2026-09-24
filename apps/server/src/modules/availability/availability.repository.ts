@@ -49,10 +49,15 @@ export class AvailabilityRepository {
     });
   }
 
-  /** Task 6.1 (api §4.5 "GET /coaches/:id/availability", FR-062 "My Times"). */
-  async findSlotsForCoach(coachProfileId: string): Promise<Availability[]> {
+  /**
+   * Task 6.1 (api §4.5 "GET /coaches/:id/availability", FR-062 "My Times")
+   * / Task 6.2 (conflict-check's own slot lookup). `dayOfWeek` is optional —
+   * the GET endpoint wants the full weekly grid, ConflictCheckService only
+   * ever needs one day's slots.
+   */
+  async findSlotsForCoach(coachProfileId: string, dayOfWeek?: number): Promise<Availability[]> {
     return this.prisma.availability.findMany({
-      where: { subjectType: 'COACH', coachProfileId },
+      where: { subjectType: 'COACH', coachProfileId, ...(dayOfWeek !== undefined ? { dayOfWeek } : {}) },
       orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
     });
   }

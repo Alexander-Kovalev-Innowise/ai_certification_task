@@ -1,13 +1,22 @@
-import { Body, Controller, Get, Param, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Role } from '@prisma/client';
 
 import type { AuthContext } from '../../shared/security/auth-context.interface';
 import { Capability } from '../../shared/security/capability.enum';
 import { CurrentUser } from '../../shared/security/decorators/current-user.decorator';
 import { RequiresCapability } from '../../shared/security/decorators/requires-capability.decorator';
+import { Roles } from '../../shared/security/decorators/roles.decorator';
 
 import { AvailabilityService } from './availability.service';
-import { AvailabilityGridResponseDto, CoachAvailabilityGridResponseDto, SetAvailabilityDto } from './dto/availability-grid.dto';
+import { ConflictCheckService } from './conflict-check.service';
+import {
+  AvailabilityGridResponseDto,
+  CoachAvailabilityGridResponseDto,
+  ConflictCheckQueryDto,
+  ConflictCheckResponseDto,
+  SetAvailabilityDto,
+} from './dto/availability-grid.dto';
 
 // Task 5.11 (api §4.5 "Player availability", the player-profile half of
 // `AvailabilityController` — the coach "My Times" pair is Phase 6). No
@@ -55,12 +64,17 @@ export class AvailabilityController {
 // (`PlayerProfile.id` vs `CoachProfile.id`), and the two resources' access
 // rules don't overlap enough to share one class. No `@Roles()` on the
 // GET/PUT pair (ownership is a row-data check in AvailabilityService, same
-// convention as the player pair).
+// convention as the player pair); `check` DOES carry `@Roles()` since api
+// §4.5 restricts it to "the employing trainer" (TRAINER) plus SUPER_ADMIN,
+// never COACH.
 @ApiTags('availability')
 @ApiBearerAuth()
 @Controller('coaches/:id/availability')
 export class CoachAvailabilityController {
-  constructor(private readonly availabilityService: AvailabilityService) {}
+  constructor(
+    private readonly availabilityService: AvailabilityService,
+    private readonly conflictCheckService: ConflictCheckService,
+  ) {}
 
   // Task 6.1 (api §4.5 "GET /coaches/:id/availability"). Reuses
   // `VIEW_PLAYER_AVAILABILITY` rather than a dedicated capability — api
@@ -89,5 +103,21 @@ export class CoachAvailabilityController {
     @Body() dto: SetAvailabilityDto,
   ): Promise<CoachAvailabilityGridResponseDto> {
     return this.availabilityService.setCoachAvailability(ctx, id, dto.slots);
+  }
+
+  // Task 6.2 (api §4.5 "GET /coaches/:id/availability/check", *added*).
+  // Own tenant only — "Only the employing trainer" per api §4.5.
+  @Roles(Role.TRAINER, Role.SUPER_ADMIN)
+  @RequiresCapability(Capability.OVERRIDE_COACH_CONFLICT)
+  @Get('check')
+  @ApiOperation({ summary: "Gap-fill check: does this window conflict with the coach's saved availability?" })
+  @ApiResponse({ status: 200, type: ConflictCheckResponseDto })
+  @ApiResponse({ status: 403, description: 'Non-owning trainer' })
+  async checkConflict(
+    @CurrentUser() ctx: AuthContext,
+    @Param('id') id: string,
+    @Query() query: ConflictCheckQueryDto,
+  ): Promise<ConflictCheckResponseDto> {
+    return this.conflictCheckService.checkConflict(ctx, id, query);
   }
 }

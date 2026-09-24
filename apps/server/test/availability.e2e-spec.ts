@@ -128,6 +128,16 @@ describe('AvailabilityController (e2e, Task 5.11 + Phase 6)', () => {
     return { userId: user.id, coachId, trainerId, accessToken };
   }
 
+  // Task 6.2. A `TRAINER` access token for a given `trainerId` — used by
+  // the conflict-check/override tests below, which always act as "the
+  // employing trainer" of a previously-seeded coach rather than a fresh
+  // `insertTrainer()` (that would mint a NEW, unrelated tenant).
+  async function trainerAccessToken(trainerId: string): Promise<string> {
+    const trainer = await db.prisma.trainerProfile.findUniqueOrThrow({ where: { id: trainerId } });
+    const trainerUser = await db.prisma.user.findUniqueOrThrow({ where: { id: trainer.userId } });
+    return signToken({ id: trainerUser.id, role: 'TRAINER' }, { role: 'TRAINER', tid: trainerId });
+  }
+
   const validSlots = [{ dayOfWeek: 1, startTime: 17 * 60, endTime: 20 * 60, isAvailable: true }];
 
   describe('PUT /player-profiles/:id/availability (Task 5.11)', () => {
@@ -365,6 +375,52 @@ describe('AvailabilityController (e2e, Task 5.11 + Phase 6)', () => {
         .set('Authorization', `Bearer ${coach.accessToken}`);
 
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe('GET /coaches/:id/availability/check (Task 6.2)', () => {
+    it('a window only partially covered by an available slot -> hasConflict: true', async () => {
+      const coach = await insertCoach();
+      const trainerToken = await trainerAccessToken(coach.trainerId);
+      await db.prisma.availability.create({
+        data: { subjectType: 'COACH', coachProfileId: coach.coachId, dayOfWeek: 1, startTime: 9 * 60, endTime: 12 * 60, isAvailable: true },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/coaches/${coach.coachId}/availability/check`)
+        .query({ dayOfWeek: 1, startTime: 11 * 60, endTime: 13 * 60 })
+        .set('Authorization', `Bearer ${trainerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ hasConflict: true });
+    });
+
+    it('a window fully covered by an available slot -> hasConflict: false', async () => {
+      const coach = await insertCoach();
+      const trainerToken = await trainerAccessToken(coach.trainerId);
+      await db.prisma.availability.create({
+        data: { subjectType: 'COACH', coachProfileId: coach.coachId, dayOfWeek: 1, startTime: 9 * 60, endTime: 12 * 60, isAvailable: true },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/coaches/${coach.coachId}/availability/check`)
+        .query({ dayOfWeek: 1, startTime: 9 * 60 + 30, endTime: 11 * 60 })
+        .set('Authorization', `Bearer ${trainerToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ hasConflict: false });
+    });
+
+    it('a non-owning trainer -> 403', async () => {
+      const coach = await insertCoach();
+      const stranger = await insertTrainer();
+
+      const res = await request(app.getHttpServer())
+        .get(`/coaches/${coach.coachId}/availability/check`)
+        .query({ dayOfWeek: 1, startTime: 9 * 60, endTime: 10 * 60 })
+        .set('Authorization', `Bearer ${stranger.accessToken}`);
+
+      expect(res.status).toBe(403);
     });
   });
 });

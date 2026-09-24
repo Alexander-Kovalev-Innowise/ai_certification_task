@@ -56,3 +56,32 @@ export class CoachAvailabilityGridResponseDto {
   coachProfileId!: string;
   slots!: AvailabilitySlotResponseDto[];
 }
+
+// Task 6.2 (api §4.5 "GET /coaches/:id/availability/check", *added*).
+// Query-string values arrive as strings — `@Type(() => Number)` coerces
+// before the `@IsInt`/`@Min`/`@Max` decorators run, same convention
+// `ListRosterQueryDto` (associations module) already established for
+// numeric query params.
+export class ConflictCheckQueryDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  dayOfWeek!: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(1440)
+  startTime!: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(1440)
+  endTime!: number;
+}
+
+export class ConflictCheckResponseDto {
+  hasConflict!: boolean;
+}
