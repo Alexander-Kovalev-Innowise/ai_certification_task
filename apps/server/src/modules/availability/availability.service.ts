@@ -1,13 +1,18 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import type { Availability, CoachProfile, PlayerProfile } from '@prisma/client';
+import type { Availability, CoachProfile, PlayerProfile, Prisma } from '@prisma/client';
 
+import { JOB_TYPES } from '../../shared/jobs/job-types.const';
+import { OutboxService } from '../../shared/jobs/outbox.service';
+import { buildCoachOverrideNotifyEmailPayload } from '../../shared/mail/templates/coach-override-notify.template';
+import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { AuthContext } from '../../shared/security/auth-context.interface';
 import { AssociationsRepository } from '../associations/associations.repository';
-import { CoachesRepository } from '../coaches/coaches.repository';
+import { CoachesRepository, CoachProfileWithUser } from '../coaches/coaches.repository';
 import { PlayerProfilesRepository } from '../player-profiles/player-profiles.repository';
 
 import { AvailabilityRepository } from './availability.repository';
 import { AvailabilityGridResponseDto, AvailabilitySlotDto, CoachAvailabilityGridResponseDto } from './dto/availability-grid.dto';
+import { CoachOverrideResponseDto, CreateOverrideDto } from './dto/create-override.dto';
 
 // Task 5.11 (api §4.5 "Player availability", FR-090). `Availability` has no
 // `trainerId` column (api §0.3's explicit design note) — the SAME weekly
@@ -22,6 +27,8 @@ export class AvailabilityService {
     private readonly playerProfilesRepository: PlayerProfilesRepository,
     private readonly associationsRepository: AssociationsRepository,
     private readonly coachesRepository: CoachesRepository,
+    private readonly outboxService: OutboxService,
+    private readonly prisma: PrismaService,
   ) {}
 
   /**
@@ -114,6 +121,73 @@ export class AvailabilityService {
 
     const updated = await this.availabilityRepository.replaceSlotsForCoach(coachProfileId, slots);
     return this.toCoachResponse(coachProfileId, updated);
+  }
+
+  /**
+   * Task 6.3 (api §4.5 "POST /coaches/:id/availability/override", FR-063/
+   * BR-012). Only the employing trainer (or `SUPER_ADMIN`) — never blocks,
+   * this only logs a decision the trainer already made. The audit row
+   * (`event_id`, `coach_id`, `override_reason` -> `reason`, `overridden_by`
+   * -> `trainerId`, `createdAt`) and the `OutboxJob(EMAIL_COACH_OVERRIDE_NOTIFY)`
+   * enqueue commit together in one `$transaction` (arch §13.2) — the
+   * notification must not fire for an override that didn't actually
+   * persist.
+   */
+  async createOverride(ctx: AuthContext, coachProfileId: string, dto: CreateOverrideDto): Promise<CoachOverrideResponseDto> {
+    const coachProfile = await this.resolveEmployedCoachOrThrow(ctx, coachProfileId);
+
+    const override = await this.prisma.$transaction(async (tx) => {
+      const created = await this.availabilityRepository.createOverride(
+        { eventId: dto.eventId, coachId: coachProfile.id, trainerId: coachProfile.trainerId, reason: dto.reason },
+        tx,
+      );
+      await this.outboxService.enqueue(
+        tx,
+        JOB_TYPES.EMAIL_COACH_OVERRIDE_NOTIFY,
+        buildCoachOverrideNotifyEmailPayload(coachProfile.user.email, {
+          coachFirstName: coachProfile.user.firstName,
+          trainerBusinessName: coachProfile.trainer.businessName,
+          reason: dto.reason,
+        }) as unknown as Prisma.InputJsonValue,
+      );
+      return created;
+    });
+
+    return {
+      id: override.id,
+      eventId: override.eventId,
+      coachId: override.coachId,
+      trainerId: override.trainerId,
+      reason: override.reason,
+      createdAt: override.createdAt,
+    };
+  }
+
+  /**
+   * "Only the employing trainer" (api §4.5) — twin of
+   * ConflictCheckService's own private copy of this same rule (see that
+   * file's comment for why it isn't shared: two small, independently
+   * readable copies beat a cross-service dependency for eight lines of
+   * logic). Deliberately `403`, never `404`, for every failure mode — api
+   * §4.5 lists no `404` branch for this endpoint either.
+   */
+  private async resolveEmployedCoachOrThrow(
+    ctx: AuthContext,
+    coachProfileId: string,
+  ): Promise<CoachProfileWithUser & { trainer: { businessName: string } }> {
+    const coachProfile =
+      ctx.role === 'SUPER_ADMIN'
+        ? await this.coachesRepository.findById(coachProfileId)
+        : ctx.trainerId
+          ? await this.coachesRepository.findByIdForTrainer(coachProfileId, ctx.trainerId)
+          : null;
+
+    if (!coachProfile) {
+      throw new ForbiddenException({ message: 'Only the employing trainer may perform this action', errorCode: 'FORBIDDEN' });
+    }
+
+    const trainerProfile = await this.prisma.trainerProfile.findUniqueOrThrow({ where: { id: coachProfile.trainerId } });
+    return { ...coachProfile, trainer: trainerProfile };
   }
 
   private canReadCoach(ctx: AuthContext, coachProfile: CoachProfile): boolean {

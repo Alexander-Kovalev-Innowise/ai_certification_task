@@ -423,4 +423,56 @@ describe('AvailabilityController (e2e, Task 5.11 + Phase 6)', () => {
       expect(res.status).toBe(403);
     });
   });
+
+  describe('POST /coaches/:id/availability/override (Task 6.3)', () => {
+    it('missing reason -> 400 VALIDATION_ERROR', async () => {
+      const coach = await insertCoach();
+      const trainerToken = await trainerAccessToken(coach.trainerId);
+
+      const res = await request(app.getHttpServer())
+        .post(`/coaches/${coach.coachId}/availability/override`)
+        .set('Authorization', `Bearer ${trainerToken}`)
+        .send({ eventId: randomUUID() });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errorCode).toBe('VALIDATION_ERROR');
+    });
+
+    it('a non-owning trainer -> 403', async () => {
+      const coach = await insertCoach();
+      const stranger = await insertTrainer();
+
+      const res = await request(app.getHttpServer())
+        .post(`/coaches/${coach.coachId}/availability/override`)
+        .set('Authorization', `Bearer ${stranger.accessToken}`)
+        .send({ eventId: randomUUID(), reason: 'Only coach available for this slot' });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('success is always 201, never blocked by a conflict, and never touched by the coach -> 403', async () => {
+      const coach = await insertCoach();
+      const trainerToken = await trainerAccessToken(coach.trainerId);
+      // The coach has explicitly marked themself UNAVAILABLE for this exact
+      // window — BR-012 says the override endpoint never blocks anyway.
+      await db.prisma.availability.create({
+        data: { subjectType: 'COACH', coachProfileId: coach.coachId, dayOfWeek: 2, startTime: 9 * 60, endTime: 10 * 60, isAvailable: false },
+      });
+
+      const res = await request(app.getHttpServer())
+        .post(`/coaches/${coach.coachId}/availability/override`)
+        .set('Authorization', `Bearer ${trainerToken}`)
+        .send({ eventId: randomUUID(), reason: 'Emergency substitution, coach agreed by phone' });
+
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ coachId: coach.coachId, trainerId: coach.trainerId, reason: 'Emergency substitution, coach agreed by phone' });
+
+      const coachRes = await request(app.getHttpServer())
+        .post(`/coaches/${coach.coachId}/availability/override`)
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .send({ eventId: randomUUID(), reason: 'Coach trying to log their own override' });
+
+      expect(coachRes.status).toBe(403);
+    });
+  });
 });

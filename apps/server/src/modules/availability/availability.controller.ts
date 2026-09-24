@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 
@@ -17,6 +17,7 @@ import {
   ConflictCheckResponseDto,
   SetAvailabilityDto,
 } from './dto/availability-grid.dto';
+import { CoachOverrideResponseDto, CreateOverrideDto } from './dto/create-override.dto';
 
 // Task 5.11 (api §4.5 "Player availability", the player-profile half of
 // `AvailabilityController` — the coach "My Times" pair is Phase 6). No
@@ -64,9 +65,9 @@ export class AvailabilityController {
 // (`PlayerProfile.id` vs `CoachProfile.id`), and the two resources' access
 // rules don't overlap enough to share one class. No `@Roles()` on the
 // GET/PUT pair (ownership is a row-data check in AvailabilityService, same
-// convention as the player pair); `check` DOES carry `@Roles()` since api
-// §4.5 restricts it to "the employing trainer" (TRAINER) plus SUPER_ADMIN,
-// never COACH.
+// convention as the player pair); `check`/`override` DO carry `@Roles()`
+// since api §4.5 restricts both to "the employing trainer" (TRAINER) plus
+// SUPER_ADMIN, never COACH.
 @ApiTags('availability')
 @ApiBearerAuth()
 @Controller('coaches/:id/availability')
@@ -119,5 +120,23 @@ export class CoachAvailabilityController {
     @Query() query: ConflictCheckQueryDto,
   ): Promise<ConflictCheckResponseDto> {
     return this.conflictCheckService.checkConflict(ctx, id, query);
+  }
+
+  // Task 6.3 (api §4.5 "POST /coaches/:id/availability/override", FR-063/
+  // BR-012). Never blocks (BR-012) — logs a decision already made.
+  @Roles(Role.TRAINER, Role.SUPER_ADMIN)
+  @RequiresCapability(Capability.OVERRIDE_COACH_CONFLICT)
+  @Post('override')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Log a trainer override of a coach availability conflict (never blocks)' })
+  @ApiResponse({ status: 201, type: CoachOverrideResponseDto })
+  @ApiResponse({ status: 400, description: 'Missing/invalid reason' })
+  @ApiResponse({ status: 403, description: 'Non-owning trainer' })
+  async createOverride(
+    @CurrentUser() ctx: AuthContext,
+    @Param('id') id: string,
+    @Body() dto: CreateOverrideDto,
+  ): Promise<CoachOverrideResponseDto> {
+    return this.availabilityService.createOverride(ctx, id, dto);
   }
 }
