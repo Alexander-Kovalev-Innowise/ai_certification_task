@@ -21,3 +21,21 @@
      all three at runtime per tenant. */
   --brand-primary-rgb: 110, 231, 183;
 }
+
+/* fe §1.1 — self-hosted font families (next/font/local, src/lib/fonts.ts).
+   --font-clash-display/--font-general-sans are the CSS custom properties
+   next/font injects via each font object's `variable` className, applied to
+   <html> in app/layout.tsx. General Sans is the default body/UI voice;
+   Clash Display is opt-in per component (`font-display` Tailwind utility,
+   tailwind.config.ts) for hero-title/section-title/block-title only. */
+body {
+  font-family: var(--font-general-sans), 'Segoe UI', sans-serif;
+}
+
+/* fe §1.1 — numeric variant for availability grids/countdowns/ids: keeps
+   digits from jittering width as they change (48h-expiry countdowns,
+   weekly-grid times). Composes with General Sans, the only family numerals
+   render in per the type scale. */
+.font-numeric {
+  font-variant-numeric: tabular-nums;
+}

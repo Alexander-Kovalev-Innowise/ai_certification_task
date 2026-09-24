@@ -8,6 +8,14 @@ const config: Config = {
   content: ['./app/**/*.{ts,tsx}', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      fontFamily: {
+        // fe §1.1 — CSS vars injected by next/font/local (src/lib/fonts.ts)
+        // via the `variable` option, applied to <html> in app/layout.tsx.
+        // `sans` is the default body/UI voice (General Sans); `display` is
+        // opt-in per component for hero-title/section-title/block-title.
+        sans: ['var(--font-general-sans)', 'Segoe UI', 'sans-serif'],
+        display: ['var(--font-clash-display)', 'Archivo Black', 'sans-serif'],
+      },
       spacing: {
         xxs: '4px',
         xs: '8px',
