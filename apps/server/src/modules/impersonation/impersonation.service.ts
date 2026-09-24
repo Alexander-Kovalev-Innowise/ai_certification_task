@@ -94,4 +94,34 @@ export class ImpersonationService {
       });
     }
   }
+
+  /**
+   * Task 7.2 (api §2 "POST /impersonation/end"). Called WITH the
+   * impersonation access token itself — reachable only while
+   * `AuthContext.impersonation` is set, enforced here (the guard has no
+   * "must be impersonating" primitive, api §2 footnote). Stamps
+   * `endedAt`/`durationSeconds`; the token isn't itself revocable (it's
+   * already exp-capped, arch §10) but this records the explicit exit for
+   * the audit trail the same way Task 7.4's sweep records an implicit one.
+   */
+  async end(ctx: AuthContext): Promise<void> {
+    if (!ctx.impersonation) {
+      throw new ForbiddenException({
+        message: 'This endpoint is only reachable from inside an impersonation session',
+        errorCode: 'IMPERSONATION_NOT_ALLOWED',
+      });
+    }
+
+    const log = await this.impersonationRepository.findById(ctx.impersonation.logId);
+    if (!log) {
+      // Defensive — shouldn't happen (api §2's own status-code table flags
+      // this as defensive-only), since the token's `imp` claim is only ever
+      // set to a log id this same service just created.
+      throw new NotFoundException({ message: 'Impersonation log not found', errorCode: 'NOT_FOUND' });
+    }
+
+    const endedAt = new Date();
+    const durationSeconds = Math.max(0, Math.floor((endedAt.getTime() - log.startedAt.getTime()) / 1000));
+    await this.impersonationRepository.markEnded(log.id, endedAt, durationSeconds);
+  }
 }

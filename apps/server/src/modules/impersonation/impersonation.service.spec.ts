@@ -61,6 +61,7 @@ describe('ImpersonationService (Task 7.1)', () => {
     const impersonationRepository = {
       create: jest.fn(),
       findById: jest.fn(),
+      markEnded: jest.fn(),
     } as unknown as jest.Mocked<ImpersonationRepository>;
     const usersRepository = { findById: jest.fn() } as unknown as jest.Mocked<UsersRepository>;
     const tenantClaimsResolver = { resolve: jest.fn() } as unknown as jest.Mocked<TenantClaimsResolver>;
@@ -149,6 +150,60 @@ describe('ImpersonationService (Task 7.1)', () => {
         lastName: 'User',
         mustChangePassword: false,
       },
+    });
+  });
+
+  // Task 7.2 (api §2 "POST /impersonation/end").
+  describe('end', () => {
+    it('rejects with 403 IMPERSONATION_NOT_ALLOWED when the caller is not currently impersonating', async () => {
+      const { service } = makeService();
+
+      try {
+        await service.end(makeAdminCtx());
+        throw new Error('should have thrown');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ForbiddenException);
+        expect((err as ForbiddenException).getResponse()).toMatchObject({ errorCode: 'IMPERSONATION_NOT_ALLOWED' });
+      }
+    });
+
+    it('rejects with 404 when the log row is missing (defensive)', async () => {
+      const { service, impersonationRepository } = makeService();
+      impersonationRepository.findById.mockResolvedValue(null);
+
+      const ctx = makeAdminCtx({
+        role: 'TRAINER',
+        impersonation: { actorUserId: 'admin-1', actorRole: 'SUPER_ADMIN', logId: 'log-missing', expiresAt: new Date() },
+      });
+
+      await expect(service.end(ctx)).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('stamps endedAt and durationSeconds on the log row', async () => {
+      const { service, impersonationRepository } = makeService();
+      const startedAt = new Date(Date.now() - 120_000); // 2 minutes ago
+      impersonationRepository.findById.mockResolvedValue({
+        id: 'log-1',
+        adminUserId: 'admin-1',
+        targetUserId: 'target-1',
+        startedAt,
+        endedAt: null,
+        durationSeconds: null,
+        createdAt: startedAt,
+      });
+
+      const ctx = makeAdminCtx({
+        role: 'TRAINER',
+        impersonation: { actorUserId: 'admin-1', actorRole: 'SUPER_ADMIN', logId: 'log-1', expiresAt: new Date() },
+      });
+
+      await service.end(ctx);
+
+      expect(impersonationRepository.markEnded).toHaveBeenCalledTimes(1);
+      const [id, endedAt, durationSeconds] = impersonationRepository.markEnded.mock.calls[0];
+      expect(id).toBe('log-1');
+      expect(endedAt).toBeInstanceOf(Date);
+      expect(durationSeconds).toBeGreaterThanOrEqual(120);
     });
   });
 });

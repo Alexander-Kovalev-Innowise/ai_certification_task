@@ -194,4 +194,41 @@ describe('ImpersonationController (e2e, Phase 7)', () => {
       expect(res.status).toBe(403);
     });
   });
+
+  describe('POST /impersonation/end (Task 7.2)', () => {
+    it('stamps endedAt/durationSeconds and returns 204, called with the impersonation token itself', async () => {
+      const admin = await insertSuperAdmin();
+      const target = await insertTrainer();
+
+      const startRes = await request(app.getHttpServer())
+        .post('/impersonation/start')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ targetUserId: target.userId });
+      expect(startRes.status).toBe(201);
+
+      const impersonationToken = startRes.body.accessToken as string;
+      const logId = startRes.body.impersonationLogId as string;
+
+      const endRes = await request(app.getHttpServer())
+        .post('/impersonation/end')
+        .set('Authorization', `Bearer ${impersonationToken}`);
+
+      expect(endRes.status).toBe(204);
+
+      const log = await db.prisma.impersonationLog.findUnique({ where: { id: logId } });
+      expect(log?.endedAt).not.toBeNull();
+      expect(log?.durationSeconds).toEqual(expect.any(Number));
+    });
+
+    it('called with a non-impersonation token -> 403 IMPERSONATION_NOT_ALLOWED', async () => {
+      const admin = await insertSuperAdmin();
+
+      const res = await request(app.getHttpServer())
+        .post('/impersonation/end')
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('IMPERSONATION_NOT_ALLOWED');
+    });
+  });
 });

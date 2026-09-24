@@ -27,4 +27,10 @@ export class ImpersonationRepository {
     const client = tx ?? this.prisma;
     return client.impersonationLog.findUnique({ where: { id } });
   }
+
+  // Task 7.2 (api §2 "POST /impersonation/end").
+  async markEnded(id: string, endedAt: Date, durationSeconds: number, tx?: Prisma.TransactionClient): Promise<ImpersonationLog> {
+    const client = tx ?? this.prisma;
+    return client.impersonationLog.update({ where: { id }, data: { endedAt, durationSeconds } });
+  }
 }

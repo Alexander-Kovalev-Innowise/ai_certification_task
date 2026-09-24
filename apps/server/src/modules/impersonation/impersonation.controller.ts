@@ -40,4 +40,25 @@ export class ImpersonationController {
   async start(@CurrentUser() ctx: AuthContext, @Body() dto: StartImpersonationDto): Promise<ImpersonationStartResponseDto> {
     return this.impersonationService.start(ctx, dto);
   }
+
+  // Task 7.2 (api §2 "POST /impersonation/end"). Called WITH the
+  // impersonation access token (not the admin's own) — no @Roles() here
+  // (unlike /start): the effective role on that token is the TARGET's,
+  // never SUPER_ADMIN (arch §10), so a role gate would make this
+  // unreachable. `@RequiresCapability(IMPERSONATE_USER)` matches api §2's
+  // endpoint table; Task 7.5's blast-radius wiring in CapabilitiesGuard
+  // carries an explicit exemption for this exact route, since ending a
+  // session must stay reachable precisely while impersonating (see that
+  // guard's own comment).
+  @RequiresCapability(Capability.IMPERSONATE_USER)
+  @Post('end')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'End the current impersonation session (reachable only while impersonating)' })
+  @ApiResponse({ status: 204 })
+  @ApiResponse({ status: 401, description: 'Impersonation token itself already expired (60-minute cap)' })
+  @ApiResponse({ status: 403, description: 'Not currently impersonating', schema: { example: { errorCode: 'IMPERSONATION_NOT_ALLOWED' } } })
+  @ApiResponse({ status: 404, description: 'Log row missing (defensive; should not happen)' })
+  async end(@CurrentUser() ctx: AuthContext): Promise<void> {
+    await this.impersonationService.end(ctx);
+  }
 }
