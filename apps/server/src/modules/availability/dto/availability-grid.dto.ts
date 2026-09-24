@@ -46,3 +46,13 @@ export class AvailabilityGridResponseDto {
   playerProfileId!: string;
   slots!: AvailabilitySlotResponseDto[];
 }
+
+// Task 6.1 (api §4.5 "GET/PUT /coaches/:id/availability", FR-062 "My
+// Times"). Same slot shape as the player pair (`AvailabilitySlotResponseDto`
+// above) — only the wrapper id field differs, since `Availability` rows are
+// keyed by exactly one of `playerProfileId`/`coachProfileId` depending on
+// `subjectType` (schema.prisma).
+export class CoachAvailabilityGridResponseDto {
+  coachProfileId!: string;
+  slots!: AvailabilitySlotResponseDto[];
+}

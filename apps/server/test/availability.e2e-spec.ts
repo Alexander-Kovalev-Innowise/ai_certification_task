@@ -9,9 +9,12 @@ import request from 'supertest';
 
 import { resetTestDatabase, startTestDatabase, stopTestDatabase, TestDatabase } from './setup/testcontainers.setup';
 
-// Task 5.11 (api §4.5, player half — coach "My Times" is Phase 6), same
-// e2e convention every other Phase 5 spec file already established.
-describe('AvailabilityController — player availability (e2e, Task 5.11)', () => {
+// Task 5.11 (api §4.5, player half), extended in Phase 6 (Tasks 6.1-6.3,
+// coach "My Times" + conflict-check + override; Task 6.5's own describe
+// block sweeps CRUD correctness, override logging and cross-tenant
+// isolation across both), same e2e convention every other Phase 5/6 spec
+// file already established.
+describe('AvailabilityController (e2e, Task 5.11 + Phase 6)', () => {
   jest.setTimeout(180_000);
 
   let db: TestDatabase;
@@ -108,6 +111,21 @@ describe('AvailabilityController — player availability (e2e, Task 5.11)', () =
         ...overrides,
       },
     });
+  }
+
+  // Task 6.1. `trainerId` defaults to a freshly-seeded employing trainer
+  // when not supplied — most coach tests only care about the coach's own
+  // access, not the trainer relationship, but always need SOME valid
+  // `TrainerProfile.id` for the required `CoachProfile.trainerId` column.
+  async function insertCoach(overrides: { trainerId?: string } = {}): Promise<{ userId: string; coachId: string; trainerId: string; accessToken: string }> {
+    const trainerId = overrides.trainerId ?? (await insertTrainer()).trainerId;
+    const user = await insertUser({ role: 'COACH' });
+    const coachId = randomUUID();
+    await db.prisma.coachProfile.create({
+      data: { id: coachId, userId: user.id, trainerId, status: 'ACTIVE' },
+    });
+    const accessToken = await signToken(user, { role: 'COACH', tid: trainerId });
+    return { userId: user.id, coachId, trainerId, accessToken };
   }
 
   const validSlots = [{ dayOfWeek: 1, startTime: 17 * 60, endTime: 20 * 60, isAvailable: true }];
@@ -238,6 +256,113 @@ describe('AvailabilityController — player availability (e2e, Task 5.11)', () =
       const res = await request(app.getHttpServer())
         .get(`/player-profiles/${profile.id}/availability`)
         .set('Authorization', `Bearer ${trainer.accessToken}`);
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('PUT /coaches/:id/availability (Task 6.1)', () => {
+    it('the coach themself can set their own availability -> 200, full replace', async () => {
+      const coach = await insertCoach();
+      await db.prisma.availability.create({
+        data: { subjectType: 'COACH', coachProfileId: coach.coachId, dayOfWeek: 6, startTime: 60, endTime: 120, isAvailable: true },
+      });
+
+      const res = await request(app.getHttpServer())
+        .put(`/coaches/${coach.coachId}/availability`)
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .send({ slots: validSlots });
+
+      expect(res.status).toBe(200);
+      expect(res.body.coachProfileId).toBe(coach.coachId);
+      expect(res.body.slots).toHaveLength(1);
+      expect(res.body.slots[0]).toMatchObject(validSlots[0]);
+    });
+
+    it('the employing trainer cannot PUT (non-owner) -> 403', async () => {
+      const coach = await insertCoach();
+      const trainer = await db.prisma.trainerProfile.findUniqueOrThrow({ where: { id: coach.trainerId } });
+      const trainerUser = await db.prisma.user.findUniqueOrThrow({ where: { id: trainer.userId } });
+      const trainerToken = await signToken({ id: trainerUser.id, role: 'TRAINER' }, { role: 'TRAINER', tid: coach.trainerId });
+
+      const res = await request(app.getHttpServer())
+        .put(`/coaches/${coach.coachId}/availability`)
+        .set('Authorization', `Bearer ${trainerToken}`)
+        .send({ slots: validSlots });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('a coworker coach under the same trainer cannot PUT another coach -> 403', async () => {
+      const coach = await insertCoach();
+      const coworker = await insertCoach({ trainerId: coach.trainerId });
+
+      const res = await request(app.getHttpServer())
+        .put(`/coaches/${coach.coachId}/availability`)
+        .set('Authorization', `Bearer ${coworker.accessToken}`)
+        .send({ slots: validSlots });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('an unknown coachProfileId -> 404', async () => {
+      const coach = await insertCoach();
+
+      const res = await request(app.getHttpServer())
+        .put(`/coaches/${randomUUID()}/availability`)
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .send({ slots: validSlots });
+
+      expect(res.status).toBe(404);
+    });
+
+    it('startTime >= endTime -> 400 VALIDATION_ERROR', async () => {
+      const coach = await insertCoach();
+
+      const res = await request(app.getHttpServer())
+        .put(`/coaches/${coach.coachId}/availability`)
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .send({ slots: [{ dayOfWeek: 1, startTime: 600, endTime: 600, isAvailable: true }] });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errorCode).toBe('VALIDATION_ERROR');
+    });
+  });
+
+  describe('GET /coaches/:id/availability (Task 6.1)', () => {
+    it('the coach themself can read it -> 200', async () => {
+      const coach = await insertCoach();
+      await db.prisma.availability.create({
+        data: { subjectType: 'COACH', coachProfileId: coach.coachId, ...validSlots[0] },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/coaches/${coach.coachId}/availability`)
+        .set('Authorization', `Bearer ${coach.accessToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.slots).toHaveLength(1);
+    });
+
+    it('the employing trainer can GET -> 200', async () => {
+      const coach = await insertCoach();
+      const trainer = await db.prisma.trainerProfile.findUniqueOrThrow({ where: { id: coach.trainerId } });
+      const trainerUser = await db.prisma.user.findUniqueOrThrow({ where: { id: trainer.userId } });
+      const trainerToken = await signToken({ id: trainerUser.id, role: 'TRAINER' }, { role: 'TRAINER', tid: coach.trainerId });
+
+      const res = await request(app.getHttpServer())
+        .get(`/coaches/${coach.coachId}/availability`)
+        .set('Authorization', `Bearer ${trainerToken}`);
+
+      expect(res.status).toBe(200);
+    });
+
+    it('an unknown coachProfileId -> 404', async () => {
+      const coach = await insertCoach();
+
+      const res = await request(app.getHttpServer())
+        .get(`/coaches/${randomUUID()}/availability`)
+        .set('Authorization', `Bearer ${coach.accessToken}`);
 
       expect(res.status).toBe(404);
     });

@@ -50,4 +50,21 @@ export class CoachesRepository {
   async update(id: string, data: Prisma.CoachProfileUpdateInput): Promise<CoachProfile> {
     return this.prisma.coachProfile.update({ where: { id }, data });
   }
+
+  /**
+   * Task 6.1. Base (non-`.extended`) client, deliberately unscoped by
+   * tenant — the coach "My Times" GET/PUT pair (AvailabilityService) and the
+   * conflict-check/override flows (ConflictCheckService, AvailabilityService)
+   * all need to resolve a `CoachProfile` by id FIRST, before they can decide
+   * whether the caller is the coach themself, the employing trainer, or a
+   * stranger — that decision is exactly what determines the `404` vs `403`
+   * split those endpoints document (api §4.5), so the lookup itself can't
+   * already be tenant-filtered. Includes `user` for the same reason
+   * `listByTrainer`/`findByIdForTrainer` do: callers need the coach's name/
+   * email (override notification email, response shaping) and there's no
+   * separate column for either on `CoachProfile`.
+   */
+  async findById(id: string): Promise<CoachProfileWithUser | null> {
+    return this.prisma.coachProfile.findUnique({ where: { id }, include: { user: true } });
+  }
 }

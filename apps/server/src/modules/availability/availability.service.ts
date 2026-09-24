@@ -1,12 +1,13 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import type { Availability, PlayerProfile } from '@prisma/client';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import type { Availability, CoachProfile, PlayerProfile } from '@prisma/client';
 
 import type { AuthContext } from '../../shared/security/auth-context.interface';
 import { AssociationsRepository } from '../associations/associations.repository';
+import { CoachesRepository } from '../coaches/coaches.repository';
 import { PlayerProfilesRepository } from '../player-profiles/player-profiles.repository';
 
 import { AvailabilityRepository } from './availability.repository';
-import { AvailabilityGridResponseDto, AvailabilitySlotDto } from './dto/availability-grid.dto';
+import { AvailabilityGridResponseDto, AvailabilitySlotDto, CoachAvailabilityGridResponseDto } from './dto/availability-grid.dto';
 
 // Task 5.11 (api §4.5 "Player availability", FR-090). `Availability` has no
 // `trainerId` column (api §0.3's explicit design note) — the SAME weekly
@@ -20,6 +21,7 @@ export class AvailabilityService {
     private readonly availabilityRepository: AvailabilityRepository,
     private readonly playerProfilesRepository: PlayerProfilesRepository,
     private readonly associationsRepository: AssociationsRepository,
+    private readonly coachesRepository: CoachesRepository,
   ) {}
 
   /**
@@ -62,6 +64,79 @@ export class AvailabilityService {
 
     const updated = await this.availabilityRepository.replaceSlotsForPlayer(playerProfileId, slots);
     return this.toResponse(playerProfileId, updated);
+  }
+
+  /**
+   * Task 6.1 (api §4.5 "GET /coaches/:id/availability", FR-062 "My Times").
+   * Readable by the coach themself, `SUPER_ADMIN`, or the employing trainer
+   * (`ctx.trainerId === coachProfile.trainerId` — covers a `TRAINER` token
+   * directly, and would also match a coworker `COACH`'s own token since
+   * every `COACH`'s `tid` claim IS the employing trainer's id; that's
+   * accepted here, unlike `setCoachAvailability` below, per Task 6.1's own
+   * "GET open to the employing trainer too" — it doesn't say "and ONLY the
+   * employing trainer," unlike the `PUT` pair). Every failure mode
+   * (unknown id or a stranger) collapses to the same generic `404` — api
+   * §4.5 lists no `403` for this endpoint, only for `PUT`.
+   */
+  async getSummaryForCoach(ctx: AuthContext, coachProfileId: string): Promise<CoachAvailabilityGridResponseDto> {
+    const coachProfile = await this.coachesRepository.findById(coachProfileId);
+    if (!coachProfile || !this.canReadCoach(ctx, coachProfile)) {
+      throw new NotFoundException({ message: 'Coach not found', errorCode: 'NOT_FOUND' });
+    }
+
+    const slots = await this.availabilityRepository.findSlotsForCoach(coachProfileId);
+    return this.toCoachResponse(coachProfileId, slots);
+  }
+
+  /**
+   * Task 6.1 (api §4.5 "PUT /coaches/:id/availability", FR-062). Full
+   * replace, the coach themself ONLY — an existing `coachProfileId` that
+   * belongs to someone else (the employing trainer, a coworker coach, or a
+   * different tenant entirely) is a `403`, not the generic ownership `404`
+   * `setPlayerAvailability` uses above; api §4.5's own status-code table
+   * lists `403 FORBIDDEN (PUT by non-owner)` explicitly. A genuinely unknown
+   * id is still `404`.
+   */
+  async setCoachAvailability(
+    ctx: AuthContext,
+    coachProfileId: string,
+    slots: AvailabilitySlotDto[],
+  ): Promise<CoachAvailabilityGridResponseDto> {
+    const coachProfile = await this.coachesRepository.findById(coachProfileId);
+    if (!coachProfile) {
+      throw new NotFoundException({ message: 'Coach not found', errorCode: 'NOT_FOUND' });
+    }
+    if (!this.canWriteCoach(ctx, coachProfile)) {
+      throw new ForbiddenException({ message: 'Only the coach themself may set this availability', errorCode: 'FORBIDDEN' });
+    }
+
+    this.assertValidRanges(slots);
+
+    const updated = await this.availabilityRepository.replaceSlotsForCoach(coachProfileId, slots);
+    return this.toCoachResponse(coachProfileId, updated);
+  }
+
+  private canReadCoach(ctx: AuthContext, coachProfile: CoachProfile): boolean {
+    if (ctx.role === 'SUPER_ADMIN' || this.canWriteCoach(ctx, coachProfile)) {
+      return true;
+    }
+    return ctx.role === 'TRAINER' && ctx.trainerId === coachProfile.trainerId;
+  }
+
+  private canWriteCoach(ctx: AuthContext, coachProfile: CoachProfile): boolean {
+    return ctx.role === 'COACH' && coachProfile.userId === ctx.userId;
+  }
+
+  private toCoachResponse(coachProfileId: string, slots: Availability[]): CoachAvailabilityGridResponseDto {
+    return {
+      coachProfileId,
+      slots: slots.map((slot) => ({
+        dayOfWeek: slot.dayOfWeek,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        isAvailable: slot.isAvailable,
+      })),
+    };
   }
 
   private assertValidRanges(slots: AvailabilitySlotDto[]): void {

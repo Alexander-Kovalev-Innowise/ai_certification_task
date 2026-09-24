@@ -10,9 +10,10 @@ export interface AvailabilitySlotInput {
   isAvailable: boolean;
 }
 
-// Task 5.11 (api §4.5). `Availability` is not one of the five tenant-owned
-// models (tenant-guard.extension.ts) and carries no `deletedAt` either
-// (soft-delete.extension.ts) — every query here uses the base client.
+// Task 5.11 (api §4.5), extended in Task 6.1 (coach slots). `Availability`
+// is not one of the five tenant-owned models (tenant-guard.extension.ts)
+// and carries no `deletedAt` either (soft-delete.extension.ts) — every
+// query here uses the base client.
 @Injectable()
 export class AvailabilityRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -43,6 +44,32 @@ export class AvailabilityRepository {
 
       return tx.availability.findMany({
         where: { subjectType: 'PLAYER', playerProfileId },
+        orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+      });
+    });
+  }
+
+  /** Task 6.1 (api §4.5 "GET /coaches/:id/availability", FR-062 "My Times"). */
+  async findSlotsForCoach(coachProfileId: string): Promise<Availability[]> {
+    return this.prisma.availability.findMany({
+      where: { subjectType: 'COACH', coachProfileId },
+      orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+    });
+  }
+
+  /** Task 6.1 (FR-062). Same delete + recreate full-replace semantics as `replaceSlotsForPlayer` above — see that method's comment. */
+  async replaceSlotsForCoach(coachProfileId: string, slots: AvailabilitySlotInput[]): Promise<Availability[]> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.availability.deleteMany({ where: { subjectType: 'COACH', coachProfileId } });
+
+      if (slots.length > 0) {
+        await tx.availability.createMany({
+          data: slots.map((slot) => ({ subjectType: 'COACH' as const, coachProfileId, ...slot })),
+        });
+      }
+
+      return tx.availability.findMany({
+        where: { subjectType: 'COACH', coachProfileId },
         orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
       });
     });
