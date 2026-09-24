@@ -37,10 +37,24 @@ async function bootstrap() {
   app.useGlobalFilters(new GlobalExceptionFilter());
 
   // Swagger — served at /docs. No version prefix: paths exactly as `/auth/login`.
+  // Task 9.5 (Swagger/OpenAPI finalization): description/version updated to
+  // reflect the full, completed Epic-01 backend surface (Phases 0-9) rather
+  // than the Phase 0 scaffold placeholder — multi-role auth/RBAC, ShareLink
+  // onboarding, multi-trainer player/parent contexts, coach availability,
+  // Super Admin tools, impersonation, GDPR anonymization, portal branding,
+  // and the transactional outbox — not just the auth slice the original
+  // wording named. `1.0.0` marks this backend surface as complete and
+  // stable for the frontend (Phase 10+) to build against; it is independent
+  // of `package.json`'s own `0.0.0` (unpublished monorepo placeholder,
+  // consistent across every workspace).
   const swaggerConfig = new DocumentBuilder()
     .setTitle('PracticePerfect API')
-    .setDescription('PracticePerfect Epic-01 — User Management & Authentication')
-    .setVersion('0.0.0')
+    .setDescription(
+      'PracticePerfect Epic-01 backend — multi-role auth & RBAC, ShareLink onboarding, multi-trainer player/parent ' +
+        'contexts, coach availability, Super Admin tools, impersonation, GDPR anonymization, and portal branding. ' +
+        'See specs/architect-architecture.md and specs/api-designer-spec.md for the full design.',
+    )
+    .setVersion('1.0.0')
     .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);

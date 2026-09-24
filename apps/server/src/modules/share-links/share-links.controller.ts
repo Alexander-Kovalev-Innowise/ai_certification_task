@@ -25,8 +25,15 @@ import { ShareLinkService } from './share-link.service';
 // UsersController's pattern) because this resource surface mixes
 // `/share-links/...` and `/trainers/:id/share-links` paths under one module
 // (api §4.4) — a single class-level prefix can't express both.
+//
+// Task 9.5: `@ApiBearerAuth()` deliberately NOT applied at the class level
+// (unlike every other, fully-protected controller) — this controller mixes
+// `@Public()` routes (previewShareLink, redeemShareLink) with protected
+// ones, and a class-level `@ApiBearerAuth()` would have `@nestjs/swagger`
+// (which knows nothing about our own `@Public()` metadata key) document the
+// public routes as requiring a bearer token too, which is simply false.
+// Applied per-method on the 3 actually-protected routes instead.
 @ApiTags('share-links')
-@ApiBearerAuth()
 @Controller()
 export class ShareLinksController {
   constructor(
@@ -41,6 +48,7 @@ export class ShareLinksController {
   @RequiresCapability(Capability.GENERATE_SHARE_LINK)
   @Post('share-links')
   @HttpCode(HttpStatus.CREATED)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Generate a PLAYER_STATIC or COACH_UNIQUE ShareLink for the calling trainer' })
   @ApiResponse({ status: 201, type: ShareLinkCreatedResponseDto })
   @ApiResponse({ status: 400, description: 'Missing targetEmail for COACH_UNIQUE' })
@@ -69,6 +77,7 @@ export class ShareLinksController {
   @Roles(Role.TRAINER, Role.SUPER_ADMIN)
   @RequiresCapability(Capability.GENERATE_SHARE_LINK)
   @Get('trainers/:id/share-links')
+  @ApiBearerAuth()
   @ApiOperation({ summary: "List a trainer's own generated ShareLinks and their usage counts" })
   @ApiResponse({ status: 200 })
   @ApiResponse({ status: 404, description: 'Cross-tenant (never 403, arch §8 Layer 3)' })
@@ -86,6 +95,7 @@ export class ShareLinksController {
   @RequiresCapability(Capability.GENERATE_SHARE_LINK)
   @Delete('share-links/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Revoke a ShareLink (soft — status becomes REVOKED)' })
   @ApiResponse({ status: 204 })
   @ApiResponse({ status: 403 })

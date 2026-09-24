@@ -1,5 +1,5 @@
 import { Body, Controller, HttpCode, HttpStatus, Post, Query, Req, Res } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 
@@ -57,6 +57,7 @@ export class AuthController {
   @RequiresCapability(Capability.EDIT_OWN_PROFILE)
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Revoke the current session (and, with ?everywhere=true, every session)' })
   @ApiResponse({ status: 204 })
   @ApiResponse({ status: 401 })
@@ -108,6 +109,7 @@ export class AuthController {
   @Throttle({ 'token-consume': {} })
   @Post('verify-email/resend')
   @HttpCode(HttpStatus.ACCEPTED)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Re-issue a fresh email-verification token, invalidating the previous one' })
   @ApiResponse({ status: 202 })
   @ApiResponse({ status: 409, description: 'Already verified', schema: { example: { errorCode: 'CONFLICT' } } })
@@ -119,6 +121,7 @@ export class AuthController {
   @RequiresCapability(Capability.EDIT_OWN_PROFILE)
   @Post('change-password')
   @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Change password (currentPassword optional only on the forced-first-change path)' })
   @ApiResponse({ status: 200 })
   @ApiResponse({ status: 400 })
