@@ -2,6 +2,10 @@ import { render, screen } from '@testing-library/react';
 
 import JoinPage from './page';
 
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}));
+
 function mockResponse(status: number, body: unknown = {}): Response {
   return {
     ok: status >= 200 && status < 300,

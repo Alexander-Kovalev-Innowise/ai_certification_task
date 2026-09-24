@@ -41,13 +41,14 @@ const baseFields = {
   gender: z.enum(GENDERS, { message: 'Select a gender.' }),
   // The DOM field is a native <select> ("Me" / "My child"), which — like
   // every other uncontrolled react-hook-form-registered element — always
-  // carries a string value; react-hook-form's own `register(...,
-  // {setValueAs})` transform was found NOT to reliably fire for a plain
-  // <select> in this codebase's RHF version (verified empirically: the
-  // submitted value stayed the pre-transform string), so the string->
-  // boolean coercion is done here at the schema layer instead, which zod
-  // always runs regardless of how react-hook-form handled the raw value.
-  isSelf: z.preprocess((value) => (typeof value === 'string' ? value === 'true' : value), z.boolean()),
+  // carries a string value. Kept as the raw 'true' | 'false' string here
+  // (rather than a `z.preprocess` to boolean) deliberately: `zodResolver`'s
+  // TypeScript types require a schema's parsed input and output types to
+  // match `useForm`'s generic exactly, and a preprocess-to-boolean schema's
+  // input type (`unknown`) doesn't satisfy that — verified as a real build
+  // error, not just a lint nit. The string->boolean conversion happens in
+  // AnonymousJoinForm.tsx's submit handler instead, once RHF/zod are done.
+  isSelf: z.enum(['true', 'false'], { message: 'Select who this registration is for.' }),
 };
 
 // api §4.4 ANONYMOUS_REGISTRATION branch — full player-registration body,
@@ -64,7 +65,7 @@ export const anonymousPlayerRegistrationSchema = z
       ctx.addIssue({ code: 'custom', path: ['dateOfBirth'], message: 'Date of birth cannot be in the future.' });
       return;
     }
-    if (!values.isSelf && (age < 1 || age > 18)) {
+    if (values.isSelf === 'false' && (age < 1 || age > 18)) {
       ctx.addIssue({ code: 'custom', path: ['dateOfBirth'], message: 'Age must be between 1 and 18 years.' });
     }
   });

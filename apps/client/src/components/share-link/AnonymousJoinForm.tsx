@@ -104,7 +104,7 @@ function AnonymousPlayerRegistrationFields({ onSubmit, isSubmitting, submitError
     formState: { errors },
   } = useForm<AnonymousPlayerRegistrationFormValues>({
     resolver: zodResolver(anonymousPlayerRegistrationSchema),
-    defaultValues: { isSelf: true },
+    defaultValues: { isSelf: 'true' },
   });
 
   const submit = handleSubmit((values) =>
@@ -115,7 +115,7 @@ function AnonymousPlayerRegistrationFields({ onSubmit, isSubmitting, submitError
       playerName: values.playerName,
       dateOfBirth: values.dateOfBirth,
       gender: values.gender,
-      isSelf: values.isSelf,
+      isSelf: values.isSelf === 'true',
     }),
   );
 

@@ -21,30 +21,30 @@ describe('anonymousPlayerRegistrationSchema', () => {
     gender: 'MALE' as const,
   };
 
-  it('accepts a valid child registration (isSelf: false) aged 1-18', () => {
-    const result = anonymousPlayerRegistrationSchema.safeParse({ ...base, dateOfBirth: pastIsoDate(10), isSelf: false });
+  it("accepts a valid child registration (isSelf: 'false') aged 1-18", () => {
+    const result = anonymousPlayerRegistrationSchema.safeParse({ ...base, dateOfBirth: pastIsoDate(10), isSelf: 'false' });
 
     expect(result.success).toBe(true);
   });
 
-  it('rejects a child registration (isSelf: false) outside the 1-18 range', () => {
-    const result = anonymousPlayerRegistrationSchema.safeParse({ ...base, dateOfBirth: pastIsoDate(25), isSelf: false });
+  it("rejects a child registration (isSelf: 'false') outside the 1-18 range", () => {
+    const result = anonymousPlayerRegistrationSchema.safeParse({ ...base, dateOfBirth: pastIsoDate(25), isSelf: 'false' });
 
     expect(result.success).toBe(false);
   });
 
-  it('accepts an adult self-registration (isSelf: true) even though age is well over 18', () => {
+  it("accepts an adult self-registration (isSelf: 'true') even though age is well over 18", () => {
     // The server (ShareLinkRedemptionService) applies no age-range check on
     // this endpoint at all, and isSelf:true routinely registers an adult
     // PLAYER_PARENT training themselves — see anonymousJoinSchema.ts's own
     // comment on this verified deviation from the plan's literal text.
-    const result = anonymousPlayerRegistrationSchema.safeParse({ ...base, dateOfBirth: pastIsoDate(35), isSelf: true });
+    const result = anonymousPlayerRegistrationSchema.safeParse({ ...base, dateOfBirth: pastIsoDate(35), isSelf: 'true' });
 
     expect(result.success).toBe(true);
   });
 
   it('rejects a date of birth in the future regardless of isSelf', () => {
-    const result = anonymousPlayerRegistrationSchema.safeParse({ ...base, dateOfBirth: futureIsoDate(1), isSelf: true });
+    const result = anonymousPlayerRegistrationSchema.safeParse({ ...base, dateOfBirth: futureIsoDate(1), isSelf: 'true' });
 
     expect(result.success).toBe(false);
   });
@@ -54,7 +54,7 @@ describe('anonymousPlayerRegistrationSchema', () => {
       ...base,
       password: 'weak',
       dateOfBirth: pastIsoDate(10),
-      isSelf: false,
+      isSelf: 'false',
     });
 
     expect(result.success).toBe(false);
