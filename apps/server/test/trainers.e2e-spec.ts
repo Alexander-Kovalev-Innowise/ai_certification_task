@@ -355,4 +355,141 @@ describe('TrainersController (e2e, Task 3.8)', () => {
       expect(untouched?.businessName).toBe('Trainer A Original');
     });
   });
+
+  // Task 8.3 (api §4.1 "PATCH /trainers/:id/branding", FR-071/OQ-7).
+  describe('PATCH /trainers/:id/branding (Task 8.1/8.2/8.3)', () => {
+    it('owning trainer sets a well-contrasted color -> 200, persists derivedPaletteJson, no contrastWarning', async () => {
+      const trainer = await insertTrainer();
+
+      const res = await request(app.getHttpServer())
+        .patch(`/trainers/${trainer.trainerId}/branding`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`)
+        .send({ primaryColorHex: '#767676' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.primaryColorHex).toBe('#767676');
+      expect(res.body.contrastWarning).toBeUndefined();
+      expect(res.body.derivedPalette).toMatchObject({ primaryColorHex: '#767676', meetsAA: true });
+
+      const row = await db.prisma.trainerProfile.findUnique({ where: { id: trainer.trainerId } });
+      expect(row?.derivedPaletteJson).toMatchObject({ meetsAA: true });
+    });
+
+    // OQ-7 / Task 8.1's "Do": a low-contrast color is NEVER rejected — it
+    // still saves (200), the warning is purely informational.
+    it('owning trainer sets a low-contrast color -> 200 (non-blocking), with contrastWarning', async () => {
+      const trainer = await insertTrainer();
+
+      const res = await request(app.getHttpServer())
+        .patch(`/trainers/${trainer.trainerId}/branding`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`)
+        .send({ primaryColorHex: '#FF0000' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.primaryColorHex).toBe('#FF0000');
+      expect(res.body.contrastWarning).toEqual(expect.stringContaining('#FF0000'));
+
+      const row = await db.prisma.trainerProfile.findUnique({ where: { id: trainer.trainerId } });
+      expect(row?.primaryColorHex).toBe('#FF0000');
+    });
+
+    it('resetToDefault clears logoUrl/primaryColorHex/derivedPalette -> 200', async () => {
+      const trainer = await insertTrainer({
+        logoUrl: 'https://example.com/logo.png',
+        primaryColorHex: '#767676',
+        derivedPaletteJson: { primaryColorHex: '#767676', meetsAA: true },
+      });
+
+      const res = await request(app.getHttpServer())
+        .patch(`/trainers/${trainer.trainerId}/branding`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`)
+        .send({ resetToDefault: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ logoUrl: null, primaryColorHex: null, derivedPalette: null });
+    });
+
+    it('an invalid primaryColorHex -> 400 VALIDATION_ERROR', async () => {
+      const trainer = await insertTrainer();
+
+      const res = await request(app.getHttpServer())
+        .patch(`/trainers/${trainer.trainerId}/branding`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`)
+        .send({ primaryColorHex: 'not-a-hex' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errorCode).toBe('VALIDATION_ERROR');
+    });
+
+    it('a non-TRAINER/non-Super-Admin caller -> 403', async () => {
+      const user = await insertUser();
+      const accessToken = await signToken(user);
+      const trainer = await insertTrainer();
+
+      const res = await request(app.getHttpServer())
+        .patch(`/trainers/${trainer.trainerId}/branding`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ primaryColorHex: '#767676' });
+
+      expect(res.status).toBe(403);
+    });
+
+    // Deviation from the plan's literal Task 8.3 wording ("Non-owning
+    // trainer -> 403"): this endpoint is tenant-owned exactly like PATCH
+    // /trainers/:id above (same TrainersController, same TrainerProfile
+    // resource), and arch §8 Layer 3 states plainly — "not optional" —
+    // that cross-tenant access on a tenant-owned resource must be 404, never
+    // 403, to avoid existence disclosure. Implemented as 404 for consistency
+    // with that DoD item and with every other ownership check in this file
+    // (Task 3.9/3.12's identical scenario on the same controller); flagged
+    // here for product/plan sign-off per this plan's own established
+    // convention for resolving spec inconsistencies (see e.g.
+    // dto/trainer-response.dto.ts's file header).
+    it('a different (non-owning) trainer -> 404, never 403, and leaves the row untouched', async () => {
+      const { trainerA, trainerB } = await seedTrainerPair(db.prisma, { a: { primaryColorHex: null } });
+      const trainerBToken = await signToken({ id: trainerB.userId, role: 'TRAINER' }, { tid: trainerB.trainerId });
+
+      const res = await request(app.getHttpServer())
+        .patch(`/trainers/${trainerA.trainerId}/branding`)
+        .set('Authorization', `Bearer ${trainerBToken}`)
+        .send({ primaryColorHex: '#767676' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.errorCode).toBe('NOT_FOUND');
+
+      const untouched = await db.prisma.trainerProfile.findUnique({ where: { id: trainerA.trainerId } });
+      expect(untouched?.primaryColorHex).toBeNull();
+    });
+
+    it('Super Admin can set branding for any trainer', async () => {
+      const admin = await insertUser({ role: 'SUPER_ADMIN' });
+      const adminToken = await signToken(admin);
+      const trainer = await insertTrainer();
+
+      const res = await request(app.getHttpServer())
+        .patch(`/trainers/${trainer.trainerId}/branding`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ primaryColorHex: '#767676' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.primaryColorHex).toBe('#767676');
+    });
+
+    it('setting logoUrl enqueues a MEDIA_LOGO_RESIZE OutboxJob and returns the pre-resize URL immediately', async () => {
+      const trainer = await insertTrainer();
+      const logoUrl = 'https://example.com/logos/pre-resize.png';
+
+      const res = await request(app.getHttpServer())
+        .patch(`/trainers/${trainer.trainerId}/branding`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`)
+        .send({ logoUrl });
+
+      expect(res.status).toBe(200);
+      expect(res.body.logoUrl).toBe(logoUrl);
+
+      const jobs = await db.prisma.outboxJob.findMany({ where: { type: 'MEDIA_LOGO_RESIZE' } });
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].payload).toMatchObject({ sourceUrl: logoUrl });
+    });
+  });
 });
