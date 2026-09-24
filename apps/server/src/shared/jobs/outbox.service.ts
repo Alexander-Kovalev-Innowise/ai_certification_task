@@ -1,3 +1,6 @@
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+
 import { Injectable, Logger } from '@nestjs/common';
 import { OutboxJob, Prisma } from '@prisma/client';
 
@@ -107,21 +110,38 @@ export class OutboxService {
     });
   }
 
-  // Epic-01 scope note: no Epic-01 flow enqueues MEDIA_* yet (TrainerProfile
-  // logo/PlayerProfile photo writes go straight to StorageService today) —
-  // this branch exists so `dispatch()` is exhaustive over every job-types
-  // constant and MEDIA_* has a defined contract (arch §13.2) ready for
-  // whichever later feature enqueues it.
+  // Task 8.2 — PortalBrandingService.updateBranding enqueues
+  // MEDIA_LOGO_RESIZE for real when a PATCH /trainers/:id/branding sets
+  // logoUrl (the first Epic-01 flow to actually enqueue a MEDIA_* job;
+  // previously this branch only existed so `dispatch()` stayed exhaustive
+  // over every job-types constant, arch §13.2).
   private async dispatchMedia(job: OutboxJob): Promise<void> {
     const payload = job.payload as { sourceUrl?: string; targetKey?: string } | null;
     if (!payload?.sourceUrl || !payload?.targetKey) {
       throw new Error(`Outbox job ${job.id} (${job.type}) payload missing required "sourceUrl"/"targetKey"`);
     }
 
-    const response = await fetch(payload.sourceUrl);
-    const input = Buffer.from(await response.arrayBuffer());
+    const input = await this.readSource(payload.sourceUrl);
     const resized = job.type === JOB_TYPES.MEDIA_LOGO_RESIZE ? await resizeLogo(input) : await generateThumbnail(input);
 
     await this.storageService.upload({ key: payload.targetKey, contentType: 'image/png', body: resized });
+  }
+
+  /**
+   * `fetch()` (undici, Node's built-in) does not support `file://` URLs —
+   * it throws a bare "fetch failed" with no useful detail. LocalStorageAdapter
+   * (Task 1.11, the default STORAGE_PROVIDER=local adapter used in dev/test)
+   * returns exactly that scheme, so without this branch every
+   * MEDIA_LOGO_RESIZE job would fail every attempt until MAX_ATTEMPTS and
+   * land in FAILED — a real bug, not a hypothetical one, caught by Task
+   * 8.2's own outbox-drain test. A real remote adapter (e.g. S3) still goes
+   * through `fetch` over http(s) unchanged.
+   */
+  private async readSource(sourceUrl: string): Promise<Buffer> {
+    if (sourceUrl.startsWith('file://')) {
+      return readFile(fileURLToPath(sourceUrl));
+    }
+    const response = await fetch(sourceUrl);
+    return Buffer.from(await response.arrayBuffer());
   }
 }
