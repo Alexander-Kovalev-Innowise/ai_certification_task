@@ -5,6 +5,7 @@ import UserDetailPage from './page';
 
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'u1' }),
+  useRouter: () => ({ push: jest.fn() }),
 }));
 
 function mockResponse(status: number, body: unknown = {}): Response {
@@ -115,5 +116,25 @@ describe('UserDetailPage', () => {
 
     expect(screen.queryByRole('button', { name: /deactivate user/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /delete user \(gdpr\)/i })).not.toBeInTheDocument();
+  });
+
+  it('opens ImpersonateConfirmModal from the Impersonate button for a non-Super-Admin user', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, baseUserBody()));
+
+    renderPage();
+    await screen.findByRole('heading', { name: /ada lovelace/i });
+
+    fireEvent.click(screen.getByRole('button', { name: /^impersonate$/i }));
+
+    expect(screen.getByRole('dialog', { name: /impersonate ada lovelace/i })).toBeInTheDocument();
+  });
+
+  it('hides the Impersonate button for a SUPER_ADMIN user', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, { ...baseUserBody(), role: 'SUPER_ADMIN' }));
+
+    renderPage();
+    await screen.findByRole('heading', { name: /ada lovelace/i });
+
+    expect(screen.queryByRole('button', { name: /^impersonate$/i })).not.toBeInTheDocument();
   });
 });

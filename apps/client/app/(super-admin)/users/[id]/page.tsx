@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { SkeletonCard } from '../../../../src/components/shared/Skeleton';
 import { DeactivateConfirmModal } from '../../../../src/components/super-admin/DeactivateConfirmModal';
 import { GdprDeleteConfirmModal } from '../../../../src/components/super-admin/GdprDeleteConfirmModal';
+import { ImpersonateConfirmModal } from '../../../../src/components/super-admin/ImpersonateConfirmModal';
 import { UserDetailForm, type UserDetailResponseDto } from '../../../../src/components/super-admin/UserDetailForm';
 import { apiRequest } from '../../../../src/lib/api/apiClient';
 
@@ -40,6 +41,7 @@ export default function UserDetailPage() {
   const queryClient = useQueryClient();
   const [isDeactivateModalOpen, setIsDeactivateModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isImpersonateModalOpen, setIsImpersonateModalOpen] = useState(false);
 
   const {
     data: user,
@@ -101,6 +103,15 @@ export default function UserDetailPage() {
           >
             Delete user (GDPR)
           </button>
+          {user.role !== 'SUPER_ADMIN' && (
+            <button
+              type="button"
+              onClick={() => setIsImpersonateModalOpen(true)}
+              className="rounded-sm border border-[var(--border-soft)] p-sm text-body text-[var(--text-primary)]"
+            >
+              Impersonate
+            </button>
+          )}
         </div>
       )}
 
@@ -124,6 +135,8 @@ export default function UserDetailPage() {
           invalidate();
         }}
       />
+
+      <ImpersonateConfirmModal isOpen={isImpersonateModalOpen} target={user} onClose={() => setIsImpersonateModalOpen(false)} />
     </section>
   );
 }
