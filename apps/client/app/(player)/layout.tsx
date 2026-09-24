@@ -9,10 +9,13 @@ import { useBootstrap } from '../../src/hooks/useBootstrap';
 import { BrandingProvider, type BrandingInput } from '../../src/lib/branding/BrandingProvider';
 import type { AccountType } from '../../src/types/auth';
 
-const NAV_LINKS = [
-  { href: '/profiles', label: 'Profiles' },
-  { href: '/approvals', label: 'Approvals' },
-] as const;
+const NAV_LINKS = [{ href: '/profiles', label: 'Profiles' }] as const;
+// fe §4.6/§9.4 — Approvals is adult-parent-only; `APPROVE_CHILD_PURCHASE`
+// (and `GET /approvals` itself) is CHILD-denied (api §4.6), so the nav item
+// is hidden for a CHILD session entirely, not just disabled — a CHILD
+// hitting `/approvals` directly still gets the `403
+// CHILD_CAPABILITY_DENIED` fallback redirect (Task 14.8's page.tsx).
+const APPROVALS_LINK = { href: '/approvals', label: 'Approvals' } as const;
 
 interface PlayerParentBootstrapShape {
   accountType: AccountType;
@@ -31,13 +34,14 @@ function hasPlayerParentShape(data: unknown): data is PlayerParentBootstrapShape
   );
 }
 
-function PlayerNav() {
+function PlayerNav({ showApprovals }: { showApprovals: boolean }) {
+  const links = showApprovals ? [...NAV_LINKS, APPROVALS_LINK] : NAV_LINKS;
   return (
     <nav
       aria-label="Player/Parent navigation"
       className="flex items-center gap-lg border-b border-[var(--border-soft)] bg-[var(--surface-1)] px-lg py-sm"
     >
-      {NAV_LINKS.map((link) => (
+      {links.map((link) => (
         <a key={link.href} href={link.href} className="text-body text-[var(--text-primary)] hover:text-[var(--brand-primary)]">
           {link.label}
         </a>
@@ -59,7 +63,7 @@ function PlayerLayoutContent({ children }: { children: ReactNode }) {
   if (isLoading || !data || !hasPlayerParentShape(data)) {
     return (
       <div className="flex min-h-screen flex-col">
-        <PlayerNav />
+        <PlayerNav showApprovals={false} />
         <main className="flex-1 p-lg" aria-busy="true" aria-label="Loading player portal">
           <SkeletonCard />
         </main>
@@ -73,7 +77,7 @@ function PlayerLayoutContent({ children }: { children: ReactNode }) {
   return (
     <BrandingProvider branding={branding}>
       <div className="flex min-h-screen flex-col">
-        <PlayerNav />
+        <PlayerNav showApprovals={accountType === 'ADULT'} />
         <ContextSwitcher accountType={accountType} contexts={contexts} activeContext={activeContext} />
         <main className="flex-1">{children}</main>
       </div>

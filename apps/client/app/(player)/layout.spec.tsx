@@ -97,9 +97,32 @@ describe('PlayerLayout', () => {
     await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
     expect(replaceMock).not.toHaveBeenCalled();
     expect(screen.getByLabelText(/active trainer context/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /approvals/i })).toHaveAttribute('href', '/approvals');
 
     const brandingEl = container.querySelector('[data-branding]');
     expect(brandingEl).toHaveStyle({ '--brand-primary': '#112233' });
+  });
+
+  // fe §4.6/§9.4 — Approvals is adult-parent-only (APPROVE_CHILD_PURCHASE is
+  // CHILD-denied, api §4.6); the nav item is hidden entirely for a CHILD
+  // session, not just disabled. Task 14.8.
+  it('hides the Approvals nav item for a CHILD session', async () => {
+    useAuthStore.getState().setSession({ accessToken: 't', user: userWithRole('PLAYER_PARENT', 'CHILD'), expiresAt: Date.now() + 60_000 });
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      mockResponse(200, {
+        role: 'PLAYER_PARENT',
+        accountType: 'CHILD',
+        user: userWithRole('PLAYER_PARENT', 'CHILD'),
+        playerProfile: { id: 'profile-2', name: 'Alex', isSelf: false, trainerCount: 1 },
+        contexts: [],
+        activeContext: null,
+      }),
+    );
+
+    renderLayout();
+
+    await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
+    expect(screen.queryByRole('link', { name: /approvals/i })).not.toBeInTheDocument();
   });
 
   it('redirects to /login and renders nothing when there is no session', () => {
