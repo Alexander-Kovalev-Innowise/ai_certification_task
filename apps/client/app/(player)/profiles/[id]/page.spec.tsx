@@ -31,6 +31,28 @@ const adultUser: UserSummaryDto = {
 
 const childUser: UserSummaryDto = { ...adultUser, id: 'user-2', accountType: 'CHILD', firstName: 'Alex' };
 
+function bootstrapBody(user: UserSummaryDto) {
+  return {
+    role: 'PLAYER_PARENT',
+    accountType: user.accountType,
+    user,
+    contexts: [
+      {
+        playerProfileId: 'profile-1',
+        playerProfileName: 'Priya',
+        isSelf: true,
+        trainerId: 'trainer-1',
+        trainerDisplayName: 'Ace Tennis Academy',
+        logoUrl: null,
+        primaryColorHex: null,
+        connectedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ],
+    activeContext: null,
+    pendingApprovalsCount: 0,
+  };
+}
+
 function profileBody() {
   return {
     id: 'profile-2',
@@ -59,8 +81,10 @@ function renderPage() {
 
 // fe §4.6 — `/profiles/[id]`: GET/PATCH /player-profiles/:id
 // (ProfileEditForm) + GET /player-profiles/:id/trainers
-// (TrainerAssociationList). Task 14.4. Wrapped by `(player)/layout.tsx`'s
-// RoleGuard(PLAYER_PARENT), so this leaf doesn't re-guard.
+// (TrainerAssociationList) + Add Trainer/Remove wiring (AddTrainerModal/
+// RemoveTrainerConfirmModal, Task 14.5). Tasks 14.4-14.5. Wrapped by
+// `(player)/layout.tsx`'s RoleGuard(PLAYER_PARENT), so this leaf doesn't
+// re-guard.
 describe('ProfileDetailPage', () => {
   beforeEach(() => {
     useAuthStore.getState().clear();
@@ -71,9 +95,12 @@ describe('ProfileDetailPage', () => {
     jest.restoreAllMocks();
   });
 
-  it('loads the profile and trainer list, and renders the edit form + trainer list', async () => {
+  it('loads bootstrap, the profile, and the trainer list, and renders the edit form + trainer list', async () => {
     useAuthStore.getState().setSession({ accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
-    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, profileBody())).mockResolvedValueOnce(mockResponse(200, trainersBody()));
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(mockResponse(200, bootstrapBody(adultUser)))
+      .mockResolvedValueOnce(mockResponse(200, profileBody()))
+      .mockResolvedValueOnce(mockResponse(200, trainersBody()));
 
     renderPage();
 
@@ -81,15 +108,18 @@ describe('ProfileDetailPage', () => {
     expect(screen.getByText('Ace Tennis Academy')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /add trainer/i })).toBeInTheDocument();
 
-    const [profileUrl] = (global.fetch as jest.Mock).mock.calls[0] as [string];
-    const [trainersUrl] = (global.fetch as jest.Mock).mock.calls[1] as [string];
+    const [profileUrl] = (global.fetch as jest.Mock).mock.calls[1] as [string];
+    const [trainersUrl] = (global.fetch as jest.Mock).mock.calls[2] as [string];
     expect(profileUrl).toContain('/player-profiles/profile-2');
     expect(trainersUrl).toContain('/player-profiles/profile-2/trainers');
   });
 
   it('hides guardian-only fields and Add Trainer/Remove for a CHILD session', async () => {
     useAuthStore.getState().setSession({ accessToken: 't', user: childUser, expiresAt: Date.now() + 60_000 });
-    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, profileBody())).mockResolvedValueOnce(mockResponse(200, trainersBody()));
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(mockResponse(200, bootstrapBody(childUser)))
+      .mockResolvedValueOnce(mockResponse(200, profileBody()))
+      .mockResolvedValueOnce(mockResponse(200, trainersBody()));
 
     renderPage();
 
@@ -101,6 +131,7 @@ describe('ProfileDetailPage', () => {
   it('saves edits and updates the cached profile on success', async () => {
     useAuthStore.getState().setSession({ accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(mockResponse(200, bootstrapBody(adultUser)))
       .mockResolvedValueOnce(mockResponse(200, profileBody()))
       .mockResolvedValueOnce(mockResponse(200, trainersBody()))
       .mockResolvedValueOnce(mockResponse(200, { ...profileBody(), name: 'Alexander' }));
@@ -116,10 +147,56 @@ describe('ProfileDetailPage', () => {
 
   it('shows an error state when the profile request fails', async () => {
     useAuthStore.getState().setSession({ accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
-    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(500)).mockResolvedValueOnce(mockResponse(200, trainersBody()));
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(mockResponse(200, bootstrapBody(adultUser)))
+      .mockResolvedValueOnce(mockResponse(500))
+      .mockResolvedValueOnce(mockResponse(200, trainersBody()));
 
     renderPage();
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+  });
+
+  it('opens AddTrainerModal from "Add Trainer" and refetches the trainer list on success', async () => {
+    useAuthStore.getState().setSession({ accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(mockResponse(200, bootstrapBody(adultUser)))
+      .mockResolvedValueOnce(mockResponse(200, profileBody()))
+      .mockResolvedValueOnce(mockResponse(200, trainersBody()))
+      .mockResolvedValueOnce(
+        mockResponse(201, { id: 'assoc-2', trainerId: 'trainer-2', playerProfileId: 'profile-2', status: 'ACTIVE', connectedAt: '2026-03-01T00:00:00.000Z', alreadyConnected: false }),
+      )
+      .mockResolvedValueOnce(
+        mockResponse(200, [...trainersBody(), { trainerId: 'trainer-2', businessName: 'Hoops Club', logoUrl: null, connectedAt: '2026-03-01T00:00:00.000Z', status: 'ACTIVE' }]),
+      );
+
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('button', { name: /add trainer/i })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /add trainer/i }));
+    fireEvent.change(screen.getByLabelText(/^share link code$/i), { target: { value: 'XYZ789' } });
+    fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(await screen.findByText('Hoops Club')).toBeInTheDocument();
+  });
+
+  it('opens RemoveTrainerConfirmModal from "Remove" and removes the trainer from the list on success', async () => {
+    useAuthStore.getState().setSession({ accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(mockResponse(200, bootstrapBody(adultUser)))
+      .mockResolvedValueOnce(mockResponse(200, profileBody()))
+      .mockResolvedValueOnce(mockResponse(200, trainersBody()))
+      .mockResolvedValueOnce(mockResponse(204));
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Ace Tennis Academy')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /remove/i }));
+    expect(screen.getByText(/cancel all upcoming rsvps/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /yes, remove/i }));
+
+    await waitFor(() => expect(screen.queryByText('Ace Tennis Academy')).not.toBeInTheDocument());
   });
 });
