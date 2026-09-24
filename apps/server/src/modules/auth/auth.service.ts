@@ -198,6 +198,7 @@ export class AuthService {
         }) as unknown as Prisma.InputJsonValue,
       );
     });
+    this.outboxService.nudge();
 
     return GENERIC_RESPONSE;
   }
@@ -281,6 +282,7 @@ export class AuthService {
         templateData: { firstName: user.firstName, verificationToken: rawToken },
       });
     });
+    this.outboxService.nudge();
 
     return { message: 'Verification email sent.' };
   }

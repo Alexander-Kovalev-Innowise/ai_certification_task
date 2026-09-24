@@ -65,6 +65,7 @@ export class CoachService {
       );
       return created;
     });
+    this.outboxService.nudge();
 
     const response = new InviteCoachResponseDto();
     response.shareLinkCode = link.code;

@@ -253,6 +253,7 @@ export class ShareLinkRedemptionService {
         );
       },
     });
+    this.outboxService.nudge();
 
     return this.authService.issueSession(user, res);
   }
@@ -340,6 +341,7 @@ export class ShareLinkRedemptionService {
             }) as unknown as Prisma.InputJsonValue,
           );
         });
+        this.outboxService.nudge();
       }
     }
 

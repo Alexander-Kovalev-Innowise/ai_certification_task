@@ -161,6 +161,7 @@ export class ChildPurchaseApprovalService {
 
       return this.childApprovalsRepository.findById(id, tx);
     });
+    this.outboxService.nudge();
 
     return toRow(updated!);
   }

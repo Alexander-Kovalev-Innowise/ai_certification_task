@@ -81,6 +81,9 @@ export class PortalBrandingService {
       }
       return row;
     });
+    if (dto.logoUrl !== undefined) {
+      this.outboxService.nudge();
+    }
 
     return this.toResponse(updated, contrastWarning);
   }

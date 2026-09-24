@@ -152,6 +152,7 @@ export class AvailabilityService {
       );
       return created;
     });
+    this.outboxService.nudge();
 
     return {
       id: override.id,

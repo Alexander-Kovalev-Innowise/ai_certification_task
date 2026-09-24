@@ -63,6 +63,32 @@ export class OutboxService {
     });
   }
 
+  /**
+   * Task 9.2 DoD sweep (arch §13.2 / ADR-13) — the "in-process nudge" the
+   * architecture diagram promises but Phase 1-8 never actually wired up:
+   * every enqueue() call site only relied on OutboxPump's 30s cron, which
+   * technically satisfies "eventually drained" but not the documented
+   * "commit → nudge: drain immediately (typical latency < 100 ms)" latency.
+   * Callers invoke this right after their own `$transaction(...)` resolves
+   * (i.e. only once the enqueue has actually committed) — never from inside
+   * the transaction itself.
+   *
+   * Deliberately fire-and-forget: nothing about enqueue()'s durability
+   * guarantee depends on this succeeding. A missed or failed nudge (process
+   * crash between commit and the next tick, a transient DB blip) is exactly
+   * what the cron safety net exists to catch, so a nudge failure is logged
+   * here and never thrown back at the caller whose own business transaction
+   * already committed successfully.
+   */
+  nudge(): void {
+    setImmediate(() => {
+      this.drainOnce().catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Outbox nudge drain failed (safety-net cron will retry): ${message}`);
+      });
+    });
+  }
+
   private async processJob(tx: Prisma.TransactionClient, job: OutboxJob): Promise<void> {
     try {
       await this.dispatch(job);

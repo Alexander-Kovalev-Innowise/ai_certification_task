@@ -100,6 +100,7 @@ export class TrainerService {
       }
       throw error;
     }
+    this.outboxService.nudge();
 
     const trainerProfile = await this.trainersRepository.findByUserId(user.id);
     if (!trainerProfile) {

@@ -45,6 +45,7 @@ export class ApprovalExpiryJob {
 
     if (transitioned > 0) {
       this.logger.log(`ApprovalExpiryJob sweep transitioned ${transitioned} PENDING approval(s) to EXPIRED`);
+      this.outboxService.nudge();
     }
   }
 
