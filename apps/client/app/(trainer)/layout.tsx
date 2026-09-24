@@ -9,6 +9,7 @@ import { BrandingProvider, type BrandingInput } from '../../src/lib/branding/Bra
 
 const NAV_LINKS = [
   { href: '/coaches', label: 'Coaches' },
+  { href: '/players', label: 'Players' },
   { href: '/share-links', label: 'Share Links' },
 ] as const;
 

@@ -74,6 +74,7 @@ describe('TrainerLayout', () => {
     const { container } = renderLayout();
 
     expect(screen.getByRole('link', { name: /coaches/i })).toHaveAttribute('href', '/coaches');
+    expect(screen.getByRole('link', { name: /^players$/i })).toHaveAttribute('href', '/players');
     expect(screen.getByRole('link', { name: /share links/i })).toHaveAttribute('href', '/share-links');
 
     await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
