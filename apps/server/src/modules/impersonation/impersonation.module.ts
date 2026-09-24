@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 
+import { env } from '../../shared/config/config.module';
 import { AuthModule } from '../auth/auth.module';
 import { UsersModule } from '../users/users.module';
 
+import { ImpersonationMaintenanceJob } from './impersonation-maintenance.job';
 import { ImpersonationController } from './impersonation.controller';
 import { ImpersonationRepository } from './impersonation.repository';
 import { ImpersonationService } from './impersonation.service';
@@ -16,7 +18,11 @@ import { ImpersonationService } from './impersonation.service';
 @Module({
   imports: [AuthModule, UsersModule],
   controllers: [ImpersonationController],
-  providers: [ImpersonationRepository, ImpersonationService],
+  providers: [
+    ImpersonationRepository,
+    ImpersonationService,
+    ...(env.SCHEDULER_ENABLED ? [ImpersonationMaintenanceJob] : []),
+  ],
   exports: [ImpersonationRepository, ImpersonationService],
 })
 export class ImpersonationModule {}

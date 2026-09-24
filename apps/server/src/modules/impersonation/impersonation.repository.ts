@@ -85,4 +85,27 @@ export class ImpersonationRepository {
       take: params.limit + 1,
     });
   }
+
+  /**
+   * Task 7.4 (`ImpersonationMaintenanceJob`, arch §10 "No refresh" + §13.1).
+   * Closes any still-open (`endedAt: null`) log whose 60-minute hard cap
+   * (arch §10) has already passed without an explicit `/end` call. Sets
+   * `endedAt` to exactly `startedAt + 60 minutes` — the moment the token
+   * itself actually stopped being valid — not "now" (whenever the 10-minute
+   * sweep happens to run), so the audit trail reflects the session's real
+   * lifetime rather than up-to-an-hour of sweep-interval slack;
+   * `durationSeconds` is therefore always exactly `3600` for a
+   * sweep-closed row, vs. a variable, shorter value for an explicit `/end`
+   * call (`markEnded` above). Raw SQL (`$executeRaw`), not `updateMany`:
+   * Prisma's update data has no way to express "set this column relative to
+   * another column on the same row" (`"startedAt" + interval`).
+   */
+  async closeStaleSessions(): Promise<number> {
+    return this.prisma.$executeRaw`
+      UPDATE "ImpersonationLog"
+      SET "endedAt" = "startedAt" + interval '60 minutes',
+          "durationSeconds" = 3600
+      WHERE "endedAt" IS NULL AND "startedAt" < now() - interval '60 minutes'
+    `;
+  }
 }
