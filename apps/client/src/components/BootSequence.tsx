@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 
 import { refreshSession } from '../lib/api/apiClient';
 
+import { EmailVerifiedBanner } from './shared/EmailVerifiedBanner';
 import { ImpersonationBanner } from './shared/ImpersonationBanner';
 
 type BootState = 'pending' | 'resolved';
@@ -41,6 +42,14 @@ function BootLoadingScreen() {
 // of "root layout stays a Server Component, interactivity lives in a child"
 // — resolved the build crash in this app and is the correct architecture
 // regardless of the bug (arch note, not just a workaround).
+//
+// fe §9.2/Task 18.2 — `EmailVerifiedBanner` mounts here too, for the exact
+// same reason `ImpersonationBanner` does (root-boundary chrome above every
+// role layout, needs the same leaf Client Component seam). The plan's Task
+// 18.2 Files list names `app/layout.tsx` as the file to modify; this mounts
+// one level down for consistency with that already-established precedent
+// rather than reintroducing a Client Component at the <html>/<body>
+// boundary — see the Phase 18 wrap-up report for the full deviation note.
 export function BootSequence({ children }: { children: ReactNode }) {
   const [bootState, setBootState] = useState<BootState>('pending');
 
@@ -71,6 +80,7 @@ export function BootSequence({ children }: { children: ReactNode }) {
   return (
     <>
       <ImpersonationBanner />
+      {bootState === 'resolved' && <EmailVerifiedBanner />}
       {bootState === 'pending' ? <BootLoadingScreen /> : children}
     </>
   );
