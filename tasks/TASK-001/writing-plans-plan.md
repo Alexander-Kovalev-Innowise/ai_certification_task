@@ -33,8 +33,8 @@ Backend (Phases 0–9) and Frontend Phases 10–15 are complete and merged on `f
 - [x] Phase 13 — Frontend ShareLink Invitations UI: Trainer Coaches & Share-Links Pages
 - [x] Phase 14 — Frontend Player/Parent Features
 - [x] Phase 15 — Frontend Coach Features
-- [ ] Phase 16 — Frontend Super Admin Tools: Impersonation (**in progress** — Task 16.1 `ImpersonationBanner` underway)
-- [ ] Phase 17 — Frontend Portal Branding
+- [x] Phase 16 — Frontend Super Admin Tools: Impersonation
+- [ ] Phase 17 — Frontend Portal Branding (**in progress**)
 - [ ] Phase 18 — Frontend Shared Routes & Cross-Cutting Polish
 
 ---
