@@ -96,6 +96,31 @@ describe('BrandingPage', () => {
     expect(JSON.parse(patchOptions.body as string)).toEqual({ primaryColorHex: '#000000' });
   });
 
+  it('renders a dismissible ContrastWarningBanner when the PATCH response carries contrastWarning, after the save already succeeded', async () => {
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(mockResponse(200, bootstrapBody({ logoUrl: null, primaryColorHex: '#123ABC' })))
+      .mockResolvedValueOnce(
+        mockResponse(200, {
+          logoUrl: null,
+          primaryColorHex: '#FFFFFF',
+          derivedPalette: null,
+          contrastWarning: 'This color may be hard to read for some users — consider a darker shade.',
+        }),
+      )
+      .mockResolvedValueOnce(mockResponse(200, bootstrapBody({ logoUrl: null, primaryColorHex: '#FFFFFF' })));
+
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText(/hex/i)).toHaveValue('#123ABC'));
+
+    fireEvent.change(screen.getByLabelText(/hex/i), { target: { value: '#FFFFFF' } });
+    fireEvent.click(screen.getByRole('button', { name: /save branding/i }));
+
+    await waitFor(() => expect(screen.getByText(/hard to read/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
+    expect(screen.queryByText(/hard to read/i)).not.toBeInTheDocument();
+  });
+
   it('shows a generic error message when the save fails', async () => {
     (global.fetch as jest.Mock)
       .mockResolvedValueOnce(mockResponse(200, bootstrapBody({ logoUrl: null, primaryColorHex: '#123ABC' })))

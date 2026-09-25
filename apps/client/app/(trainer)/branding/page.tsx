@@ -8,6 +8,7 @@ import { useForm } from 'react-hook-form';
 import { SkeletonCard } from '../../../src/components/shared/Skeleton';
 import { BrandingLivePreview } from '../../../src/components/trainer/BrandingLivePreview';
 import { ColorPicker } from '../../../src/components/trainer/ColorPicker';
+import { ContrastWarningBanner } from '../../../src/components/trainer/ContrastWarningBanner';
 import { LogoUploadField } from '../../../src/components/trainer/LogoUploadField';
 import { useBootstrap } from '../../../src/hooks/useBootstrap';
 import { apiRequest } from '../../../src/lib/api/apiClient';
@@ -89,6 +90,10 @@ function BrandingForm({ trainerId, initialLogoUrl, initialPrimaryColorHex }: Bra
   const queryClient = useQueryClient();
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  // Task 17.2 (fe §8, OQ-7/G-11) — non-blocking, dismissible. Only ever set
+  // from a successful PATCH response (the save has already happened by the
+  // time this can be non-null), never a pre-save gate.
+  const [contrastWarning, setContrastWarning] = useState<string | null>(null);
 
   const {
     handleSubmit,
@@ -108,9 +113,14 @@ function BrandingForm({ trainerId, initialLogoUrl, initialPrimaryColorHex }: Bra
 
   const mutation = useMutation({
     mutationFn: (body: BrandingPatchBody) => patchBranding(trainerId, body),
-    onSuccess: () => {
+    onSuccess: (data) => {
       setSaveError(null);
       setSaveSuccess(true);
+      // Re-armed on every successful save (not just set once) — a dismissed
+      // banner from a previous save must not suppress a fresh warning from
+      // this one, and a save with no warning this time must clear a stale
+      // one from before.
+      setContrastWarning(data.contrastWarning ?? null);
       // fe §8/§10 — refresh the TRAINER bootstrap's `branding` block so
       // BrandingProvider (the layout wrapping this page) picks up the
       // just-saved accent without a full page reload. `exact: true` per this
@@ -144,6 +154,10 @@ function BrandingForm({ trainerId, initialLogoUrl, initialPrimaryColorHex }: Bra
         onChange={(hex) => setValue('primaryColorHex', hex, { shouldDirty: true, shouldValidate: true })}
         error={errors.primaryColorHex?.message}
       />
+
+      {/* fe §8 — "renders as a dismissible, non-blocking ContrastWarningBanner
+          directly under the picker". Task 17.2. */}
+      {contrastWarning && <ContrastWarningBanner message={contrastWarning} onDismiss={() => setContrastWarning(null)} />}
 
       <BrandingLivePreview primaryColorHex={primaryColorHex} logoUrl={logoUrl || null} />
 
