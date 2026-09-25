@@ -1,6 +1,11 @@
+
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useTrainerContextStore } from '../../stores/useTrainerContextStore';
 import type { AuthSessionResponseDto } from '../../types/auth';
+import { logClientError } from '../monitoring/errorMonitor';
+import { toast } from '../toast/toast';
+
+import { parseApiErrorBody } from './apiError';
 
 // arch §1: apps/client never talks to Postgres directly — every call here
 // goes to the NestJS API over HTTP, base URL injected at build time via
@@ -16,6 +21,70 @@ export class SessionExpiredError extends Error {
   constructor() {
     super('Session expired');
     this.name = 'SessionExpiredError';
+  }
+}
+
+/**
+ * fe §9.4/Task 18.3 — thrown by apiRequest() for a `500
+ * TENANT_SCOPE_VIOLATION` (architecture §8 Layer 2: should never reach the
+ * client, must degrade safely if it does). `QueryProvider.tsx` configures
+ * TanStack Query's `throwOnError` to re-throw exactly this type during
+ * render, so the root `ErrorBoundary` (Task 18.3) catches it and shows the
+ * generic, deliberately-unexplained "Something went wrong" fallback (api
+ * §0.5: this errorCode is "alerted, not user-facing copy").
+ */
+export class FatalApiError extends Error {
+  readonly errorCode: string;
+
+  constructor(errorCode: string) {
+    super('A server error occurred');
+    this.name = 'FatalApiError';
+    this.errorCode = errorCode;
+  }
+}
+
+// api §3/§4.6 — a 403 with either of these error codes reaching the client
+// at all means a UI hide-rule failed somewhere upstream (fe §7.2/§4.6 name
+// the actual prevention: not rendering the triggering field/nav item for a
+// CHILD session in the first place). fe §9.4's own framing: "should never
+// happen in steady state" — the generic toast + client-error-monitor log
+// below is a bug-signal fallback, not the primary UX for this case.
+const CHILD_GUARDRAIL_ERROR_CODES = new Set(['CHILD_CAPABILITY_DENIED', 'CHILD_FIELD_NOT_EDITABLE']);
+
+const CHILD_GUARDRAIL_TOAST_MESSAGE = "This action isn't available on this account.";
+
+/**
+ * fe §9.4/Task 18.3 — apiRequest()'s single chokepoint for the two
+ * cross-cutting error-code reactions that don't fit the 401 retry/redirect
+ * branch above: a fatal `TENANT_SCOPE_VIOLATION` (throws, see
+ * `FatalApiError`) and a child-guardrail 403 reaching the client anyway
+ * (toast + log, never a throw — callers like `AccountProfileForm`/
+ * `ProfileEditForm` already branch on `!res.ok` themselves, so this must
+ * not consume the response body in a way a real browser `Response` can't
+ * recover from). `res.clone()` when available (every real `fetch` Response)
+ * keeps the original body stream intact for the caller; test doubles that
+ * omit `clone()` fall back to reading `res` directly, safe there because
+ * those mocks' `json()` is a plain re-invokable function, not a
+ * single-read stream.
+ */
+async function handleCrossCuttingErrorCodes(res: Response, path: string): Promise<void> {
+  if (res.status !== 403 && res.status !== 500) {
+    return;
+  }
+
+  const source = typeof res.clone === 'function' ? res.clone() : res;
+  const body = await parseApiErrorBody(source);
+  if (!body) {
+    return;
+  }
+
+  if (res.status === 500 && body.errorCode === 'TENANT_SCOPE_VIOLATION') {
+    throw new FatalApiError(body.errorCode);
+  }
+
+  if (res.status === 403 && CHILD_GUARDRAIL_ERROR_CODES.has(body.errorCode)) {
+    toast.error(CHILD_GUARDRAIL_TOAST_MESSAGE);
+    logClientError('child-capability-denied-reached-client', { path, errorCode: body.errorCode });
   }
 }
 
@@ -164,6 +233,8 @@ export async function apiRequest(path: string, options: ApiRequestOptions = {}):
     redirectToLogin();
     throw new SessionExpiredError();
   }
+
+  await handleCrossCuttingErrorCodes(res, path);
 
   return res;
 }
