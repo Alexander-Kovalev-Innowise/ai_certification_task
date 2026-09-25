@@ -44,11 +44,15 @@ const GENERIC_ERROR_MESSAGE = 'Something went wrong starting impersonation. Plea
 // fe §4.3/§16.3 — ImpersonateConfirmModal: entry point only. Calls
 // POST /impersonation/start (api §2) and populates useAuthStore's
 // accessToken/user/isImpersonating with the returned impersonation token —
-// the visible banner and its countdown are Task 16.1, wired to this in Task
-// 16.3. `422 IMPERSONATION_TARGET_INVALID` (api §2 — target is a Super
-// Admin) is surfaced with its own copy rather than a generic error, and is
-// also pre-empted client-side: a SUPER_ADMIN target renders no Impersonate
-// action at all (FR-015). Task 12.6.
+// ImpersonationBanner (Task 16.1) then appears immediately off that same
+// store update, with no fetch of its own, since it derives its render state
+// by decoding the `act` claim straight off the token this modal just wrote
+// to the store. The full start -> banner -> exit loop is confirmed
+// end-to-end by `ImpersonationFlow.spec.tsx` (Task 16.3), not just the two
+// halves in isolation. `422 IMPERSONATION_TARGET_INVALID` (api §2 — target
+// is a Super Admin) is surfaced with its own copy rather than a generic
+// error, and is also pre-empted client-side: a SUPER_ADMIN target renders
+// no Impersonate action at all (FR-015). Task 12.6.
 export function ImpersonateConfirmModal({ isOpen, target, onClose, onStarted }: ImpersonateConfirmModalProps) {
   const router = useRouter();
   const setSession = useAuthStore((state) => state.setSession);

@@ -69,7 +69,13 @@ async function runExitSequence(): Promise<void> {
 // Task 16.1 replacing its `ImpersonationBannerSlot` placeholder from Task
 // 10.8), not a role layout: a Super Admin impersonating a Trainer renders
 // *inside* the target's own role layout, so this has to sit above that
-// entire subtree. Renders nothing when not impersonating.
+// entire subtree. Renders nothing when not impersonating. Task 16.3 wires
+// this end-to-end with `ImpersonateConfirmModal` (Task 12.6) — see
+// `ImpersonationFlow.spec.tsx`: the modal's `POST /impersonation/start`
+// populates `useAuthStore`, and this component appears immediately off
+// that same store update (no fetch of its own), then its own manual "Exit
+// Impersonation" runs the identical 3-step sequence as the auto-exit-at-0
+// path below.
 export function ImpersonationBanner() {
   const accessToken = useAuthStore((state) => state.accessToken);
   const user = useAuthStore((state) => state.user);
