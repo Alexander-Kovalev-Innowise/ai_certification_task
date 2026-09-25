@@ -35,7 +35,9 @@ Backend (Phases 0–9) and Frontend Phases 10–15 are complete and merged on `f
 - [x] Phase 15 — Frontend Coach Features
 - [x] Phase 16 — Frontend Super Admin Tools: Impersonation
 - [x] Phase 17 — Frontend Portal Branding
-- [ ] Phase 18 — Frontend Shared Routes & Cross-Cutting Polish (**in progress** — final phase)
+- [x] Phase 18 — Frontend Shared Routes & Cross-Cutting Polish
+
+**All 19 phases complete (2026-09-25).** Epic-01 implementation finished: 186 commits on `feature/epic-01-user-management`. Two post-Phase-18 gaps closed (root `/` redirect, account nav links) before calling this done. Final full-stack regression pending as the last verification step.
 
 ---
 
