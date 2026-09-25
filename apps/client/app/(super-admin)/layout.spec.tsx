@@ -42,6 +42,7 @@ describe('SuperAdminLayout', () => {
 
     expect(screen.getByRole('link', { name: /users/i })).toHaveAttribute('href', '/users');
     expect(screen.getByRole('link', { name: /impersonation history/i })).toHaveAttribute('href', '/impersonation-history');
+    expect(screen.getByRole('link', { name: /^account$/i })).toHaveAttribute('href', '/account/profile');
     expect(screen.getByText('page content')).toBeInTheDocument();
     expect(replaceMock).not.toHaveBeenCalled();
   });

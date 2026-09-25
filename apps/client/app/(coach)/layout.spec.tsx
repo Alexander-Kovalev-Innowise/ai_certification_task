@@ -74,7 +74,8 @@ describe('CoachLayout', () => {
     const { container } = renderLayout();
 
     expect(screen.getByRole('link', { name: /my times/i })).toHaveAttribute('href', '/my-times');
-    expect(screen.getByRole('link', { name: /profile/i })).toHaveAttribute('href', '/profile');
+    expect(screen.getByRole('link', { name: /^profile$/i })).toHaveAttribute('href', '/profile');
+    expect(screen.getByRole('link', { name: /^account$/i })).toHaveAttribute('href', '/account/profile');
 
     await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
     expect(replaceMock).not.toHaveBeenCalled();

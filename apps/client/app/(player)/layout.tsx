@@ -17,6 +17,12 @@ const NAV_LINKS = [{ href: '/profiles', label: 'Profiles' }] as const;
 // CHILD_CAPABILITY_DENIED` fallback redirect (Task 14.8's page.tsx).
 const APPROVALS_LINK = { href: '/approvals', label: 'Approvals' } as const;
 
+// fe §3/§4.7 — `/account/profile` (Task 18.1), rendered separately from the
+// mapped `links` (pushed to the far end of the bar via `ml-auto`) since it's
+// a persistent account/settings link, not one of this role's feature
+// routes, and unlike Approvals it is never conditionally hidden.
+const ACCOUNT_LINK = { href: '/account/profile', label: 'Account' } as const;
+
 interface PlayerParentBootstrapShape {
   accountType: AccountType;
   contexts: ContextEntry[];
@@ -46,6 +52,9 @@ function PlayerNav({ showApprovals }: { showApprovals: boolean }) {
           {link.label}
         </a>
       ))}
+      <a href={ACCOUNT_LINK.href} className="ml-auto text-body text-[var(--text-primary)] hover:text-[var(--brand-primary)]">
+        {ACCOUNT_LINK.label}
+      </a>
     </nav>
   );
 }

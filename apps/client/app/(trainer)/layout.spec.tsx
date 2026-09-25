@@ -76,6 +76,7 @@ describe('TrainerLayout', () => {
     expect(screen.getByRole('link', { name: /coaches/i })).toHaveAttribute('href', '/coaches');
     expect(screen.getByRole('link', { name: /^players$/i })).toHaveAttribute('href', '/players');
     expect(screen.getByRole('link', { name: /share links/i })).toHaveAttribute('href', '/share-links');
+    expect(screen.getByRole('link', { name: /^account$/i })).toHaveAttribute('href', '/account/profile');
 
     await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
     expect(replaceMock).not.toHaveBeenCalled();

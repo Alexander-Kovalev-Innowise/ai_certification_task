@@ -98,6 +98,7 @@ describe('PlayerLayout', () => {
     expect(replaceMock).not.toHaveBeenCalled();
     expect(screen.getByLabelText(/active trainer context/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /approvals/i })).toHaveAttribute('href', '/approvals');
+    expect(screen.getByRole('link', { name: /^account$/i })).toHaveAttribute('href', '/account/profile');
 
     const brandingEl = container.querySelector('[data-branding]');
     expect(brandingEl).toHaveStyle({ '--brand-primary': '#112233' });
@@ -123,6 +124,7 @@ describe('PlayerLayout', () => {
 
     await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
     expect(screen.queryByRole('link', { name: /approvals/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^account$/i })).toHaveAttribute('href', '/account/profile');
   });
 
   it('redirects to /login and renders nothing when there is no session', () => {

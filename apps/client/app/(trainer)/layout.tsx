@@ -17,6 +17,11 @@ const NAV_LINKS = [
   { href: '/branding', label: 'Branding' },
 ] as const;
 
+// fe §3/§4.7 — `/account/profile` (Task 18.1), rendered separately from
+// NAV_LINKS (pushed to the far end of the bar via `ml-auto`) since it's a
+// persistent account/settings link, not one of this role's feature routes.
+const ACCOUNT_LINK = { href: '/account/profile', label: 'Account' } as const;
+
 function hasTrainerBranding(data: unknown): data is { branding: BrandingInput } {
   return typeof data === 'object' && data !== null && 'branding' in data;
 }
@@ -32,6 +37,9 @@ function TrainerNav() {
           {link.label}
         </a>
       ))}
+      <a href={ACCOUNT_LINK.href} className="ml-auto text-body text-[var(--text-primary)] hover:text-[var(--brand-primary)]">
+        {ACCOUNT_LINK.label}
+      </a>
     </nav>
   );
 }

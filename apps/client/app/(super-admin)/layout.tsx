@@ -9,6 +9,12 @@ const NAV_LINKS = [
   { href: '/impersonation-history', label: 'Impersonation History' },
 ] as const;
 
+// fe §3/§4.7 — `/account/profile` (Task 18.1) is the shared GET/PATCH /me
+// editor every authenticated role reaches; rendered separately from
+// NAV_LINKS (pushed to the far end of the bar via `ml-auto`) since it's a
+// persistent account/settings link, not one of this role's feature routes.
+const ACCOUNT_LINK = { href: '/account/profile', label: 'Account' } as const;
+
 // fe §3/§4.3 — `(super-admin)/layout.tsx`: RoleGuard(SUPER_ADMIN) + SA nav
 // shell (Users, Impersonation History links). Wraps every Super Admin route
 // this phase adds (`/users`, `/users/[id]`) — NOT `/dashboard`, which is the
@@ -27,6 +33,9 @@ export default function SuperAdminLayout({ children }: { children: ReactNode }) 
               {link.label}
             </a>
           ))}
+          <a href={ACCOUNT_LINK.href} className="ml-auto text-body text-[var(--text-primary)] hover:text-[var(--brand-primary)]">
+            {ACCOUNT_LINK.label}
+          </a>
         </nav>
         <main className="flex-1">{children}</main>
       </div>

@@ -12,6 +12,13 @@ const NAV_LINKS = [
   { href: '/profile', label: 'Profile' },
 ] as const;
 
+// fe §3/§4.7 — `/account/profile` (Task 18.1, the shared GET/PATCH /me
+// editor), rendered separately from NAV_LINKS (pushed to the far end of the
+// bar via `ml-auto`) as a persistent account/settings link — distinct from
+// this role's own `/profile` above, which is the coach-specific self-fields
+// editor (PATCH /coaches/:id, FR-064), not the shared account page.
+const ACCOUNT_LINK = { href: '/account/profile', label: 'Account' } as const;
+
 function hasCoachBranding(data: unknown): data is { employingTrainer: BrandingInput } {
   return typeof data === 'object' && data !== null && 'employingTrainer' in data;
 }
@@ -24,6 +31,9 @@ function CoachNav() {
           {link.label}
         </a>
       ))}
+      <a href={ACCOUNT_LINK.href} className="ml-auto text-body text-[var(--text-primary)] hover:text-[var(--brand-primary)]">
+        {ACCOUNT_LINK.label}
+      </a>
     </nav>
   );
 }
