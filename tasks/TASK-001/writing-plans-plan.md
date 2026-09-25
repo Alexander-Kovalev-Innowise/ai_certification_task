@@ -12,6 +12,33 @@
 
 ---
 
+## Execution Status (updated 2026-09-25)
+
+Backend (Phases 0–9) and Frontend Phases 10–15 are complete and merged on `feature/epic-01-user-management`. Phase 16 is in progress. Each phase's commits are on that branch, one task = one commit.
+
+- [x] Phase 0 — Monorepo & Tooling Scaffold
+- [x] Phase 1 — Data Model Foundation
+- [x] Phase 2 — Core Authentication & Authorization
+- [x] Phase 3 — User Management Basics
+- [x] Phase 4 — ShareLink Invitation System
+- [x] Phase 5 — Player/Parent Features
+- [x] Phase 6 — Coach Features
+- [x] Phase 7 — Super Admin Tools: Impersonation (backend)
+- [x] Phase 8 — Portal Branding (backend)
+- [x] Phase 9 — Backend Hardening & DoD Verification
+- [x] *(unplanned addition)* `GET /me/bootstrap` — found missing during Phase 9's DoD sweep, built as its own pass
+- [x] Phase 10 — Frontend Scaffold & Core State (plus two post-hoc fixes: dashboard route collision, `NODE_ENV` build-script hardening)
+- [x] Phase 11 — Frontend Public/Auth Routes
+- [x] Phase 12 — Frontend Super Admin: User Management
+- [x] Phase 13 — Frontend ShareLink Invitations UI: Trainer Coaches & Share-Links Pages
+- [x] Phase 14 — Frontend Player/Parent Features
+- [x] Phase 15 — Frontend Coach Features
+- [ ] Phase 16 — Frontend Super Admin Tools: Impersonation (**in progress** — Task 16.1 `ImpersonationBanner` underway)
+- [ ] Phase 17 — Frontend Portal Branding
+- [ ] Phase 18 — Frontend Shared Routes & Cross-Cutting Polish
+
+---
+
 ## Before you start — read once, applies to every task
 
 **Two structural surprises baked into the architecture. Get these wrong and you fail the Definition of Done silently:**
