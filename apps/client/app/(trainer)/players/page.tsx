@@ -3,7 +3,7 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
-import { SkeletonCard } from '../../../src/components/shared/Skeleton';
+import { PlayerRosterTableSkeleton } from '../../../src/components/shared/RouteSkeletons';
 import { AvailabilityFilterBar, type AvailabilityFilter } from '../../../src/components/trainer/AvailabilityFilterBar';
 import { PlayerRosterTable, type RosterRow } from '../../../src/components/trainer/PlayerRosterTable';
 import { useBootstrap } from '../../../src/hooks/useBootstrap';
@@ -83,7 +83,7 @@ export default function PlayersPage() {
 
       <AvailabilityFilterBar value={filter} onChange={setFilter} />
 
-      {isLoading && <SkeletonCard />}
+      {isLoading && <PlayerRosterTableSkeleton />}
 
       {isError && (
         <p role="alert" className="text-body text-[var(--danger)]">

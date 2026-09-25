@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { AvailabilityGrid, type AvailabilityGridSlot } from '../../../src/components/shared/AvailabilityGrid';
-import { SkeletonCard } from '../../../src/components/shared/Skeleton';
+import { AvailabilityGridSkeleton } from '../../../src/components/shared/RouteSkeletons';
 import { useBootstrap } from '../../../src/hooks/useBootstrap';
 import { apiRequest } from '../../../src/lib/api/apiClient';
 
@@ -69,8 +69,8 @@ export default function MyTimesPage() {
 
   if (isBootstrapLoading || isLoading) {
     return (
-      <div className="p-lg" aria-busy="true" aria-label="Loading My Times">
-        <SkeletonCard />
+      <div className="p-lg">
+        <AvailabilityGridSkeleton />
       </div>
     );
   }

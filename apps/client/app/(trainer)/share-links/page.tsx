@@ -3,7 +3,7 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
-import { SkeletonCard } from '../../../src/components/shared/Skeleton';
+import { ShareLinkTableSkeleton } from '../../../src/components/shared/RouteSkeletons';
 import { GenerateShareLinkModal, type GenerateShareLinkResult } from '../../../src/components/trainer/GenerateShareLinkModal';
 import { ShareLinkTable, type ShareLinkRow } from '../../../src/components/trainer/ShareLinkTable';
 import { useBootstrap } from '../../../src/hooks/useBootstrap';
@@ -94,7 +94,7 @@ export default function ShareLinksPage() {
         </button>
       </div>
 
-      {isLoading && <SkeletonCard />}
+      {isLoading && <ShareLinkTableSkeleton />}
 
       {isError && (
         <p role="alert" className="text-body text-[var(--danger)]">

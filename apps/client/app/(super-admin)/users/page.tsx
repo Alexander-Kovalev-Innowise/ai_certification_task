@@ -3,7 +3,7 @@
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
-import { SkeletonCard } from '../../../src/components/shared/Skeleton';
+import { UsersTableSkeleton } from '../../../src/components/shared/RouteSkeletons';
 import { CreateTrainerModal } from '../../../src/components/super-admin/CreateTrainerModal';
 import { UserFilters, type UserFiltersValue } from '../../../src/components/super-admin/UserFilters';
 import { UsersTable, type UserDirectoryRow } from '../../../src/components/super-admin/UsersTable';
@@ -79,7 +79,7 @@ export default function UsersPage() {
 
       <UserFilters value={filters} onChange={setFilters} />
 
-      {isLoading && <SkeletonCard />}
+      {isLoading && <UsersTableSkeleton />}
 
       {isError && (
         <p role="alert" className="text-body text-[var(--danger)]">

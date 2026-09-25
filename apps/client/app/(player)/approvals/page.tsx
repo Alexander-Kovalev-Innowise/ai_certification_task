@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import type { ApprovalRow } from '../../../src/components/player/ApprovalCard';
 import { ApprovalDecisionModal } from '../../../src/components/player/ApprovalDecisionModal';
 import { PendingApprovalsList } from '../../../src/components/player/PendingApprovalsList';
-import { SkeletonCard } from '../../../src/components/shared/Skeleton';
+import { PendingApprovalsListSkeleton } from '../../../src/components/shared/RouteSkeletons';
 import { apiRequest } from '../../../src/lib/api/apiClient';
 import { parseApiErrorBody } from '../../../src/lib/api/apiError';
 
@@ -90,8 +90,8 @@ export default function ApprovalsPage() {
 
   if (isLoading || isChildDenied) {
     return (
-      <div className="p-lg" aria-busy="true" aria-label="Loading approvals">
-        <SkeletonCard />
+      <div className="p-lg">
+        <PendingApprovalsListSkeleton />
       </div>
     );
   }

@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { useState } from 'react';
 
 import { AvailabilityGrid, type AvailabilityGridSlot } from '../../../../../src/components/shared/AvailabilityGrid';
-import { SkeletonCard } from '../../../../../src/components/shared/Skeleton';
+import { AvailabilityGridSkeleton } from '../../../../../src/components/shared/RouteSkeletons';
 import { apiRequest } from '../../../../../src/lib/api/apiClient';
 
 interface AvailabilityGridResponse {
@@ -60,8 +60,8 @@ export default function AvailabilityPage() {
 
   if (isLoading) {
     return (
-      <div className="p-lg" aria-busy="true" aria-label="Loading availability">
-        <SkeletonCard />
+      <div className="p-lg">
+        <AvailabilityGridSkeleton />
       </div>
     );
   }

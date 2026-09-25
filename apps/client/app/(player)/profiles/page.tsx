@@ -6,7 +6,7 @@ import { useState } from 'react';
 import type { AvailableTrainerOption, CreateChildProfileResult } from '../../../src/components/player/ChildProfileForm';
 import { ChildProfileForm } from '../../../src/components/player/ChildProfileForm';
 import { ProfileCardGrid, type PlayerProfileSummary } from '../../../src/components/player/ProfileCardGrid';
-import { SkeletonCard } from '../../../src/components/shared/Skeleton';
+import { ProfileCardGridSkeleton } from '../../../src/components/shared/RouteSkeletons';
 import { useBootstrap } from '../../../src/hooks/useBootstrap';
 import { apiRequest } from '../../../src/lib/api/apiClient';
 import type { AccountType } from '../../../src/types/auth';
@@ -74,7 +74,7 @@ export default function ProfilesPage() {
         </p>
       )}
 
-      {isLoading && <SkeletonCard />}
+      {isLoading && <ProfileCardGridSkeleton />}
 
       {isError && (
         <p role="alert" className="text-body text-[var(--danger)]">

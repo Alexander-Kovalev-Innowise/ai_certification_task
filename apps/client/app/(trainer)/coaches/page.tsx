@@ -3,7 +3,7 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
-import { SkeletonCard } from '../../../src/components/shared/Skeleton';
+import { CoachRosterTableSkeleton } from '../../../src/components/shared/RouteSkeletons';
 import { CoachRosterTable, type CoachRosterRow, type ResendTarget } from '../../../src/components/trainer/CoachRosterTable';
 import { InviteCoachModal, type InviteCoachResult } from '../../../src/components/trainer/InviteCoachModal';
 import { useBootstrap } from '../../../src/hooks/useBootstrap';
@@ -104,7 +104,7 @@ export default function CoachesPage() {
         </button>
       </div>
 
-      {isLoading && <SkeletonCard />}
+      {isLoading && <CoachRosterTableSkeleton />}
 
       {isError && (
         <p role="alert" className="text-body text-[var(--danger)]">
