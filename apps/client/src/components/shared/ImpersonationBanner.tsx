@@ -6,8 +6,13 @@ import { publicApiRequest, refreshSession } from '../../lib/api/apiClient';
 import { decodeAccessTokenPayload } from '../../lib/api/decodeAccessToken';
 import { useAuthStore } from '../../stores/useAuthStore';
 
+import { Button } from './Button';
+
 const TICK_MS = 1_000;
 const WARNING_THRESHOLD_MS = 5 * 60 * 1000;
+// fe §1.3 — "banner slides down from translateY(-100%) on entry, up on
+// exit, 240ms — deliberately slower/heavier than the context-switch fade."
+const SLIDE_MS = 240;
 
 /**
  * `ApprovalCard.tsx`'s `useNow` pattern (Task 14.8), reused verbatim here —
@@ -97,6 +102,55 @@ export function ImpersonationBanner() {
   const isImpersonating = !!payload?.act;
   const remainingMs = payload ? payload.exp * 1000 - now : 0;
 
+  // fe §1.3/Task 18.5 — "slides down from translateY(-100%) on entry, up on
+  // exit, 240ms". `isImpersonating`/`user`/`remainingMs` above are derived
+  // fresh from the CURRENT store every render, so by the moment the exit
+  // sequence clears the store they no longer describe the session that's
+  // leaving. `liveViewRef` mirrors the last real impersonation view into a
+  // ref from inside an effect (never read during render — `react-hooks/refs`
+  // disallows that); `exitSnapshot` (real state) is populated from that ref,
+  // also inside an effect, at the exact render where `isImpersonating` flips
+  // to `false` — this is what lets the banner keep showing the correct
+  // target user/countdown while it slides away, instead of the admin's own
+  // session (already live in the store by then) or nothing at all.
+  const liveViewRef = useRef<{ user: NonNullable<typeof user>; remainingMs: number } | null>(null);
+  useEffect(() => {
+    if (isImpersonating && user) {
+      liveViewRef.current = { user, remainingMs };
+    }
+  });
+
+  const [exitSnapshot, setExitSnapshot] = useState<{ user: NonNullable<typeof user>; remainingMs: number } | null>(null);
+  const [mounted, setMounted] = useState(isImpersonating);
+  const [entered, setEntered] = useState(isImpersonating);
+
+  // `react-hooks/set-state-in-effect` disallows calling setState
+  // synchronously in an effect's own body — every setState call below is
+  // deferred into a `requestAnimationFrame`/`setTimeout` callback instead
+  // (the rule's own sanctioned shape: "calling setState in a callback
+  // function when external state changes"), which is also what a genuine
+  // one-frame-delay entrance animation needs anyway (the browser must paint
+  // the `-translate-y-full` starting position before the transition to
+  // `translate-y-0` can animate rather than snap).
+  useEffect(() => {
+    if (isImpersonating) {
+      const raf = requestAnimationFrame(() => {
+        setMounted(true);
+        setEntered(true);
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+    const raf = requestAnimationFrame(() => {
+      setExitSnapshot(liveViewRef.current);
+      setEntered(false);
+    });
+    const timeout = setTimeout(() => setMounted(false), SLIDE_MS);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timeout);
+    };
+  }, [isImpersonating]);
+
   useEffect(() => {
     if (!isImpersonating) {
       exitTriggeredRef.current = false;
@@ -108,11 +162,16 @@ export function ImpersonationBanner() {
     }
   }, [isImpersonating, remainingMs]);
 
-  if (!isImpersonating || !payload || !user) {
+  if (!mounted) {
     return null;
   }
 
-  const isWarning = remainingMs > 0 && remainingMs <= WARNING_THRESHOLD_MS;
+  const view = isImpersonating && user ? { user, remainingMs } : exitSnapshot;
+  if (!view) {
+    return null;
+  }
+
+  const isWarning = view.remainingMs > 0 && view.remainingMs <= WARNING_THRESHOLD_MS;
 
   function handleManualExit() {
     exitTriggeredRef.current = true;
@@ -122,16 +181,17 @@ export function ImpersonationBanner() {
   return (
     <div
       data-testid="impersonation-banner"
-      className={`sticky top-0 z-40 flex flex-wrap items-center justify-center gap-md bg-[var(--danger)] px-lg py-xs text-caption font-semibold text-[#0D0D0D] ${
-        isWarning ? 'animate-pulse motion-reduce:animate-none' : ''
-      }`}
+      className={`sticky top-0 z-40 flex flex-wrap items-center justify-center gap-md bg-[var(--danger)] px-lg py-xs text-caption font-semibold text-[#0D0D0D] transition-transform ease-out motion-reduce:transition-none ${
+        entered ? 'translate-y-0' : '-translate-y-full'
+      } ${isWarning ? 'animate-pulse motion-reduce:animate-none' : ''}`}
+      style={{ transitionDuration: `${SLIDE_MS}ms` }}
     >
       <span>
-        Viewing as {user.firstName} {user.lastName} ({user.role})
+        Viewing as {view.user.firstName} {view.user.lastName} ({view.user.role})
       </span>
       <span aria-hidden="true">·</span>
       <span data-testid="impersonation-countdown" className="font-numeric" style={isWarning ? { color: 'var(--warning)' } : undefined}>
-        {formatCountdown(remainingMs)}
+        {formatCountdown(view.remainingMs)}
       </span>
       {isWarning && (
         <span role="alert" style={{ color: 'var(--warning)' }}>
@@ -139,9 +199,13 @@ export function ImpersonationBanner() {
         </span>
       )}
       <span aria-hidden="true">·</span>
-      <button type="button" onClick={handleManualExit} className="rounded-sm border border-[#0D0D0D]/40 px-sm py-xxs text-caption font-semibold underline">
+      <Button
+        variant="secondary"
+        onClick={handleManualExit}
+        className="border-[#0D0D0D]/40 text-caption text-[#0D0D0D] underline hover:border-[#0D0D0D]/70 hover:text-[#0D0D0D]"
+      >
         Exit Impersonation
-      </button>
+      </Button>
     </div>
   );
 }

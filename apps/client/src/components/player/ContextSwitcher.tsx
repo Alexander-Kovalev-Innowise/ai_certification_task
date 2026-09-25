@@ -98,6 +98,19 @@ const SELECT_CLASSNAME =
  * parenthetical sport ("Coach Bob (Basketball)") — `ContextEntryDto` (api
  * §4.3, verified against the real DTO) carries no sport/discipline field, so
  * that annotation is dropped here rather than fabricated client-side.
+ *
+ * fe §1.3/Task 18.5 (motion confirmation pass) — the "180ms cross-fade when
+ * the accent-color CSS variables change" lives in `globals.css`'s
+ * `[data-branding], [data-branding] *` rule (Task 10.10), not in this
+ * component: `handleSelect` below writes the new `activeTrainerId` to
+ * `useTrainerContextStore`, `(player)/layout.tsx` re-renders `BrandingProvider`
+ * with the new context's branding, and every descendant reading a
+ * `var(--brand-primary...)` color/background/border/fill — including this
+ * component's own `select`'s `focus:border-[var(--brand-primary)]` — eases
+ * into the new value because it sits inside that `[data-branding]` wrapper.
+ * Confirmed here rather than duplicated as component-local CSS, since the
+ * transition needs to apply uniformly to everything under the wrapper, not
+ * just this one component.
  */
 export function ContextSwitcher({ accountType, contexts, activeContext }: ContextSwitcherProps) {
   const queryClient = useQueryClient();
