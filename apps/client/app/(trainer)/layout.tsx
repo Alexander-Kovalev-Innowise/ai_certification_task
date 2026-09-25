@@ -11,6 +11,10 @@ const NAV_LINKS = [
   { href: '/coaches', label: 'Coaches' },
   { href: '/players', label: 'Players' },
   { href: '/share-links', label: 'Share Links' },
+  // Task 17.1 — added alongside the new `/branding` page itself so it's
+  // actually reachable via nav, same precedent as `/players` above already
+  // being listed ahead of its own comment about "later phases".
+  { href: '/branding', label: 'Branding' },
 ] as const;
 
 function hasTrainerBranding(data: unknown): data is { branding: BrandingInput } {
