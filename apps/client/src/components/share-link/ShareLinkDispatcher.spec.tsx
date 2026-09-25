@@ -210,6 +210,45 @@ describe('ShareLinkDispatcher', () => {
       await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/dashboard'), { timeout: 2000 });
     });
 
+    // Task 18.6 — fe §10 names this component's branch matrix as the
+    // highest-value frontend test target; this closes the one real gap
+    // found in that matrix. The anonymous COACH_UNIQUE branch (no session +
+    // COACH_UNIQUE link) was covered for rendering (branch-selection
+    // matrix, above) but never actually submitted end-to-end — its request
+    // body shape (`{ password }` only, no email/playerName/etc., per
+    // `AnonymousJoinForm.tsx`'s `AnonymousCoachAcceptFields`) and its
+    // success routing (an anonymous COACH_ACCEPT also returns an
+    // `AuthSessionResponseDto` and auto-logs in, per
+    // `ShareLinkDispatcher.tsx`'s own "both auto-login" comment) are both
+    // distinct enough from the PLAYER_STATIC path above to warrant their
+    // own assertion.
+    it('anonymous COACH_ACCEPT: 201 AuthSessionResponseDto populates useAuthStore and redirects, with a password-only redeem body', async () => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockResponse(200, validPreview('COACH_UNIQUE')))
+        .mockResolvedValueOnce(
+          mockResponse(201, {
+            accessToken: 'new-coach-token',
+            expiresIn: 900,
+            user: userWith({ role: 'COACH', firstName: 'Cory' }),
+          }),
+        );
+
+      render(<ShareLinkDispatcher code="abc123" />);
+      await screen.findByLabelText('Choose a password');
+
+      fireEvent.change(screen.getByLabelText('Choose a password'), { target: { value: 'Password1' } });
+      fireEvent.click(screen.getByRole('button', { name: /accept invitation/i }));
+
+      await waitFor(() => expect(useAuthStore.getState().accessToken).toBe('new-coach-token'));
+      expect(await screen.findByText('Welcome, Cory!')).toBeInTheDocument();
+
+      const [redeemUrl, redeemOptions] = (global.fetch as jest.Mock).mock.calls[1];
+      expect(redeemUrl).toContain('/share-links/abc123/redeem');
+      expect(JSON.parse(redeemOptions.body)).toEqual({ password: 'Password1' });
+
+      await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/dashboard'), { timeout: 2000 });
+    });
+
     it('ASSOCIATE_EXISTING: 200 array shows a connected message and redirects to /dashboard', async () => {
       useAuthStore.getState().setSession({ accessToken: 't', user: userWith({ role: 'PLAYER_PARENT', accountType: 'ADULT' }), expiresAt: Date.now() + 60_000 });
       (global.fetch as jest.Mock)
