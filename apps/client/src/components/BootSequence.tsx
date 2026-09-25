@@ -4,19 +4,9 @@ import { useEffect, useState, type ReactNode } from 'react';
 
 import { refreshSession } from '../lib/api/apiClient';
 
-type BootState = 'pending' | 'resolved';
+import { ImpersonationBanner } from './shared/ImpersonationBanner';
 
-// Task 16.1 replaces this with the real ImpersonationBanner (fe §5.1) — a
-// fixed top bar, sourced from the `act` claim on the decoded in-memory
-// access token, that visually warns a Super Admin they're impersonating.
-// Mounted here (inside BootSequence, itself mounted from the ROOT layout,
-// not a role layout) deliberately: an impersonated session renders *inside*
-// the target's own role layout, so the banner has to sit above that entire
-// subtree. Left as a render-nothing slot here per Task 10.8's "Do" — the
-// real component doesn't exist yet.
-function ImpersonationBannerSlot() {
-  return null;
-}
+type BootState = 'pending' | 'resolved';
 
 // fe §6.1 boot step 2 — "a full-screen brand-neutral loading state (platform
 // default accent, not a tenant color — no trainer is known yet)". This
@@ -80,7 +70,7 @@ export function BootSequence({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <ImpersonationBannerSlot />
+      <ImpersonationBanner />
       {bootState === 'pending' ? <BootLoadingScreen /> : children}
     </>
   );
