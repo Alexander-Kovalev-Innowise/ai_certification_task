@@ -15,9 +15,6 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev"
   },
-  "prisma": {
-    "seed": "ts-node prisma/seed.ts"
-  },
   "dependencies": {
     "@nestjs/common": "^11.2.5",
     "@nestjs/core": "^11.2.5",
