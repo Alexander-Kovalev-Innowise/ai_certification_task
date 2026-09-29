@@ -29,7 +29,10 @@
    Clash Display is opt-in per component (`font-display` Tailwind utility,
    tailwind.config.ts) for hero-title/section-title/block-title only. */
 body {
+  background-color: var(--surface-0);
+  color: var(--ink);
   font-family: var(--font-general-sans), 'Segoe UI', sans-serif;
+  min-height: 100vh;
 }
 
 /* fe §1.1 — numeric variant for availability grids/countdowns/ids: keeps
