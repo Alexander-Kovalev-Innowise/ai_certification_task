@@ -69,47 +69,47 @@ export function LoginForm() {
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-md">
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="login-email" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="login-email" className="text-body text-text-secondary">
           Email
         </label>
         <input
           id="login-email"
           type="email"
           autoComplete="email"
-          className="rounded-sm border border-[var(--border-soft)] bg-[var(--surface-1)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
+          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary"
           aria-invalid={!!errors.email}
           aria-describedby={errors.email ? 'login-email-error' : undefined}
           {...register('email')}
         />
         {errors.email && (
-          <p id="login-email-error" role="alert" className="text-caption text-[var(--danger)]">
+          <p id="login-email-error" role="alert" className="text-caption text-danger">
             {errors.email.message}
           </p>
         )}
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="login-password" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="login-password" className="text-body text-text-secondary">
           Password
         </label>
         <input
           id="login-password"
           type="password"
           autoComplete="current-password"
-          className="rounded-sm border border-[var(--border-soft)] bg-[var(--surface-1)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
+          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary"
           aria-invalid={!!errors.password}
           aria-describedby={errors.password ? 'login-password-error' : undefined}
           {...register('password')}
         />
         {errors.password && (
-          <p id="login-password-error" role="alert" className="text-caption text-[var(--danger)]">
+          <p id="login-password-error" role="alert" className="text-caption text-danger">
             {errors.password.message}
           </p>
         )}
       </div>
 
       {formError && (
-        <p role="alert" className="text-body text-[var(--danger)]">
+        <p role="alert" className="text-body text-danger">
           {formError}
         </p>
       )}
@@ -119,12 +119,12 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={isSubmitting}
-        className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+        className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
       >
         {isSubmitting ? 'Signing in…' : 'Sign in'}
       </button>
 
-      <a href="/forgot-password" className="text-center text-caption text-[var(--text-secondary)] underline">
+      <a href="/forgot-password" className="text-center text-caption text-text-secondary underline">
         Forgot your password?
       </a>
     </form>

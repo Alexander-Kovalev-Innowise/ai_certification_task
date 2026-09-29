@@ -26,7 +26,7 @@ export function BrandingLivePreview({ primaryColorHex, logoUrl }: BrandingLivePr
   return (
     <div
       data-testid="branding-live-preview"
-      className="overflow-hidden rounded-md border border-[var(--border-soft)]"
+      className="overflow-hidden rounded-md border border-border-soft"
     >
       <nav
         aria-label="Branding preview navigation"

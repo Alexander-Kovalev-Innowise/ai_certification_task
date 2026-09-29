@@ -29,7 +29,7 @@ describe('BootReveal', () => {
 
   it('accepts a className on the shell for layout (e.g. max-width) without breaking children', () => {
     render(
-      <BootRevealShell className="max-w-md">
+      <BootRevealShell className="max-w-[28rem]">
         <BootRevealItem>
           <span>content</span>
         </BootRevealItem>

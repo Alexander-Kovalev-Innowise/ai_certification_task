@@ -23,7 +23,7 @@ const DASHBOARD_PATH = '/dashboard';
 // useAuthStore, exactly like a normal login.
 function InvalidOrExpiredLink() {
   return (
-    <p role="alert" className="text-body text-[var(--text-primary)]">
+    <p role="alert" className="text-body text-text-primary">
       This link is invalid or has expired.
     </p>
   );
@@ -79,27 +79,27 @@ export function TrainerSetupForm() {
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-md">
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="trainer-setup-password" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="trainer-setup-password" className="text-body text-text-secondary">
           Choose a password
         </label>
         <input
           id="trainer-setup-password"
           type="password"
           autoComplete="new-password"
-          className="rounded-sm border border-[var(--border-soft)] bg-[var(--surface-1)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
+          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary"
           aria-invalid={!!errors.password}
           aria-describedby={errors.password ? 'trainer-setup-password-error' : undefined}
           {...register('password')}
         />
         {errors.password && (
-          <p id="trainer-setup-password-error" role="alert" className="text-caption text-[var(--danger)]">
+          <p id="trainer-setup-password-error" role="alert" className="text-caption text-danger">
             {errors.password.message}
           </p>
         )}
       </div>
 
       {status === 'error' && (
-        <p role="alert" className="text-body text-[var(--danger)]">
+        <p role="alert" className="text-body text-danger">
           Something went wrong. Please try again.
         </p>
       )}
@@ -107,7 +107,7 @@ export function TrainerSetupForm() {
       <button
         type="submit"
         disabled={status === 'submitting'}
-        className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+        className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
       >
         {status === 'submitting' ? 'Setting up…' : 'Complete setup'}
       </button>

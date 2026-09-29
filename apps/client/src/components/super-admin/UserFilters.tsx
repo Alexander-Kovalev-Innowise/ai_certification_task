@@ -40,7 +40,7 @@ export function UserFilters({ value, onChange }: UserFiltersProps) {
   return (
     <form role="search" aria-label="Filter users" onSubmit={(event) => event.preventDefault()} className="flex flex-wrap items-end gap-md">
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="user-filter-search" className="text-caption text-[var(--text-secondary)]">
+        <label htmlFor="user-filter-search" className="text-caption text-text-secondary">
           Search
         </label>
         <input
@@ -49,19 +49,19 @@ export function UserFilters({ value, onChange }: UserFiltersProps) {
           value={value.search}
           onChange={handleSearchChange}
           placeholder="Search by name or email"
-          className="rounded-sm border border-[var(--border-soft)] bg-[var(--surface-1)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
+          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary"
         />
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="user-filter-role" className="text-caption text-[var(--text-secondary)]">
+        <label htmlFor="user-filter-role" className="text-caption text-text-secondary">
           Role
         </label>
         <select
           id="user-filter-role"
           value={value.role}
           onChange={handleRoleChange}
-          className="rounded-sm border border-[var(--border-soft)] bg-[var(--surface-1)] p-sm text-body text-[var(--text-primary)]"
+          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary"
         >
           <option value="">All roles</option>
           {ROLE_OPTIONS.map((role) => (
@@ -73,14 +73,14 @@ export function UserFilters({ value, onChange }: UserFiltersProps) {
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="user-filter-status" className="text-caption text-[var(--text-secondary)]">
+        <label htmlFor="user-filter-status" className="text-caption text-text-secondary">
           Status
         </label>
         <select
           id="user-filter-status"
           value={value.status}
           onChange={handleStatusChange}
-          className="rounded-sm border border-[var(--border-soft)] bg-[var(--surface-1)] p-sm text-body text-[var(--text-primary)]"
+          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary"
         >
           <option value="">All statuses</option>
           {STATUS_OPTIONS.map((status) => (

@@ -98,7 +98,7 @@ export default function ApprovalsPage() {
 
   if (isOtherError || !data) {
     return (
-      <p role="alert" className="p-lg text-body text-[var(--danger)]">
+      <p role="alert" className="p-lg text-body text-danger">
         Something went wrong loading approvals. Please try again.
       </p>
     );
@@ -106,10 +106,10 @@ export default function ApprovalsPage() {
 
   return (
     <section className="flex flex-col gap-lg p-lg">
-      <h1 className="text-xl font-semibold text-[var(--text-primary)]">Approvals</h1>
+      <h1 className="text-xl font-semibold text-text-primary">Approvals</h1>
 
       {conflictMessage && (
-        <p role="status" className="text-body text-[var(--warning)]">
+        <p role="status" className="text-body text-warning">
           {conflictMessage}
         </p>
       )}

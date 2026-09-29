@@ -79,14 +79,14 @@ export default function PlayersPage() {
 
   return (
     <section className="flex flex-col gap-lg p-lg">
-      <h1 className="text-xl font-semibold text-[var(--text-primary)]">Players</h1>
+      <h1 className="text-xl font-semibold text-text-primary">Players</h1>
 
       <AvailabilityFilterBar value={filter} onChange={setFilter} />
 
       {isLoading && <PlayerRosterTableSkeleton />}
 
       {isError && (
-        <p role="alert" className="text-body text-[var(--danger)]">
+        <p role="alert" className="text-body text-danger">
           Something went wrong loading your player roster. Please try again.
         </p>
       )}

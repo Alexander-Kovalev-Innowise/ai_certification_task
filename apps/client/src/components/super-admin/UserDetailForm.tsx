@@ -44,7 +44,7 @@ export interface UserDetailFormProps {
 }
 
 const INPUT_CLASSNAME =
-  'rounded-sm border border-[var(--border-soft)] bg-[var(--surface-1)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]';
+  'rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
 
 // fe §4.3 — UserDetailForm: PATCH /users/:id (api §3 — a superset of
 // UpdateMeDto; role changes are deliberately excluded from this DTO, BR-001
@@ -87,27 +87,27 @@ export function UserDetailForm({ user, onSaved }: UserDetailFormProps) {
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-md">
-      <dl className="grid grid-cols-2 gap-sm text-body text-[var(--text-secondary)]">
+      <dl className="grid grid-cols-2 gap-sm text-body text-text-secondary">
         <div>
           <dt className="text-caption">Email</dt>
-          <dd className="text-[var(--text-primary)]">{user.email}</dd>
+          <dd className="text-text-primary">{user.email}</dd>
         </div>
         <div>
           <dt className="text-caption">Role</dt>
-          <dd className="text-[var(--text-primary)]">{user.role}</dd>
+          <dd className="text-text-primary">{user.role}</dd>
         </div>
         <div>
           <dt className="text-caption">Status</dt>
-          <dd className="text-[var(--text-primary)]">{user.status}</dd>
+          <dd className="text-text-primary">{user.status}</dd>
         </div>
         <div>
           <dt className="text-caption">Created</dt>
-          <dd className="text-[var(--text-primary)]">{new Date(user.createdAt).toLocaleDateString()}</dd>
+          <dd className="text-text-primary">{new Date(user.createdAt).toLocaleDateString()}</dd>
         </div>
       </dl>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="user-detail-first-name" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="user-detail-first-name" className="text-body text-text-secondary">
           First name
         </label>
         <input
@@ -118,14 +118,14 @@ export function UserDetailForm({ user, onSaved }: UserDetailFormProps) {
           {...register('firstName')}
         />
         {errors.firstName && (
-          <p id="user-detail-first-name-error" role="alert" className="text-caption text-[var(--danger)]">
+          <p id="user-detail-first-name-error" role="alert" className="text-caption text-danger">
             {errors.firstName.message}
           </p>
         )}
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="user-detail-last-name" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="user-detail-last-name" className="text-body text-text-secondary">
           Last name
         </label>
         <input
@@ -136,26 +136,26 @@ export function UserDetailForm({ user, onSaved }: UserDetailFormProps) {
           {...register('lastName')}
         />
         {errors.lastName && (
-          <p id="user-detail-last-name-error" role="alert" className="text-caption text-[var(--danger)]">
+          <p id="user-detail-last-name-error" role="alert" className="text-caption text-danger">
             {errors.lastName.message}
           </p>
         )}
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="user-detail-phone" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="user-detail-phone" className="text-body text-text-secondary">
           Phone
         </label>
         <input id="user-detail-phone" type="tel" className={INPUT_CLASSNAME} {...register('phone')} />
       </div>
 
       {formError && (
-        <p role="alert" className="text-body text-[var(--danger)]">
+        <p role="alert" className="text-body text-danger">
           {formError}
         </p>
       )}
       {successMessage && (
-        <p role="status" className="text-body text-[var(--success)]">
+        <p role="status" className="text-body text-success">
           {successMessage}
         </p>
       )}
@@ -163,7 +163,7 @@ export function UserDetailForm({ user, onSaved }: UserDetailFormProps) {
       <button
         type="submit"
         disabled={isSubmitting}
-        className="self-start rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+        className="self-start rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
       >
         {isSubmitting ? 'Saving…' : 'Save changes'}
       </button>

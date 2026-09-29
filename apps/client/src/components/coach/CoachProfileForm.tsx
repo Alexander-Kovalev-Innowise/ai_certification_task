@@ -32,7 +32,7 @@ const GENERIC_SAVE_ERROR = "Some changes couldn't be saved. Please try again.";
 const TOGGLE_SAVE_ERROR = "Some changes couldn't be saved. Please try again.";
 
 const TEXTAREA_CLASSNAME =
-  'rounded-sm border border-[var(--border-soft)] bg-[var(--surface-0)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]';
+  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
 
 function toDefaultValues(profile: CoachProfileDetail): CoachProfileFormValues {
   return {
@@ -126,7 +126,7 @@ export function CoachProfileForm({ profile, onSaved }: CoachProfileFormProps) {
     <div className="flex flex-col gap-lg">
       <form onSubmit={onSubmit} noValidate className="flex flex-col gap-md">
         <div className="flex flex-col gap-xxs">
-          <label htmlFor="coach-profile-bio" className="text-body text-[var(--text-secondary)]">
+          <label htmlFor="coach-profile-bio" className="text-body text-text-secondary">
             Bio
           </label>
           <textarea
@@ -137,14 +137,14 @@ export function CoachProfileForm({ profile, onSaved }: CoachProfileFormProps) {
             {...register('bio', { maxLength: { value: 2000, message: 'Bio must be 2000 characters or fewer.' } })}
           />
           {errors.bio && (
-            <p role="alert" className="text-caption text-[var(--danger)]">
+            <p role="alert" className="text-caption text-danger">
               {errors.bio.message}
             </p>
           )}
         </div>
 
         <div className="flex flex-col gap-xxs">
-          <label htmlFor="coach-profile-credentials" className="text-body text-[var(--text-secondary)]">
+          <label htmlFor="coach-profile-credentials" className="text-body text-text-secondary">
             Credentials
           </label>
           <textarea
@@ -155,14 +155,14 @@ export function CoachProfileForm({ profile, onSaved }: CoachProfileFormProps) {
             {...register('credentials', { maxLength: { value: 2000, message: 'Credentials must be 2000 characters or fewer.' } })}
           />
           {errors.credentials && (
-            <p role="alert" className="text-caption text-[var(--danger)]">
+            <p role="alert" className="text-caption text-danger">
               {errors.credentials.message}
             </p>
           )}
         </div>
 
         <div className="flex flex-col gap-xxs">
-          <label htmlFor="coach-profile-certifications" className="text-body text-[var(--text-secondary)]">
+          <label htmlFor="coach-profile-certifications" className="text-body text-text-secondary">
             Certifications
           </label>
           <textarea
@@ -173,14 +173,14 @@ export function CoachProfileForm({ profile, onSaved }: CoachProfileFormProps) {
             {...register('certifications', { maxLength: { value: 2000, message: 'Certifications must be 2000 characters or fewer.' } })}
           />
           {errors.certifications && (
-            <p role="alert" className="text-caption text-[var(--danger)]">
+            <p role="alert" className="text-caption text-danger">
               {errors.certifications.message}
             </p>
           )}
         </div>
 
         {formError && (
-          <p role="alert" className="text-body text-[var(--danger)]">
+          <p role="alert" className="text-body text-danger">
             {formError}
           </p>
         )}
@@ -189,21 +189,21 @@ export function CoachProfileForm({ profile, onSaved }: CoachProfileFormProps) {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+            className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
           >
             {isSubmitting ? 'Saving…' : 'Save'}
           </button>
         </div>
       </form>
 
-      <div className="flex flex-col gap-xxs rounded-md border border-[var(--border-soft)] p-md">
-        <label htmlFor="coach-profile-public" className="flex items-center gap-sm text-body text-[var(--text-primary)]">
+      <div className="flex flex-col gap-xxs rounded-md border border-border-soft p-md">
+        <label htmlFor="coach-profile-public" className="flex items-center gap-sm text-body text-text-primary">
           <input id="coach-profile-public" type="checkbox" checked={publicProfile} disabled={isToggling} onChange={handleToggle} />
           Public profile
         </label>
-        <p className="text-caption text-[var(--text-secondary)]">When on, your bio and credentials are visible on your trainer&apos;s public roster.</p>
+        <p className="text-caption text-text-secondary">When on, your bio and credentials are visible on your trainer&apos;s public roster.</p>
         {toggleError && (
-          <p role="alert" className="text-caption text-[var(--danger)]">
+          <p role="alert" className="text-caption text-danger">
             {toggleError}
           </p>
         )}

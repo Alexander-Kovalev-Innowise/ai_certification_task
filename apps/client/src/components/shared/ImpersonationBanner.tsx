@@ -181,7 +181,7 @@ export function ImpersonationBanner() {
   return (
     <div
       data-testid="impersonation-banner"
-      className={`sticky top-0 z-40 flex flex-wrap items-center justify-center gap-md bg-[var(--danger)] px-lg py-xs text-caption font-semibold text-[#0D0D0D] transition-transform ease-out motion-reduce:transition-none ${
+      className={`sticky top-0 z-40 flex flex-wrap items-center justify-center gap-md bg-danger px-lg py-xs text-caption font-semibold text-[#0D0D0D] transition-transform ease-out motion-reduce:transition-none ${
         entered ? 'translate-y-0' : '-translate-y-full'
       } ${isWarning ? 'animate-pulse motion-reduce:animate-none' : ''}`}
       style={{ transitionDuration: `${SLIDE_MS}ms` }}

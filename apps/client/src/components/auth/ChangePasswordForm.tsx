@@ -83,7 +83,7 @@ export function ChangePasswordForm() {
 
   if (status === 'success') {
     return (
-      <p role="status" className="text-body text-[var(--text-primary)]">
+      <p role="status" className="text-body text-text-primary">
         Password changed. Please sign in again.
       </p>
     );
@@ -93,20 +93,20 @@ export function ChangePasswordForm() {
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-md">
       {requireCurrentPassword && (
         <div className="flex flex-col gap-xxs">
-          <label htmlFor="change-password-current" className="text-body text-[var(--text-secondary)]">
+          <label htmlFor="change-password-current" className="text-body text-text-secondary">
             Current password
           </label>
           <input
             id="change-password-current"
             type="password"
             autoComplete="current-password"
-            className="rounded-sm border border-[var(--border-soft)] bg-[var(--surface-1)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
+            className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary"
             aria-invalid={!!errors.currentPassword}
             aria-describedby={errors.currentPassword ? 'change-password-current-error' : undefined}
             {...register('currentPassword')}
           />
           {errors.currentPassword && (
-            <p id="change-password-current-error" role="alert" className="text-caption text-[var(--danger)]">
+            <p id="change-password-current-error" role="alert" className="text-caption text-danger">
               {errors.currentPassword.message}
             </p>
           )}
@@ -114,27 +114,27 @@ export function ChangePasswordForm() {
       )}
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="change-password-new" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="change-password-new" className="text-body text-text-secondary">
           New password
         </label>
         <input
           id="change-password-new"
           type="password"
           autoComplete="new-password"
-          className="rounded-sm border border-[var(--border-soft)] bg-[var(--surface-1)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
+          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary"
           aria-invalid={!!errors.newPassword}
           aria-describedby={errors.newPassword ? 'change-password-new-error' : undefined}
           {...register('newPassword')}
         />
         {errors.newPassword && (
-          <p id="change-password-new-error" role="alert" className="text-caption text-[var(--danger)]">
+          <p id="change-password-new-error" role="alert" className="text-caption text-danger">
             {errors.newPassword.message}
           </p>
         )}
       </div>
 
       {errorMessage && (
-        <p role="alert" className="text-body text-[var(--danger)]">
+        <p role="alert" className="text-body text-danger">
           {errorMessage}
         </p>
       )}
@@ -142,7 +142,7 @@ export function ChangePasswordForm() {
       <button
         type="submit"
         disabled={status === 'submitting'}
-        className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+        className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
       >
         {status === 'submitting' ? 'Changing…' : 'Change password'}
       </button>

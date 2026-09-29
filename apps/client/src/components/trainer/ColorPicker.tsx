@@ -16,7 +16,7 @@ export interface ColorPickerProps {
 }
 
 const INPUT_CLASSNAME =
-  'rounded-sm border border-[var(--border-soft)] bg-[var(--surface-0)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]';
+  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
 
 export function ColorPicker({ value, onChange, error, id = 'branding-primary-color' }: ColorPickerProps) {
   const swatchId = `${id}-swatch`;
@@ -40,10 +40,10 @@ export function ColorPicker({ value, onChange, error, id = 'branding-primary-col
           type="color"
           value={swatchValue}
           onChange={(event) => onChange(event.target.value)}
-          className="h-10 w-12 cursor-pointer rounded-sm border border-[var(--border-soft)] bg-[var(--surface-0)]"
+          className="h-10 w-12 cursor-pointer rounded-sm border border-border-soft bg-surface-0"
         />
         <div className="flex flex-1 flex-col gap-xxs">
-          <label htmlFor={hexId} className="text-body text-[var(--text-secondary)]">
+          <label htmlFor={hexId} className="text-body text-text-secondary">
             Hex color
           </label>
           <input
@@ -59,7 +59,7 @@ export function ColorPicker({ value, onChange, error, id = 'branding-primary-col
         </div>
       </div>
       {error && (
-        <p id={errorId} role="alert" className="text-caption text-[var(--danger)]">
+        <p id={errorId} role="alert" className="text-caption text-danger">
           {error}
         </p>
       )}

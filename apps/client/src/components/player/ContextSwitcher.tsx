@@ -80,7 +80,7 @@ function currentLabel(current: ContextEntry | null, accountType: AccountType): s
 }
 
 const SELECT_CLASSNAME =
-  'rounded-sm border border-[var(--border-soft)] bg-[var(--surface-0)] p-xxs text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]';
+  'rounded-sm border border-border-soft bg-surface-0 p-xxs text-body text-text-primary outline-none focus:border-brand-primary';
 
 /**
  * fe §5.2/Epic-01 spec §US-01.04 — mounted once in `(player)/layout.tsx`.
@@ -106,7 +106,7 @@ const SELECT_CLASSNAME =
  * `useTrainerContextStore`, `(player)/layout.tsx` re-renders `BrandingProvider`
  * with the new context's branding, and every descendant reading a
  * `var(--brand-primary...)` color/background/border/fill — including this
- * component's own `select`'s `focus:border-[var(--brand-primary)]` — eases
+ * component's own `select`'s `focus:border-brand-primary` — eases
  * into the new value because it sits inside that `[data-branding]` wrapper.
  * Confirmed here rather than duplicated as component-local CSS, since the
  * transition needs to apply uniformly to everything under the wrapper, not
@@ -159,15 +159,15 @@ export function ContextSwitcher({ accountType, contexts, activeContext }: Contex
   const childGroups = groupByProfile(childEntries);
 
   return (
-    <div className="flex flex-col gap-xs border-b border-[var(--border-soft)] bg-[var(--surface-1)] p-md">
+    <div className="flex flex-col gap-xs border-b border-border-soft bg-surface-1 p-md">
       {reconnectMessage && (
-        <p role="alert" className="text-caption text-[var(--danger)]">
+        <p role="alert" className="text-caption text-danger">
           {reconnectMessage}
         </p>
       )}
 
       <div className="flex flex-wrap items-center gap-sm">
-        <label htmlFor="context-switcher-select" className="text-caption text-[var(--text-secondary)]">
+        <label htmlFor="context-switcher-select" className="text-caption text-text-secondary">
           Current:
         </label>
         <select
@@ -206,24 +206,24 @@ export function ContextSwitcher({ accountType, contexts, activeContext }: Contex
                 ),
               ]}
         </select>
-        <span data-testid="context-switcher-current" className="text-body font-semibold text-[var(--text-primary)]">
+        <span data-testid="context-switcher-current" className="text-body font-semibold text-text-primary">
           {currentLabel(current, accountType)}
         </span>
       </div>
 
       {accountType === 'CHILD' ? (
         contexts.length > 0 && (
-          <p className="text-caption text-[var(--text-secondary)]">Your Training: {contexts.map((entry) => entry.trainerDisplayName).join(' · ')}</p>
+          <p className="text-caption text-text-secondary">Your Training: {contexts.map((entry) => entry.trainerDisplayName).join(' · ')}</p>
         )
       ) : (
         <>
           {selfGroups.length > 0 && (
-            <p className="text-caption text-[var(--text-secondary)]">
+            <p className="text-caption text-text-secondary">
               Your Training: {selfGroups.map((group) => `${group.profileName} (Me) → ${group.trainers.join(' / ')}`).join(' · ')}
             </p>
           )}
           {childGroups.length > 0 && (
-            <p className="text-caption text-[var(--text-secondary)]">
+            <p className="text-caption text-text-secondary">
               Your Children&apos;s Training: {childGroups.map((group) => `${group.profileName} → ${group.trainers.join(', ')}`).join(' · ')}
             </p>
           )}

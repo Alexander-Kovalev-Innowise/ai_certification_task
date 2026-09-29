@@ -13,14 +13,14 @@ import { BootRevealItem, BootRevealShell } from '../../../src/components/shared/
 // lives in a child" pattern BootSequence.tsx already established.
 export default function LoginPage() {
   return (
-    <main className="flex min-h-screen w-full items-center justify-center bg-[var(--surface-0)] p-lg">
-      <BootRevealShell className="w-full max-w-md">
+    <main className="flex min-h-screen w-full items-center justify-center bg-surface-0 p-lg">
+      <BootRevealShell className="w-full max-w-[28rem]">
         <BootRevealItem>
           {/* eslint-disable-next-line @next/next/no-img-element -- static platform mark, pre-branding (no active tenant context on /login) */}
           <img src="/default_logo.svg" alt="PracticePerfect" className="mb-md h-12 w-12" />
         </BootRevealItem>
         <BootRevealItem>
-          <h1 className="mb-lg font-display text-hero-title text-[var(--text-primary)]">Sign in</h1>
+          <h1 className="mb-lg font-display text-hero-title text-text-primary">Sign in</h1>
         </BootRevealItem>
         <BootRevealItem>
           <LoginForm />

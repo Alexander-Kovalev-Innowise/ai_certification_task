@@ -99,29 +99,29 @@ export function ImpersonateConfirmModal({ isOpen, target, onClose, onStarted }: 
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="impersonate-confirm-heading" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg">
-      <div className="w-full max-w-sm rounded-md border border-[var(--border-soft)] bg-[var(--surface-1)] p-lg shadow-card-strong">
-        <h2 id="impersonate-confirm-heading" className="text-block-title font-semibold text-[var(--text-primary)]">
+      <div className="w-full max-w-[24rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
+        <h2 id="impersonate-confirm-heading" className="text-block-title font-semibold text-text-primary">
           Impersonate {target.firstName} {target.lastName}?
         </h2>
 
         {targetIsSuperAdmin ? (
-          <p role="alert" className="mt-sm text-body text-[var(--danger)]">
+          <p role="alert" className="mt-sm text-body text-danger">
             {TARGET_INVALID_MESSAGE}
           </p>
         ) : (
-          <p className="mt-sm text-body text-[var(--text-secondary)]">
+          <p className="mt-sm text-body text-text-secondary">
             You&apos;ll act as this {target.role.toLowerCase()} for up to 60 minutes. Every action is still audited under your own account.
           </p>
         )}
 
         {error && (
-          <p role="alert" className="mt-sm text-body text-[var(--danger)]">
+          <p role="alert" className="mt-sm text-body text-danger">
             {error}
           </p>
         )}
 
         <div className="mt-md flex justify-end gap-sm">
-          <button type="button" onClick={onClose} disabled={isSubmitting} className="rounded-sm p-sm text-body text-[var(--text-secondary)]">
+          <button type="button" onClick={onClose} disabled={isSubmitting} className="rounded-sm p-sm text-body text-text-secondary">
             Cancel
           </button>
           {!targetIsSuperAdmin && (
@@ -129,7 +129,7 @@ export function ImpersonateConfirmModal({ isOpen, target, onClose, onStarted }: 
               type="button"
               onClick={handleConfirm}
               disabled={isSubmitting}
-              className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+              className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
             >
               {isSubmitting ? 'Starting…' : 'Impersonate'}
             </button>

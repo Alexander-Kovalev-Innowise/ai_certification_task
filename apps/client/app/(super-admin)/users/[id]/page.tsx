@@ -70,7 +70,7 @@ export default function UserDetailPage() {
   if (isError || !user) {
     const notFound = error instanceof Error && error.message === 'NOT_FOUND';
     return (
-      <div role="alert" className="p-lg text-[var(--text-primary)]">
+      <div role="alert" className="p-lg text-text-primary">
         {notFound ? 'This user could not be found.' : 'Something went wrong loading this user. Please try again.'}
       </div>
     );
@@ -81,7 +81,7 @@ export default function UserDetailPage() {
 
   return (
     <section className="flex flex-col gap-lg p-lg">
-      <h1 className="text-xl font-semibold text-[var(--text-primary)]">
+      <h1 className="text-xl font-semibold text-text-primary">
         {user.firstName} {user.lastName}
       </h1>
 
@@ -92,14 +92,14 @@ export default function UserDetailPage() {
           <button
             type="button"
             onClick={() => setIsDeactivateModalOpen(true)}
-            className="rounded-sm border border-[var(--border-soft)] p-sm text-body text-[var(--text-primary)]"
+            className="rounded-sm border border-border-soft p-sm text-body text-text-primary"
           >
             {isDeactivated ? 'Reactivate user' : 'Deactivate user'}
           </button>
           <button
             type="button"
             onClick={() => setIsDeleteModalOpen(true)}
-            className="rounded-sm border border-[var(--danger)] p-sm text-body text-[var(--danger)]"
+            className="rounded-sm border border-danger p-sm text-body text-danger"
           >
             Delete user (GDPR)
           </button>
@@ -107,7 +107,7 @@ export default function UserDetailPage() {
             <button
               type="button"
               onClick={() => setIsImpersonateModalOpen(true)}
-              className="rounded-sm border border-[var(--border-soft)] p-sm text-body text-[var(--text-primary)]"
+              className="rounded-sm border border-border-soft p-sm text-body text-text-primary"
             >
               Impersonate
             </button>

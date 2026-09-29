@@ -84,11 +84,11 @@ export default function ShareLinksPage() {
   return (
     <section className="flex flex-col gap-lg p-lg">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-[var(--text-primary)]">Share Links</h1>
+        <h1 className="text-xl font-semibold text-text-primary">Share Links</h1>
         <button
           type="button"
           onClick={() => setIsGenerateModalOpen(true)}
-          className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary"
+          className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary"
         >
           Generate Link
         </button>
@@ -97,7 +97,7 @@ export default function ShareLinksPage() {
       {isLoading && <ShareLinkTableSkeleton />}
 
       {isError && (
-        <p role="alert" className="text-body text-[var(--danger)]">
+        <p role="alert" className="text-body text-danger">
           Something went wrong loading your share links. Please try again.
         </p>
       )}

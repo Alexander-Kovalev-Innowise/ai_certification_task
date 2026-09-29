@@ -25,13 +25,13 @@ function hasCoachBranding(data: unknown): data is { employingTrainer: BrandingIn
 
 function CoachNav() {
   return (
-    <nav aria-label="Coach navigation" className="flex items-center gap-lg border-b border-[var(--border-soft)] bg-[var(--surface-1)] px-lg py-sm">
+    <nav aria-label="Coach navigation" className="flex items-center gap-lg border-b border-border-soft bg-surface-1 px-lg py-sm">
       {NAV_LINKS.map((link) => (
-        <a key={link.href} href={link.href} className="text-body text-[var(--text-primary)] hover:text-[var(--brand-primary)]">
+        <a key={link.href} href={link.href} className="text-body text-text-primary hover:text-brand-primary">
           {link.label}
         </a>
       ))}
-      <a href={ACCOUNT_LINK.href} className="ml-auto text-body text-[var(--text-primary)] hover:text-[var(--brand-primary)]">
+      <a href={ACCOUNT_LINK.href} className="ml-auto text-body text-text-primary hover:text-brand-primary">
         {ACCOUNT_LINK.label}
       </a>
     </nav>

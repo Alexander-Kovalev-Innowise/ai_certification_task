@@ -14,7 +14,7 @@ export interface GdprDeleteConfirmModalProps {
 const CONFIRM_WORD = 'DELETE';
 
 const TEXTAREA_CLASSNAME =
-  'rounded-sm border border-[var(--border-soft)] bg-[var(--surface-0)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--danger)]';
+  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-danger';
 
 // fe §4.3/§9.4 — GdprDeleteConfirmModal: DELETE /users/:id (api §3, FR-014/
 // SEC-005) with the required `{ reason }` body. Two-step, typed-confirmation
@@ -69,16 +69,16 @@ export function GdprDeleteConfirmModal({ isOpen, userId, onClose, onDeleted }: G
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="gdpr-delete-heading" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg">
-      <div className="w-full max-w-md rounded-md border border-[var(--danger)] bg-[var(--surface-1)] p-lg shadow-card-strong">
-        <h2 id="gdpr-delete-heading" className="text-block-title font-semibold text-[var(--danger)]">
+      <div className="w-full max-w-[28rem] rounded-md border border-danger bg-surface-1 p-lg shadow-card-strong">
+        <h2 id="gdpr-delete-heading" className="text-block-title font-semibold text-danger">
           Delete user (GDPR)
         </h2>
-        <p className="mt-sm text-body text-[var(--text-secondary)]">
+        <p className="mt-sm text-body text-text-secondary">
           This permanently anonymizes this user&apos;s account. This action cannot be undone.
         </p>
 
         <div className="mt-md flex flex-col gap-xxs">
-          <label htmlFor="gdpr-delete-reason" className="text-body text-[var(--text-secondary)]">
+          <label htmlFor="gdpr-delete-reason" className="text-body text-text-secondary">
             Reason (for the retention record)
           </label>
           <textarea
@@ -91,7 +91,7 @@ export function GdprDeleteConfirmModal({ isOpen, userId, onClose, onDeleted }: G
         </div>
 
         <div className="mt-md flex flex-col gap-xxs">
-          <label htmlFor="gdpr-delete-confirm-text" className="text-body text-[var(--text-secondary)]">
+          <label htmlFor="gdpr-delete-confirm-text" className="text-body text-text-secondary">
             Type {CONFIRM_WORD} to confirm
           </label>
           <input
@@ -104,20 +104,20 @@ export function GdprDeleteConfirmModal({ isOpen, userId, onClose, onDeleted }: G
         </div>
 
         {error && (
-          <p role="alert" className="mt-sm text-body text-[var(--danger)]">
+          <p role="alert" className="mt-sm text-body text-danger">
             {error}
           </p>
         )}
 
         <div className="mt-md flex justify-end gap-sm">
-          <button type="button" onClick={handleClose} disabled={isSubmitting} className="rounded-sm p-sm text-body text-[var(--text-secondary)]">
+          <button type="button" onClick={handleClose} disabled={isSubmitting} className="rounded-sm p-sm text-body text-text-secondary">
             Cancel
           </button>
           <button
             type="button"
             onClick={handleConfirm}
             disabled={!canConfirm}
-            className="rounded-sm bg-[var(--danger)] p-sm text-body font-semibold text-white disabled:opacity-60"
+            className="rounded-sm bg-danger p-sm text-body font-semibold text-white disabled:opacity-60"
           >
             {isSubmitting ? 'Deleting…' : 'Permanently delete'}
           </button>

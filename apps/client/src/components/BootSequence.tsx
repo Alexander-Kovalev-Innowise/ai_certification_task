@@ -20,11 +20,11 @@ function BootLoadingScreen() {
       role="status"
       aria-live="polite"
       aria-label="Loading PracticePerfect"
-      className="flex min-h-screen w-full items-center justify-center bg-[var(--surface-0)]"
+      className="flex min-h-screen w-full items-center justify-center bg-surface-0"
     >
       <div
         aria-hidden="true"
-        className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--brand-primary)] border-t-transparent motion-reduce:animate-none"
+        className="h-8 w-8 animate-spin rounded-full border-2 border-brand-primary border-t-transparent motion-reduce:animate-none"
       />
     </div>
   );

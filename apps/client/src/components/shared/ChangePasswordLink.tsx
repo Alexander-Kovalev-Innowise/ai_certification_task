@@ -8,7 +8,7 @@ import Link from 'next/link';
 // is deliberately just a link, not a duplicate form.
 export function ChangePasswordLink() {
   return (
-    <Link href="/change-password" className="text-body font-semibold text-[var(--brand-primary)] underline underline-offset-2 hover:text-[var(--brand-primary-soft)]">
+    <Link href="/change-password" className="text-body font-semibold text-brand-primary underline underline-offset-2 hover:text-brand-primary-soft">
       Change password
     </Link>
   );

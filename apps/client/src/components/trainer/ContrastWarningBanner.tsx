@@ -16,14 +16,14 @@ export function ContrastWarningBanner({ message, onDismiss }: ContrastWarningBan
   return (
     <div
       role="status"
-      className="flex items-start justify-between gap-sm rounded-md border border-[var(--warning)]/40 bg-[var(--warning)]/10 p-sm text-body text-[var(--warning)]"
+      className="flex items-start justify-between gap-sm rounded-md border border-warning/40 bg-warning/10 p-sm text-body text-warning"
     >
       <p>{message}</p>
       <button
         type="button"
         onClick={onDismiss}
         aria-label="Dismiss contrast warning"
-        className="text-caption font-semibold text-[var(--warning)]"
+        className="text-caption font-semibold text-warning"
       >
         Dismiss
       </button>

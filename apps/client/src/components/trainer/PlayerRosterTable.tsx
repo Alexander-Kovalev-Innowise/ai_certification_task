@@ -23,24 +23,24 @@ export interface PlayerRosterTableProps {
 export function PlayerRosterTable({ items, hasMore, isFetchingNextPage = false, onLoadMore }: PlayerRosterTableProps) {
   if (items.length === 0) {
     return (
-      <p role="status" className="p-lg text-body text-[var(--text-secondary)]">
+      <p role="status" className="p-lg text-body text-text-secondary">
         No players match this filter yet.
       </p>
     );
   }
 
   return (
-    <div role="table" aria-label="Player roster" className="rounded-md border border-[var(--border-soft)]">
+    <div role="table" aria-label="Player roster" className="rounded-md border border-border-soft">
       {items.map((row) => (
         <div
           key={row.playerProfileId}
           role="row"
           aria-label={row.name}
-          className="flex items-center gap-md border-b border-[var(--border-soft)]/40 p-md text-body text-[var(--text-primary)] last:border-b-0"
+          className="flex items-center gap-md border-b border-border-soft/40 p-md text-body text-text-primary last:border-b-0"
         >
           <span className="w-1/4 truncate">{row.name}</span>
-          <span className="w-16 font-numeric text-[var(--text-secondary)]">{row.age}</span>
-          <span className="flex-1 truncate text-caption text-[var(--text-secondary)]">{row.availabilitySummary || 'No availability set'}</span>
+          <span className="w-16 font-numeric text-text-secondary">{row.age}</span>
+          <span className="flex-1 truncate text-caption text-text-secondary">{row.availabilitySummary || 'No availability set'}</span>
         </div>
       ))}
 
@@ -50,7 +50,7 @@ export function PlayerRosterTable({ items, hasMore, isFetchingNextPage = false, 
             type="button"
             onClick={onLoadMore}
             disabled={isFetchingNextPage}
-            className="rounded-sm p-sm text-body text-[var(--brand-primary)] disabled:opacity-60"
+            className="rounded-sm p-sm text-body text-brand-primary disabled:opacity-60"
           >
             {isFetchingNextPage ? 'Loading…' : 'Load more'}
           </button>

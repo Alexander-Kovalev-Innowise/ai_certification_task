@@ -52,7 +52,7 @@ function formatRemaining(remainingMs: number): string {
   return hours > 0 ? `${hours}h ${minutes}m remaining` : `${minutes}m remaining`;
 }
 
-const CARD_CLASSNAME = 'flex flex-col gap-xxs rounded-md border border-[var(--border-soft)] bg-[var(--surface-1)] p-md shadow-card-soft';
+const CARD_CLASSNAME = 'flex flex-col gap-xxs rounded-md border border-border-soft bg-surface-1 p-md shadow-card-soft';
 
 /**
  * fe §9.1 — ApprovalCard: per-status rendering table.
@@ -72,7 +72,7 @@ export function ApprovalCard({ approval, onApprove, onDeny }: ApprovalCardProps)
 
     return (
       <div role="article" aria-label={approval.playerName} className={CARD_CLASSNAME}>
-        <p className="text-body-lg font-semibold text-[var(--text-primary)]">
+        <p className="text-body-lg font-semibold text-text-primary">
           {approval.playerName} — {approval.amount} {approval.paymentType}
         </p>
         <p data-testid="approval-countdown" className="font-numeric text-caption" style={{ color }}>
@@ -82,14 +82,14 @@ export function ApprovalCard({ approval, onApprove, onDeny }: ApprovalCardProps)
           <button
             type="button"
             onClick={onApprove}
-            className="rounded-sm bg-[var(--success)] p-xxs text-caption font-semibold text-[#0D0D0D]"
+            className="rounded-sm bg-success p-xxs text-caption font-semibold text-[#0D0D0D]"
           >
             Approve
           </button>
           <button
             type="button"
             onClick={onDeny}
-            className="rounded-sm border border-[var(--border-soft)] p-xxs text-caption text-[var(--danger)] hover:border-[var(--danger)]"
+            className="rounded-sm border border-border-soft p-xxs text-caption text-danger hover:border-danger"
           >
             Deny
           </button>
@@ -101,10 +101,10 @@ export function ApprovalCard({ approval, onApprove, onDeny }: ApprovalCardProps)
   if (approval.status === 'EXPIRED') {
     return (
       <div role="article" aria-label={approval.playerName} className={`${CARD_CLASSNAME} opacity-60`}>
-        <p className="text-body-lg font-semibold text-[var(--text-secondary)]">
+        <p className="text-body-lg font-semibold text-text-secondary">
           {approval.playerName} — {approval.amount} {approval.paymentType}
         </p>
-        <p className="text-caption text-[var(--text-secondary)]">Expired — no response within 48 hours</p>
+        <p className="text-caption text-text-secondary">Expired — no response within 48 hours</p>
       </div>
     );
   }
@@ -113,14 +113,14 @@ export function ApprovalCard({ approval, onApprove, onDeny }: ApprovalCardProps)
 
   return (
     <div role="article" aria-label={approval.playerName} className={CARD_CLASSNAME}>
-      <p className="text-body-lg font-semibold text-[var(--text-primary)]">
+      <p className="text-body-lg font-semibold text-text-primary">
         {approval.playerName} — {approval.amount} {approval.paymentType}
       </p>
       <span className="text-caption font-semibold" style={{ color: badgeColor }}>
         {approval.status}
       </span>
-      {approval.respondedAt && <span className="text-caption text-[var(--text-secondary)]">{new Date(approval.respondedAt).toLocaleString()}</span>}
-      {approval.parentNotes && <p className="text-caption text-[var(--text-secondary)]">{approval.parentNotes}</p>}
+      {approval.respondedAt && <span className="text-caption text-text-secondary">{new Date(approval.respondedAt).toLocaleString()}</span>}
+      {approval.parentNotes && <p className="text-caption text-text-secondary">{approval.parentNotes}</p>}
     </div>
   );
 }

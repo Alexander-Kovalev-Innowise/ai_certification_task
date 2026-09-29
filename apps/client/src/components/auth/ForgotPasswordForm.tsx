@@ -67,7 +67,7 @@ export function ForgotPasswordForm() {
 
   if (status === 'sent') {
     return (
-      <p role="status" className="text-body text-[var(--text-primary)]">
+      <p role="status" className="text-body text-text-primary">
         {SUCCESS_MESSAGE}
       </p>
     );
@@ -76,20 +76,20 @@ export function ForgotPasswordForm() {
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-md">
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="forgot-password-email" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="forgot-password-email" className="text-body text-text-secondary">
           Email
         </label>
         <input
           id="forgot-password-email"
           type="email"
           autoComplete="email"
-          className="rounded-sm border border-[var(--border-soft)] bg-[var(--surface-1)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
+          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary"
           aria-invalid={!!errors.email}
           aria-describedby={errors.email ? 'forgot-password-email-error' : undefined}
           {...register('email')}
         />
         {errors.email && (
-          <p id="forgot-password-email-error" role="alert" className="text-caption text-[var(--danger)]">
+          <p id="forgot-password-email-error" role="alert" className="text-caption text-danger">
             {errors.email.message}
           </p>
         )}
@@ -97,7 +97,7 @@ export function ForgotPasswordForm() {
 
       {status === 'rate-limited' && <RateLimitNotice retryAfterSeconds={retryAfterSeconds} />}
       {status === 'error' && (
-        <p role="alert" className="text-body text-[var(--danger)]">
+        <p role="alert" className="text-body text-danger">
           Something went wrong. Please try again.
         </p>
       )}
@@ -105,7 +105,7 @@ export function ForgotPasswordForm() {
       <button
         type="submit"
         disabled={status === 'submitting'}
-        className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+        className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
       >
         {status === 'submitting' ? 'Sending…' : 'Send reset link'}
       </button>

@@ -8,7 +8,7 @@ import type { HTMLAttributes } from 'react';
 // dozens of times a day." `motion-reduce:animate-none` honors
 // prefers-reduced-motion (accessibility checklist).
 function pulseClassName(extra: string): string {
-  return `animate-pulse rounded-sm bg-[var(--surface-2)] motion-reduce:animate-none ${extra}`;
+  return `animate-pulse rounded-sm bg-surface-2 motion-reduce:animate-none ${extra}`;
 }
 
 export type SkeletonProps = HTMLAttributes<HTMLDivElement>;
@@ -23,7 +23,7 @@ export function SkeletonCard({ className = '', ...props }: SkeletonProps) {
   return (
     <div
       aria-hidden="true"
-      className={`rounded-md border border-[var(--border-soft)]/20 bg-[var(--surface-1)] p-md shadow-card-soft ${className}`}
+      className={`rounded-md border border-border-soft/20 bg-surface-1 p-md shadow-card-soft ${className}`}
       {...props}
     >
       <div className={pulseClassName('mb-sm h-4 w-2/3')} />

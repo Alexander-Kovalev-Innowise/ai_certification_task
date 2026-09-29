@@ -82,13 +82,13 @@ export function LogoUploadField({ currentLogoUrl, onUploaded, id = 'branding-log
 
   return (
     <div className="flex flex-col gap-xxs">
-      <label htmlFor={id} className="text-body text-[var(--text-secondary)]">
+      <label htmlFor={id} className="text-body text-text-secondary">
         Logo
       </label>
 
       {previewUrl && (
         // eslint-disable-next-line @next/next/no-img-element -- user-uploaded logo, not an optimizable static asset
-        <img src={previewUrl} alt="Logo preview" className="h-16 w-16 rounded-sm border border-[var(--border-soft)] object-contain" />
+        <img src={previewUrl} alt="Logo preview" className="h-16 w-16 rounded-sm border border-border-soft object-contain" />
       )}
 
       <input
@@ -97,17 +97,17 @@ export function LogoUploadField({ currentLogoUrl, onUploaded, id = 'branding-log
         accept={ACCEPTED_TYPES.join(',')}
         onChange={(event) => void handleFileChange(event)}
         disabled={isSubmitting}
-        className="text-body text-[var(--text-primary)]"
+        className="text-body text-text-primary"
       />
 
       {(isSubmitting || justUploaded) && (
-        <p role="status" className="text-caption text-[var(--text-secondary)]">
+        <p role="status" className="text-caption text-text-secondary">
           Processing your logo…
         </p>
       )}
 
       {error && (
-        <p role="alert" className="text-caption text-[var(--danger)]">
+        <p role="alert" className="text-caption text-danger">
           {error}
         </p>
       )}

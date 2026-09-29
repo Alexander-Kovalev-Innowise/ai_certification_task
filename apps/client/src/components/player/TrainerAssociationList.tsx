@@ -28,12 +28,12 @@ export function TrainerAssociationList({ trainers, canManage, onAddTrainer, onRe
   return (
     <div className="flex flex-col gap-md">
       <div className="flex items-center justify-between">
-        <h2 className="text-body-lg font-semibold text-[var(--text-primary)]">Trainers</h2>
+        <h2 className="text-body-lg font-semibold text-text-primary">Trainers</h2>
         {canManage && (
           <button
             type="button"
             onClick={onAddTrainer}
-            className="rounded-sm border border-[var(--border-soft)] p-xxs text-caption text-[var(--text-primary)] hover:border-[var(--brand-primary)]"
+            className="rounded-sm border border-border-soft p-xxs text-caption text-text-primary hover:border-brand-primary"
           >
             Add Trainer
           </button>
@@ -41,26 +41,26 @@ export function TrainerAssociationList({ trainers, canManage, onAddTrainer, onRe
       </div>
 
       {trainers.length === 0 ? (
-        <p role="status" className="text-body text-[var(--text-secondary)]">
+        <p role="status" className="text-body text-text-secondary">
           No trainers yet — add one to get started.
         </p>
       ) : (
-        <div role="table" aria-label="Trainer associations" className="rounded-md border border-[var(--border-soft)]">
+        <div role="table" aria-label="Trainer associations" className="rounded-md border border-border-soft">
           {trainers.map((trainer) => (
             <div
               key={trainer.trainerId}
               role="row"
               aria-label={trainer.businessName}
-              className="flex items-center gap-md border-b border-[var(--border-soft)]/40 p-md text-body text-[var(--text-primary)] last:border-b-0"
+              className="flex items-center gap-md border-b border-border-soft/40 p-md text-body text-text-primary last:border-b-0"
             >
               <span className="flex-1 truncate">{trainer.businessName}</span>
-              <span className="text-caption text-[var(--text-secondary)]">Connected {new Date(trainer.connectedAt).toLocaleDateString()}</span>
-              <span className="text-caption text-[var(--text-secondary)]">{trainer.status}</span>
+              <span className="text-caption text-text-secondary">Connected {new Date(trainer.connectedAt).toLocaleDateString()}</span>
+              <span className="text-caption text-text-secondary">{trainer.status}</span>
               {canManage && (
                 <button
                   type="button"
                   onClick={() => onRemoveTrainer(trainer)}
-                  className="rounded-sm border border-[var(--border-soft)] p-xxs text-caption text-[var(--danger)] hover:border-[var(--danger)]"
+                  className="rounded-sm border border-border-soft p-xxs text-caption text-danger hover:border-danger"
                 >
                   Remove
                 </button>

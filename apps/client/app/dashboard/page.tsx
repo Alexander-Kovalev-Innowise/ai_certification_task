@@ -29,7 +29,7 @@ function DashboardContent() {
 
   if (isError || !data) {
     return (
-      <div role="alert" className="p-lg text-[var(--text-primary)]">
+      <div role="alert" className="p-lg text-text-primary">
         Something went wrong loading your dashboard. Please try again.
       </div>
     );

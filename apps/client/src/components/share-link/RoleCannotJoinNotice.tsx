@@ -8,9 +8,9 @@ export function RoleCannotJoinNotice() {
   return (
     <div
       role="alert"
-      className="flex flex-col gap-sm rounded-md border border-[var(--border-soft)] bg-[var(--surface-1)] p-lg text-center"
+      className="flex flex-col gap-sm rounded-md border border-border-soft bg-surface-1 p-lg text-center"
     >
-      <p className="text-body text-[var(--text-primary)]">
+      <p className="text-body text-text-primary">
         This invitation is for players and coaches. Your account can&apos;t join as a participant.
       </p>
     </div>

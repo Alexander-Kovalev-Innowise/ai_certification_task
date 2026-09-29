@@ -66,10 +66,10 @@ export default function ProfilesPage() {
 
   return (
     <section className="flex flex-col gap-lg p-lg">
-      <h1 className="text-xl font-semibold text-[var(--text-primary)]">Profiles</h1>
+      <h1 className="text-xl font-semibold text-text-primary">Profiles</h1>
 
       {warning && (
-        <p role="status" className="text-body text-[var(--warning)]">
+        <p role="status" className="text-body text-warning">
           {warning}
         </p>
       )}
@@ -77,7 +77,7 @@ export default function ProfilesPage() {
       {isLoading && <ProfileCardGridSkeleton />}
 
       {isError && (
-        <p role="alert" className="text-body text-[var(--danger)]">
+        <p role="alert" className="text-body text-danger">
           Something went wrong loading your profiles. Please try again.
         </p>
       )}

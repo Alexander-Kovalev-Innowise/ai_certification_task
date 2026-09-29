@@ -23,9 +23,9 @@ interface TableSkeletonProps {
  */
 function TableSkeleton({ label, columnWidths, rowCount = DEFAULT_ROW_COUNT }: TableSkeletonProps) {
   return (
-    <div role="table" aria-label={`Loading ${label}`} aria-busy="true" className="rounded-md border border-[var(--border-soft)]">
+    <div role="table" aria-label={`Loading ${label}`} aria-busy="true" className="rounded-md border border-border-soft">
       {Array.from({ length: rowCount }, (_, rowIndex) => (
-        <div key={rowIndex} role="row" className="flex items-center gap-md border-b border-[var(--border-soft)]/40 p-md last:border-b-0">
+        <div key={rowIndex} role="row" className="flex items-center gap-md border-b border-border-soft/40 p-md last:border-b-0">
           {columnWidths.map((width, columnIndex) => (
             <div key={columnIndex} className={width}>
               <SkeletonRow />
@@ -90,7 +90,7 @@ export function ProfileCardGridSkeleton() {
   return (
     <div aria-label="Loading profiles" aria-busy="true" className="flex flex-wrap gap-md">
       {Array.from({ length: PROFILE_CARD_COUNT }, (_, index) => (
-        <div key={index} className="flex w-48 flex-col gap-xxs rounded-md border border-[var(--border-soft)] bg-[var(--surface-1)] p-md shadow-card-soft">
+        <div key={index} className="flex w-48 flex-col gap-xxs rounded-md border border-border-soft bg-surface-1 p-md shadow-card-soft">
           <div className="h-12 w-12 overflow-hidden rounded-full">
             <SkeletonGridCell />
           </div>

@@ -68,7 +68,7 @@ function EmailVerifiedBannerContent() {
   return (
     <div
       role="status"
-      className="flex flex-wrap items-center justify-center gap-md bg-[var(--warning)]/15 px-lg py-xs text-caption text-[var(--warning)]"
+      className="flex flex-wrap items-center justify-center gap-md bg-warning/15 px-lg py-xs text-caption text-warning"
     >
       <span>Verify your email to unlock all features.</span>
 

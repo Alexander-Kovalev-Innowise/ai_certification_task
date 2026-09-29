@@ -129,7 +129,7 @@ export default function ProfileDetailPage() {
 
   if (profileQuery.isError || !profileQuery.data) {
     return (
-      <p role="alert" className="p-lg text-body text-[var(--danger)]">
+      <p role="alert" className="p-lg text-body text-danger">
         Something went wrong loading this profile. Please try again.
       </p>
     );
@@ -137,7 +137,7 @@ export default function ProfileDetailPage() {
 
   return (
     <section className="flex flex-col gap-lg p-lg">
-      <h1 className="text-xl font-semibold text-[var(--text-primary)]">{profileQuery.data.name}</h1>
+      <h1 className="text-xl font-semibold text-text-primary">{profileQuery.data.name}</h1>
 
       <ProfileEditForm key={id} profile={profileQuery.data} canEditGuardianFields={canManage} onSaved={handleSaved} />
 

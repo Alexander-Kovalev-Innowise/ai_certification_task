@@ -12,17 +12,17 @@ const QUICK_LINKS = [
 export function SuperAdminDashboardShell({ ctx }: DashboardShellProps) {
   return (
     <section aria-labelledby="dashboard-heading" className="flex flex-col gap-lg p-lg">
-      <h1 id="dashboard-heading" className="text-xl font-semibold text-[var(--text-primary)]">
+      <h1 id="dashboard-heading" className="text-xl font-semibold text-text-primary">
         Welcome, {ctx.user.firstName}
       </h1>
-      <p className="text-[var(--text-secondary)]">Super Admin dashboard — quick links to manage the platform.</p>
+      <p className="text-text-secondary">Super Admin dashboard — quick links to manage the platform.</p>
 
       <nav aria-label="Quick links" className="flex flex-col gap-sm">
         {QUICK_LINKS.map((link) => (
           <a
             key={link.href}
             href={link.href}
-            className="rounded-md border border-[var(--border-soft)] bg-[var(--surface-1)] p-md text-body-lg font-semibold text-[var(--text-primary)] shadow-card-soft hover:border-[var(--brand-primary)]"
+            className="rounded-md border border-border-soft bg-surface-1 p-md text-body-lg font-semibold text-text-primary shadow-card-soft hover:border-brand-primary"
           >
             {link.label}
           </a>

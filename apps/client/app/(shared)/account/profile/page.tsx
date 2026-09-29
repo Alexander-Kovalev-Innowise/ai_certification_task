@@ -36,7 +36,7 @@ function AccountProfileContent() {
 
   if (isError || !data) {
     return (
-      <p role="alert" className="p-lg text-body text-[var(--danger)]">
+      <p role="alert" className="p-lg text-body text-danger">
         Something went wrong loading your account. Please try again.
       </p>
     );
@@ -44,10 +44,10 @@ function AccountProfileContent() {
 
   return (
     <section className="flex flex-col gap-lg p-lg">
-      <h1 className="text-xl font-semibold text-[var(--text-primary)]">Account</h1>
+      <h1 className="text-xl font-semibold text-text-primary">Account</h1>
 
       {savedMessage && (
-        <p role="status" className="text-body text-[var(--success)]">
+        <p role="status" className="text-body text-success">
           Profile saved.
         </p>
       )}

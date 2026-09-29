@@ -10,9 +10,9 @@ export interface CoachStatusBadgeProps {
 // invites, the brand-adjacent success green for accepted, danger red for
 // expired.
 const STYLES: Record<CoachInvitationStatus, string> = {
-  Pending: 'bg-[var(--warning)]/20 text-[var(--warning)]',
-  Accepted: 'bg-[var(--success)]/20 text-[var(--success)]',
-  Expired: 'bg-[var(--danger)]/20 text-[var(--danger)]',
+  Pending: 'bg-warning/20 text-warning',
+  Accepted: 'bg-success/20 text-success',
+  Expired: 'bg-danger/20 text-danger',
 };
 
 // fe §4.4 — CoachStatusBadge (Pending/Accepted/Expired). Task 13.2.

@@ -3,9 +3,9 @@
 import { useToastStore, type ToastVariant } from '../../stores/useToastStore';
 
 const VARIANT_STYLE: Record<ToastVariant, string> = {
-  success: 'border-[var(--success)]/40 bg-[var(--success)]/10 text-[var(--success)]',
-  error: 'border-[var(--danger)]/40 bg-[var(--danger)]/10 text-[var(--danger)]',
-  info: 'border-[var(--info)]/40 bg-[var(--info)]/10 text-[var(--info)]',
+  success: 'border-success/40 bg-success/10 text-success',
+  error: 'border-danger/40 bg-danger/10 text-danger',
+  info: 'border-info/40 bg-info/10 text-info',
 };
 
 // Task 18.3 — the single reader of `useToastStore`, mounted once at the root
@@ -26,7 +26,7 @@ export function ToastContainer() {
   }
 
   return (
-    <div aria-label="Notifications" className="fixed bottom-lg right-lg z-50 flex w-full max-w-sm flex-col gap-sm">
+    <div aria-label="Notifications" className="fixed bottom-lg right-lg z-50 flex w-full max-w-[24rem] flex-col gap-sm">
       {toasts.map((item) => (
         <div
           key={item.id}

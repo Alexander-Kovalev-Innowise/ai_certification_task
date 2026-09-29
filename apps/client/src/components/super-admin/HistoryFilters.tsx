@@ -39,7 +39,7 @@ export function HistoryFilters({ value, onChange }: HistoryFiltersProps) {
   return (
     <form role="search" aria-label="Filter impersonation history" onSubmit={(event) => event.preventDefault()} className="flex flex-wrap items-end gap-md">
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="history-filter-admin" className="text-caption text-[var(--text-secondary)]">
+        <label htmlFor="history-filter-admin" className="text-caption text-text-secondary">
           Admin User ID
         </label>
         <input
@@ -48,12 +48,12 @@ export function HistoryFilters({ value, onChange }: HistoryFiltersProps) {
           value={value.adminUserId}
           onChange={handleAdminChange}
           placeholder="Admin user id"
-          className="rounded-sm border border-[var(--border-soft)] bg-[var(--surface-1)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
+          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary"
         />
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="history-filter-target" className="text-caption text-[var(--text-secondary)]">
+        <label htmlFor="history-filter-target" className="text-caption text-text-secondary">
           Target User ID
         </label>
         <input
@@ -62,12 +62,12 @@ export function HistoryFilters({ value, onChange }: HistoryFiltersProps) {
           value={value.targetUserId}
           onChange={handleTargetChange}
           placeholder="Target user id"
-          className="rounded-sm border border-[var(--border-soft)] bg-[var(--surface-1)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
+          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary"
         />
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="history-filter-date-from" className="text-caption text-[var(--text-secondary)]">
+        <label htmlFor="history-filter-date-from" className="text-caption text-text-secondary">
           From
         </label>
         <input
@@ -75,12 +75,12 @@ export function HistoryFilters({ value, onChange }: HistoryFiltersProps) {
           type="date"
           value={value.dateFrom}
           onChange={handleDateFromChange}
-          className="rounded-sm border border-[var(--border-soft)] bg-[var(--surface-1)] p-sm text-body text-[var(--text-primary)]"
+          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary"
         />
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="history-filter-date-to" className="text-caption text-[var(--text-secondary)]">
+        <label htmlFor="history-filter-date-to" className="text-caption text-text-secondary">
           To
         </label>
         <input
@@ -88,7 +88,7 @@ export function HistoryFilters({ value, onChange }: HistoryFiltersProps) {
           type="date"
           value={value.dateTo}
           onChange={handleDateToChange}
-          className="rounded-sm border border-[var(--border-soft)] bg-[var(--surface-1)] p-sm text-body text-[var(--text-primary)]"
+          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary"
         />
       </div>
     </form>

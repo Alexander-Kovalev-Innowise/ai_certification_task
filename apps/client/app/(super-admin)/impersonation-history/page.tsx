@@ -66,12 +66,12 @@ export default function ImpersonationHistoryPage() {
 
   return (
     <section className="flex flex-col gap-lg p-lg">
-      <h1 className="text-xl font-semibold text-[var(--text-primary)]">Impersonation History</h1>
+      <h1 className="text-xl font-semibold text-text-primary">Impersonation History</h1>
 
       <HistoryFilters value={filters} onChange={setFilters} />
 
       {isError && (
-        <p role="alert" className="text-body text-[var(--danger)]">
+        <p role="alert" className="text-body text-danger">
           Something went wrong loading impersonation history. Please try again.
         </p>
       )}

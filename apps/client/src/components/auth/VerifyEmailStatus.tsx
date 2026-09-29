@@ -47,7 +47,7 @@ export function VerifyEmailStatus() {
 
   if (status === 'checking') {
     return (
-      <p role="status" aria-live="polite" className="text-body text-[var(--text-secondary)]">
+      <p role="status" aria-live="polite" className="text-body text-text-secondary">
         Verifying your email…
       </p>
     );
@@ -56,10 +56,10 @@ export function VerifyEmailStatus() {
   if (status === 'verified') {
     return (
       <div className="flex flex-col gap-sm">
-        <p role="status" className="text-body text-[var(--text-primary)]">
+        <p role="status" className="text-body text-text-primary">
           Your email has been verified.
         </p>
-        <a href="/dashboard" className="text-body text-[var(--brand-primary)] underline">
+        <a href="/dashboard" className="text-body text-brand-primary underline">
           Continue
         </a>
       </div>
@@ -67,7 +67,7 @@ export function VerifyEmailStatus() {
   }
 
   return (
-    <p role="alert" className="text-body text-[var(--text-primary)]">
+    <p role="alert" className="text-body text-text-primary">
       This link is invalid or has expired.
     </p>
   );

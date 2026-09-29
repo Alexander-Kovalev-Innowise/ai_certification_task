@@ -49,14 +49,14 @@ const TYPE_LABEL: Record<ShareLinkRowType, string> = {
 export function ShareLinkTable({ items, hasMore, isFetchingNextPage = false, onLoadMore, onRevoke, pendingRevokeIds = [] }: ShareLinkTableProps) {
   if (items.length === 0) {
     return (
-      <p role="status" className="p-lg text-body text-[var(--text-secondary)]">
+      <p role="status" className="p-lg text-body text-text-secondary">
         No share links yet — generate one to start inviting players or coaches.
       </p>
     );
   }
 
   return (
-    <div role="table" aria-label="Share links" className="rounded-md border border-[var(--border-soft)]">
+    <div role="table" aria-label="Share links" className="rounded-md border border-border-soft">
       {items.map((row) => {
         const isPending = pendingRevokeIds.includes(row.id);
 
@@ -65,13 +65,13 @@ export function ShareLinkTable({ items, hasMore, isFetchingNextPage = false, onL
             key={row.id}
             role="row"
             aria-label={row.code}
-            className={`flex items-center gap-md border-b border-[var(--border-soft)]/40 p-md text-body text-[var(--text-primary)] last:border-b-0 ${isPending ? 'opacity-40' : ''}`}
+            className={`flex items-center gap-md border-b border-border-soft/40 p-md text-body text-text-primary last:border-b-0 ${isPending ? 'opacity-40' : ''}`}
           >
             <span className="w-1/6 truncate font-mono">{row.code}</span>
             <span className="w-1/6">{TYPE_LABEL[row.type]}</span>
             <span className="w-1/5 truncate">{row.targetEmail ?? '—'}</span>
             <span className="w-1/12 text-center">{row.useCount}</span>
-            <span className="w-1/6 text-caption text-[var(--text-secondary)]">
+            <span className="w-1/6 text-caption text-text-secondary">
               {row.expiresAt ? new Date(row.expiresAt).toLocaleDateString() : 'Never'}
             </span>
             <span className="w-1/12">{row.status}</span>
@@ -88,7 +88,7 @@ export function ShareLinkTable({ items, hasMore, isFetchingNextPage = false, onL
             type="button"
             onClick={onLoadMore}
             disabled={isFetchingNextPage}
-            className="rounded-sm p-sm text-body text-[var(--brand-primary)] disabled:opacity-60"
+            className="rounded-sm p-sm text-body text-brand-primary disabled:opacity-60"
           >
             {isFetchingNextPage ? 'Loading…' : 'Load more'}
           </button>

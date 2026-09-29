@@ -64,7 +64,7 @@ export function FamilyPickerForm({ trainerDisplayName, onSubmit, isSubmitting = 
 
   if (loadFailed) {
     return (
-      <p role="alert" className="text-body text-[var(--danger)]">
+      <p role="alert" className="text-body text-danger">
         Couldn&apos;t load your family profiles. Please try again.
       </p>
     );
@@ -72,7 +72,7 @@ export function FamilyPickerForm({ trainerDisplayName, onSubmit, isSubmitting = 
 
   if (!profiles) {
     return (
-      <p role="status" aria-live="polite" className="text-body text-[var(--text-secondary)]">
+      <p role="status" aria-live="polite" className="text-body text-text-secondary">
         Loading your profiles…
       </p>
     );
@@ -81,9 +81,9 @@ export function FamilyPickerForm({ trainerDisplayName, onSubmit, isSubmitting = 
   return (
     <form onSubmit={handleSubmit} className="flex w-full flex-col gap-md">
       <fieldset className="flex flex-col gap-xxs">
-        <legend className="text-body text-[var(--text-secondary)]">Who will train with {trainerDisplayName}?</legend>
+        <legend className="text-body text-text-secondary">Who will train with {trainerDisplayName}?</legend>
         {profiles.map((profile) => (
-          <label key={profile.id} className="flex items-center gap-xs text-body text-[var(--text-primary)]">
+          <label key={profile.id} className="flex items-center gap-xs text-body text-text-primary">
             <input type="checkbox" checked={selectedIds.includes(profile.id)} onChange={() => toggle(profile.id)} />
             {profile.isSelf ? 'Me' : profile.name}
           </label>
@@ -91,7 +91,7 @@ export function FamilyPickerForm({ trainerDisplayName, onSubmit, isSubmitting = 
       </fieldset>
 
       {submitError && (
-        <p role="alert" className="text-body text-[var(--danger)]">
+        <p role="alert" className="text-body text-danger">
           {submitError}
         </p>
       )}
@@ -99,7 +99,7 @@ export function FamilyPickerForm({ trainerDisplayName, onSubmit, isSubmitting = 
       <button
         type="submit"
         disabled={isSubmitting || selectedIds.length === 0}
-        className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+        className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
       >
         {isSubmitting ? 'Connecting…' : 'Connect'}
       </button>

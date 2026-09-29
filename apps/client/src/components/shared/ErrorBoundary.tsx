@@ -41,13 +41,13 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       return (
         <div
           role="alert"
-          className="flex min-h-screen w-full flex-col items-center justify-center gap-md bg-[var(--surface-0)] p-lg text-center"
+          className="flex min-h-screen w-full flex-col items-center justify-center gap-md bg-surface-0 p-lg text-center"
         >
-          <p className="text-body text-[var(--text-primary)]">Something went wrong. Please try again.</p>
+          <p className="text-body text-text-primary">Something went wrong. Please try again.</p>
           <button
             type="button"
             onClick={this.handleReset}
-            className="rounded-sm border border-[var(--border-soft)] px-md py-xs text-body text-[var(--text-primary)] hover:border-[var(--brand-primary)]"
+            className="rounded-sm border border-border-soft px-md py-xs text-body text-text-primary hover:border-brand-primary"
           >
             Try again
           </button>

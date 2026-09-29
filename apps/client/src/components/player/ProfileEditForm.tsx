@@ -38,7 +38,7 @@ interface ProfileEditFormValues {
 const GENERIC_SAVE_ERROR = "Some changes couldn't be saved. Please try again.";
 
 const INPUT_CLASSNAME =
-  'rounded-sm border border-[var(--border-soft)] bg-[var(--surface-0)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]';
+  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
 
 function toDefaultValues(profile: PlayerProfileDetail): ProfileEditFormValues {
   const emergencyContact = profile.emergencyContact ?? {};
@@ -108,7 +108,7 @@ export function ProfileEditForm({ profile, canEditGuardianFields, onSaved }: Pro
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-md">
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="profile-edit-name" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="profile-edit-name" className="text-body text-text-secondary">
           Name
         </label>
         <input
@@ -118,54 +118,54 @@ export function ProfileEditForm({ profile, canEditGuardianFields, onSaved }: Pro
           {...register('name', { required: 'Name is required.', maxLength: { value: 100, message: 'Name must be 100 characters or fewer.' } })}
         />
         {errors.name && (
-          <p role="alert" className="text-caption text-[var(--danger)]">
+          <p role="alert" className="text-caption text-danger">
             {errors.name.message}
           </p>
         )}
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="profile-edit-school" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="profile-edit-school" className="text-body text-text-secondary">
           School
         </label>
         <input id="profile-edit-school" className={INPUT_CLASSNAME} {...register('school')} />
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="profile-edit-jersey" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="profile-edit-jersey" className="text-body text-text-secondary">
           Jersey number
         </label>
         <input id="profile-edit-jersey" className={INPUT_CLASSNAME} {...register('jerseyNumber')} />
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="profile-edit-photo" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="profile-edit-photo" className="text-body text-text-secondary">
           Photo URL
         </label>
         <input id="profile-edit-photo" className={INPUT_CLASSNAME} {...register('photoUrl')} />
       </div>
 
       <fieldset className="flex flex-col gap-xxs">
-        <legend className="text-body text-[var(--text-secondary)]">Emergency contact</legend>
-        <label htmlFor="profile-edit-ec-name" className="text-caption text-[var(--text-secondary)]">
+        <legend className="text-body text-text-secondary">Emergency contact</legend>
+        <label htmlFor="profile-edit-ec-name" className="text-caption text-text-secondary">
           Contact name
         </label>
         <input id="profile-edit-ec-name" className={INPUT_CLASSNAME} {...register('emergencyContactName')} />
-        <label htmlFor="profile-edit-ec-phone" className="text-caption text-[var(--text-secondary)]">
+        <label htmlFor="profile-edit-ec-phone" className="text-caption text-text-secondary">
           Contact phone
         </label>
         <input id="profile-edit-ec-phone" className={INPUT_CLASSNAME} {...register('emergencyContactPhone')} />
       </fieldset>
 
       {canEditGuardianFields && (
-        <label htmlFor="profile-edit-allow-spend" className="flex items-center gap-sm text-body text-[var(--text-primary)]">
+        <label htmlFor="profile-edit-allow-spend" className="flex items-center gap-sm text-body text-text-primary">
           <input id="profile-edit-allow-spend" type="checkbox" {...register('allowChildTokenSpendWithoutApproval')} />
           Allow this player to spend tokens without approval
         </label>
       )}
 
       {formError && (
-        <p role="alert" className="text-body text-[var(--danger)]">
+        <p role="alert" className="text-body text-danger">
           {formError}
         </p>
       )}
@@ -174,7 +174,7 @@ export function ProfileEditForm({ profile, canEditGuardianFields, onSaved }: Pro
         <button
           type="submit"
           disabled={isSubmitting}
-          className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+          className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
         >
           {isSubmitting ? 'Saving…' : 'Save'}
         </button>

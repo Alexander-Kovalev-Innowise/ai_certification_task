@@ -26,17 +26,17 @@ export function PlayerDashboardShell({ ctx }: DashboardShellProps) {
 
   return (
     <section aria-labelledby="dashboard-heading" className="flex flex-col gap-lg p-lg">
-      <h1 id="dashboard-heading" className="text-xl font-semibold text-[var(--text-primary)]">
+      <h1 id="dashboard-heading" className="text-xl font-semibold text-text-primary">
         Welcome, {ctx.user.firstName}
       </h1>
 
       {pendingApprovalsCount !== undefined && (
         <a
           href="/approvals"
-          className="flex-1 rounded-md border border-[var(--border-soft)] bg-[var(--surface-1)] p-md shadow-card-soft hover:border-[var(--brand-primary)]"
+          className="flex-1 rounded-md border border-border-soft bg-surface-1 p-md shadow-card-soft hover:border-brand-primary"
         >
-          <p className="text-caption text-[var(--text-secondary)]">Pending Approvals</p>
-          <p className="text-xl font-semibold text-[var(--text-primary)]">{pendingApprovalsCount}</p>
+          <p className="text-caption text-text-secondary">Pending Approvals</p>
+          <p className="text-xl font-semibold text-text-primary">{pendingApprovalsCount}</p>
         </a>
       )}
 
@@ -45,7 +45,7 @@ export function PlayerDashboardShell({ ctx }: DashboardShellProps) {
           <a
             key={link.href}
             href={link.href}
-            className="rounded-md border border-[var(--border-soft)] bg-[var(--surface-1)] p-md text-body-lg font-semibold text-[var(--text-primary)] shadow-card-soft hover:border-[var(--brand-primary)]"
+            className="rounded-md border border-border-soft bg-surface-1 p-md text-body-lg font-semibold text-text-primary shadow-card-soft hover:border-brand-primary"
           >
             {link.label}
           </a>

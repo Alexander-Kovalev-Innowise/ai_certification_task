@@ -30,7 +30,7 @@ function hhmmToMinutes(value: string): number {
   return (hours || 0) * 60 + (minutes || 0);
 }
 
-const ROW_BUTTON_CLASSNAME = 'rounded-sm border border-[var(--border-soft)] p-xxs text-caption text-[var(--text-primary)] hover:border-[var(--brand-primary)]';
+const ROW_BUTTON_CLASSNAME = 'rounded-sm border border-border-soft p-xxs text-caption text-text-primary hover:border-brand-primary';
 
 /**
  * fe §5.4 — one component, two subjects (`player`/`coach`) and two modes
@@ -60,12 +60,12 @@ export function AvailabilityGrid({ subject, mode, slots, onSave, isSaving = fals
           {DAY_LABELS.map((day, dayIndex) => {
             const daySlots = slots.filter((slot) => slot.dayOfWeek === dayIndex && slot.isAvailable);
             return (
-              <div key={day} role="row" aria-label={day} className="flex items-center gap-sm text-body text-[var(--text-primary)]">
+              <div key={day} role="row" aria-label={day} className="flex items-center gap-sm text-body text-text-primary">
                 <span className="w-10 font-semibold">{day}</span>
                 {daySlots.length === 0 ? (
-                  <span className="text-[var(--text-secondary)]">—</span>
+                  <span className="text-text-secondary">—</span>
                 ) : (
-                  <span className="font-numeric text-[var(--text-secondary)]">
+                  <span className="font-numeric text-text-secondary">
                     {daySlots.map((slot) => `${minutesToHHMM(slot.startTime)}-${minutesToHHMM(slot.endTime)}`).join(', ')}
                   </span>
                 )}
@@ -73,7 +73,7 @@ export function AvailabilityGrid({ subject, mode, slots, onSave, isSaving = fals
             );
           })}
         </div>
-        <p data-testid="availability-summary" className="text-caption text-[var(--text-secondary)]">
+        <p data-testid="availability-summary" className="text-caption text-text-secondary">
           Best Times: {formatAvailabilitySummary(slots) || 'None set'}
         </p>
       </div>
@@ -113,9 +113,9 @@ export function AvailabilityGrid({ subject, mode, slots, onSave, isSaving = fals
   return (
     <div className="flex flex-col gap-md">
       {DAY_LABELS.map((day, dayIndex) => (
-        <div key={day} className="flex flex-col gap-xxs rounded-md border border-[var(--border-soft)] p-sm">
+        <div key={day} className="flex flex-col gap-xxs rounded-md border border-border-soft p-sm">
           <div className="flex items-center justify-between">
-            <span className="text-body font-semibold text-[var(--text-primary)]">{day}</span>
+            <span className="text-body font-semibold text-text-primary">{day}</span>
             <button type="button" onClick={() => addRow(dayIndex)} className={ROW_BUTTON_CLASSNAME}>
               + Add time
             </button>
@@ -130,21 +130,21 @@ export function AvailabilityGrid({ subject, mode, slots, onSave, isSaving = fals
                     type="time"
                     value={minutesToHHMM(slot.startTime)}
                     onChange={(event) => updateRow(index, { startTime: hhmmToMinutes(event.target.value) })}
-                    className="rounded-sm border border-[var(--border-soft)] bg-[var(--surface-0)] p-xxs text-body text-[var(--text-primary)]"
+                    className="rounded-sm border border-border-soft bg-surface-0 p-xxs text-body text-text-primary"
                   />
-                  <span className="text-caption text-[var(--text-secondary)]">to</span>
+                  <span className="text-caption text-text-secondary">to</span>
                   <input
                     aria-label={`${day} end`}
                     type="time"
                     value={minutesToHHMM(slot.endTime)}
                     onChange={(event) => updateRow(index, { endTime: hhmmToMinutes(event.target.value) })}
-                    className="rounded-sm border border-[var(--border-soft)] bg-[var(--surface-0)] p-xxs text-body text-[var(--text-primary)]"
+                    className="rounded-sm border border-border-soft bg-surface-0 p-xxs text-body text-text-primary"
                   />
                   <button type="button" onClick={() => removeRow(index)} className={ROW_BUTTON_CLASSNAME}>
                     Remove
                   </button>
                   {rangeErrors[index] && (
-                    <p role="alert" className="text-caption text-[var(--danger)]">
+                    <p role="alert" className="text-caption text-danger">
                       {rangeErrors[index]}
                     </p>
                   )}
@@ -159,7 +159,7 @@ export function AvailabilityGrid({ subject, mode, slots, onSave, isSaving = fals
           type="button"
           onClick={handleSave}
           disabled={isSaving}
-          className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+          className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
         >
           {isSaving ? 'Saving…' : 'Save'}
         </button>

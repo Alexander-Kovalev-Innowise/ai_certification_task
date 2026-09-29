@@ -32,7 +32,7 @@ export interface InviteCoachModalProps {
 const GENERIC_ERROR_MESSAGE = 'Something went wrong sending the invite. Please try again.';
 
 const INPUT_CLASSNAME =
-  'rounded-sm border border-[var(--border-soft)] bg-[var(--surface-0)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]';
+  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
 
 // fe §4.4 — InviteCoachModal: `POST /coaches/invite`
 // `{ email: string, name?: string, message?: string }` (api §4.2, FR-060).
@@ -101,14 +101,14 @@ export function InviteCoachModal({ isOpen, onClose, onInvited, resendTarget }: I
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="invite-coach-heading" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg">
-      <div className="w-full max-w-md rounded-md border border-[var(--border-soft)] bg-[var(--surface-1)] p-lg shadow-card-strong">
-        <h2 id="invite-coach-heading" className="text-block-title font-semibold text-[var(--text-primary)]">
+      <div className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
+        <h2 id="invite-coach-heading" className="text-block-title font-semibold text-text-primary">
           Invite a coach
         </h2>
 
         <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="invite-coach-email" className="text-body text-[var(--text-secondary)]">
+            <label htmlFor="invite-coach-email" className="text-body text-text-secondary">
               Email
             </label>
             <input
@@ -123,40 +123,40 @@ export function InviteCoachModal({ isOpen, onClose, onInvited, resendTarget }: I
               })}
             />
             {errors.email && (
-              <p id="invite-coach-email-error" role="alert" className="text-caption text-[var(--danger)]">
+              <p id="invite-coach-email-error" role="alert" className="text-caption text-danger">
                 {errors.email.message}
               </p>
             )}
           </div>
 
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="invite-coach-name" className="text-body text-[var(--text-secondary)]">
+            <label htmlFor="invite-coach-name" className="text-body text-text-secondary">
               Name (optional)
             </label>
             <input id="invite-coach-name" className={INPUT_CLASSNAME} {...register('name')} />
           </div>
 
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="invite-coach-message" className="text-body text-[var(--text-secondary)]">
+            <label htmlFor="invite-coach-message" className="text-body text-text-secondary">
               Message (optional)
             </label>
             <textarea id="invite-coach-message" className={INPUT_CLASSNAME} {...register('message')} />
           </div>
 
           {formError && (
-            <p role="alert" className="text-body text-[var(--danger)]">
+            <p role="alert" className="text-body text-danger">
               {formError}
             </p>
           )}
 
           <div className="mt-sm flex justify-end gap-sm">
-            <button type="button" onClick={handleClose} className="rounded-sm p-sm text-body text-[var(--text-secondary)]">
+            <button type="button" onClick={handleClose} className="rounded-sm p-sm text-body text-text-secondary">
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+              className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
             >
               {isSubmitting ? 'Sending…' : 'Send invite'}
             </button>

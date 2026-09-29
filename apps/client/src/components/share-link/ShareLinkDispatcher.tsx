@@ -199,7 +199,7 @@ export function ShareLinkDispatcher({ code }: ShareLinkDispatcherProps) {
 
   if (stage.kind === 'pending') {
     return (
-      <div role="status" aria-live="polite" className="text-body text-[var(--text-secondary)]">
+      <div role="status" aria-live="polite" className="text-body text-text-secondary">
         Loading invitation…
       </div>
     );
@@ -211,7 +211,7 @@ export function ShareLinkDispatcher({ code }: ShareLinkDispatcherProps) {
 
   if (stage.kind === 'resolved') {
     return (
-      <p role="status" className="text-body text-[var(--text-primary)]">
+      <p role="status" className="text-body text-text-primary">
         {stage.message}
       </p>
     );

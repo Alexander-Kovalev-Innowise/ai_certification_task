@@ -162,12 +162,12 @@ function BrandingForm({ trainerId, initialLogoUrl, initialPrimaryColorHex }: Bra
       <BrandingLivePreview primaryColorHex={primaryColorHex} logoUrl={logoUrl || null} />
 
       {saveError && (
-        <p role="alert" className="text-body text-[var(--danger)]">
+        <p role="alert" className="text-body text-danger">
           {saveError}
         </p>
       )}
       {saveSuccess && (
-        <p role="status" className="text-body text-[var(--success)]">
+        <p role="status" className="text-body text-success">
           Branding saved.
         </p>
       )}
@@ -176,7 +176,7 @@ function BrandingForm({ trainerId, initialLogoUrl, initialPrimaryColorHex }: Bra
         <button
           type="submit"
           disabled={isSubmitting || mutation.isPending}
-          className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+          className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
         >
           {mutation.isPending ? 'Saving…' : 'Save branding'}
         </button>
@@ -207,7 +207,7 @@ export default function BrandingPage() {
 
   return (
     <section className="flex flex-col gap-lg p-lg">
-      <h1 className="text-xl font-semibold text-[var(--text-primary)]">Branding</h1>
+      <h1 className="text-xl font-semibold text-text-primary">Branding</h1>
       <BrandingForm
         trainerId={data.trainerProfile.id}
         initialLogoUrl={data.branding.logoUrl}

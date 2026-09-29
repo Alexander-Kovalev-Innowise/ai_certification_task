@@ -49,7 +49,7 @@ interface FormValues {
 const GENERIC_SAVE_ERROR = "Some changes couldn't be saved. Please try again.";
 
 const INPUT_CLASSNAME =
-  'rounded-sm border border-[var(--border-soft)] bg-[var(--surface-0)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]';
+  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
 
 function toDefaultValues(profile: AccountProfileValues): FormValues {
   const prefs = profile.notificationPrefs ?? {};
@@ -121,7 +121,7 @@ export function AccountProfileForm({ profile, accountType, onSaved }: AccountPro
       {!isChild && (
         <>
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="account-profile-first-name" className="text-body text-[var(--text-secondary)]">
+            <label htmlFor="account-profile-first-name" className="text-body text-text-secondary">
               First name
             </label>
             <input
@@ -131,14 +131,14 @@ export function AccountProfileForm({ profile, accountType, onSaved }: AccountPro
               {...register('firstName', { required: 'First name is required.', maxLength: { value: 100, message: 'First name must be 100 characters or fewer.' } })}
             />
             {errors.firstName && (
-              <p role="alert" className="text-caption text-[var(--danger)]">
+              <p role="alert" className="text-caption text-danger">
                 {errors.firstName.message}
               </p>
             )}
           </div>
 
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="account-profile-last-name" className="text-body text-[var(--text-secondary)]">
+            <label htmlFor="account-profile-last-name" className="text-body text-text-secondary">
               Last name
             </label>
             <input
@@ -148,14 +148,14 @@ export function AccountProfileForm({ profile, accountType, onSaved }: AccountPro
               {...register('lastName', { required: 'Last name is required.', maxLength: { value: 100, message: 'Last name must be 100 characters or fewer.' } })}
             />
             {errors.lastName && (
-              <p role="alert" className="text-caption text-[var(--danger)]">
+              <p role="alert" className="text-caption text-danger">
                 {errors.lastName.message}
               </p>
             )}
           </div>
 
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="account-profile-phone" className="text-body text-[var(--text-secondary)]">
+            <label htmlFor="account-profile-phone" className="text-body text-text-secondary">
               Phone
             </label>
             <input id="account-profile-phone" type="tel" className={INPUT_CLASSNAME} {...register('phone')} />
@@ -164,26 +164,26 @@ export function AccountProfileForm({ profile, accountType, onSaved }: AccountPro
       )}
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="account-profile-photo" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="account-profile-photo" className="text-body text-text-secondary">
           Photo URL
         </label>
         <input id="account-profile-photo" className={INPUT_CLASSNAME} {...register('photoUrl')} />
       </div>
 
       <fieldset className="flex flex-col gap-xs">
-        <legend className="text-body text-[var(--text-secondary)]">Notifications</legend>
-        <label htmlFor="account-profile-email-notifications" className="flex items-center gap-sm text-body text-[var(--text-primary)]">
+        <legend className="text-body text-text-secondary">Notifications</legend>
+        <label htmlFor="account-profile-email-notifications" className="flex items-center gap-sm text-body text-text-primary">
           <input id="account-profile-email-notifications" type="checkbox" {...register('emailNotifications')} />
           Email notifications
         </label>
-        <label htmlFor="account-profile-sms-notifications" className="flex items-center gap-sm text-body text-[var(--text-primary)]">
+        <label htmlFor="account-profile-sms-notifications" className="flex items-center gap-sm text-body text-text-primary">
           <input id="account-profile-sms-notifications" type="checkbox" {...register('smsNotifications')} />
           SMS notifications
         </label>
       </fieldset>
 
       {formError && (
-        <p role="alert" className="text-body text-[var(--danger)]">
+        <p role="alert" className="text-body text-danger">
           {formError}
         </p>
       )}
@@ -192,7 +192,7 @@ export function AccountProfileForm({ profile, accountType, onSaved }: AccountPro
         <button
           type="submit"
           disabled={isSubmitting}
-          className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+          className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
         >
           {isSubmitting ? 'Saving…' : 'Save'}
         </button>

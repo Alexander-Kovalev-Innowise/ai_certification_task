@@ -28,7 +28,7 @@ function hhmmToMinutes(value: string): number {
 }
 
 const INPUT_CLASSNAME =
-  'rounded-sm border border-[var(--border-soft)] bg-[var(--surface-0)] p-xxs text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]';
+  'rounded-sm border border-border-soft bg-surface-0 p-xxs text-body text-text-primary outline-none focus:border-brand-primary';
 
 // fe §4.4 — AvailabilityFilterBar: `/players`' day/time filter, narrows the
 // roster to players with a saved available slot on that day (optionally
@@ -39,7 +39,7 @@ export function AvailabilityFilterBar({ value, onChange }: AvailabilityFilterBar
   return (
     <div className="flex flex-wrap items-end gap-md">
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="availability-filter-day" className="text-caption text-[var(--text-secondary)]">
+        <label htmlFor="availability-filter-day" className="text-caption text-text-secondary">
           Day
         </label>
         <select
@@ -58,7 +58,7 @@ export function AvailabilityFilterBar({ value, onChange }: AvailabilityFilterBar
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="availability-filter-from" className="text-caption text-[var(--text-secondary)]">
+        <label htmlFor="availability-filter-from" className="text-caption text-text-secondary">
           From
         </label>
         <input
@@ -71,7 +71,7 @@ export function AvailabilityFilterBar({ value, onChange }: AvailabilityFilterBar
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="availability-filter-to" className="text-caption text-[var(--text-secondary)]">
+        <label htmlFor="availability-filter-to" className="text-caption text-text-secondary">
           To
         </label>
         <input
@@ -83,7 +83,7 @@ export function AvailabilityFilterBar({ value, onChange }: AvailabilityFilterBar
         />
       </div>
 
-      <button type="button" onClick={() => onChange({})} className="rounded-sm p-xxs text-caption text-[var(--text-secondary)]">
+      <button type="button" onClick={() => onChange({})} className="rounded-sm p-xxs text-caption text-text-secondary">
         Clear
       </button>
     </div>

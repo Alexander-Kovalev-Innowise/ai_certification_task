@@ -91,14 +91,14 @@ export default function CoachesPage() {
   return (
     <section className="flex flex-col gap-lg p-lg">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-[var(--text-primary)]">Coaches</h1>
+        <h1 className="text-xl font-semibold text-text-primary">Coaches</h1>
         <button
           type="button"
           onClick={() => {
             setResendTarget(undefined);
             setIsInviteModalOpen(true);
           }}
-          className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary"
+          className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary"
         >
           Invite Coach
         </button>
@@ -107,7 +107,7 @@ export default function CoachesPage() {
       {isLoading && <CoachRosterTableSkeleton />}
 
       {isError && (
-        <p role="alert" className="text-body text-[var(--danger)]">
+        <p role="alert" className="text-body text-danger">
           Something went wrong loading your coach roster. Please try again.
         </p>
       )}

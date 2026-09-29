@@ -28,7 +28,7 @@ export function RevokeConfirmPopover({ onConfirm, disabled = false }: RevokeConf
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen(true)}
-        className="rounded-sm border border-[var(--border-soft)] p-xxs text-caption text-[var(--danger)] hover:border-[var(--danger)] disabled:opacity-60"
+        className="rounded-sm border border-border-soft p-xxs text-caption text-danger hover:border-danger disabled:opacity-60"
       >
         Revoke
       </button>
@@ -38,17 +38,17 @@ export function RevokeConfirmPopover({ onConfirm, disabled = false }: RevokeConf
           role="dialog"
           aria-modal="false"
           aria-label="Confirm revoke"
-          className="absolute right-0 z-10 mt-xxs w-56 rounded-md border border-[var(--border-soft)] bg-[var(--surface-1)] p-sm shadow-card-strong"
+          className="absolute right-0 z-10 mt-xxs w-56 rounded-md border border-border-soft bg-surface-1 p-sm shadow-card-strong"
         >
-          <p className="text-caption text-[var(--text-primary)]">Revoke this share link? It will stop working immediately.</p>
+          <p className="text-caption text-text-primary">Revoke this share link? It will stop working immediately.</p>
           <div className="mt-sm flex justify-end gap-sm">
-            <button type="button" onClick={() => setIsOpen(false)} className="rounded-sm p-xxs text-caption text-[var(--text-secondary)]">
+            <button type="button" onClick={() => setIsOpen(false)} className="rounded-sm p-xxs text-caption text-text-secondary">
               Cancel
             </button>
             <button
               type="button"
               onClick={handleConfirm}
-              className="rounded-sm bg-[var(--danger)] p-xxs text-caption font-semibold text-white"
+              className="rounded-sm bg-danger p-xxs text-caption font-semibold text-white"
             >
               Yes, revoke
             </button>

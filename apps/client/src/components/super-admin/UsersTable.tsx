@@ -51,7 +51,7 @@ export function UsersTable({ items, hasMore, isFetchingNextPage = false, onLoadM
 
   if (items.length === 0) {
     return (
-      <p role="status" className="p-lg text-body text-[var(--text-secondary)]">
+      <p role="status" className="p-lg text-body text-text-secondary">
         No users found.
       </p>
     );
@@ -83,7 +83,7 @@ export function UsersTable({ items, hasMore, isFetchingNextPage = false, onLoadM
       data-testid="users-table-viewport"
       onScroll={handleScroll}
       style={{ height, overflowY: 'auto', position: 'relative' }}
-      className="rounded-md border border-[var(--border-soft)]"
+      className="rounded-md border border-border-soft"
     >
       <div style={{ height: totalHeight, position: 'relative' }}>
         {visibleItems.map((user, index) => {
@@ -94,7 +94,7 @@ export function UsersTable({ items, hasMore, isFetchingNextPage = false, onLoadM
               href={`/users/${user.id}`}
               role="row"
               style={{ position: 'absolute', top, left: 0, right: 0, height: ROW_HEIGHT }}
-              className="flex items-center gap-md border-b border-[var(--border-soft)]/40 px-md text-body text-[var(--text-primary)] hover:bg-[var(--surface-2)]"
+              className="flex items-center gap-md border-b border-border-soft/40 px-md text-body text-text-primary hover:bg-surface-2"
             >
               <span className="w-1/4 truncate">
                 {user.firstName} {user.lastName}
@@ -107,7 +107,7 @@ export function UsersTable({ items, hasMore, isFetchingNextPage = false, onLoadM
         })}
       </div>
       {isFetchingNextPage && (
-        <p role="status" aria-live="polite" className="p-sm text-caption text-[var(--text-secondary)]">
+        <p role="status" aria-live="polite" className="p-sm text-caption text-text-secondary">
           Loading more…
         </p>
       )}

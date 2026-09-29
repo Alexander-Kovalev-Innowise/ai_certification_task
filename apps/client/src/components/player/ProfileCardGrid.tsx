@@ -31,7 +31,7 @@ export function ProfileCardGrid({ profiles, canAddChild, onAddChild }: ProfileCa
             key={profile.id}
             href={`/profiles/${profile.id}`}
             aria-label={profile.name}
-            className="flex w-48 flex-col gap-xxs rounded-md border border-[var(--border-soft)] bg-[var(--surface-1)] p-md shadow-card-soft hover:border-[var(--brand-primary)]"
+            className="flex w-48 flex-col gap-xxs rounded-md border border-border-soft bg-surface-1 p-md shadow-card-soft hover:border-brand-primary"
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- per-profile, user-supplied photo URL; not a fixed remote-pattern host */}
             <img
@@ -40,10 +40,10 @@ export function ProfileCardGrid({ profiles, canAddChild, onAddChild }: ProfileCa
               aria-hidden="true"
               className="h-12 w-12 rounded-full object-cover"
             />
-            <span className="text-body-lg font-semibold text-[var(--text-primary)]">{profile.name}</span>
-            {profile.isSelf && <span className="text-caption text-[var(--brand-primary)]">Me</span>}
+            <span className="text-body-lg font-semibold text-text-primary">{profile.name}</span>
+            {profile.isSelf && <span className="text-caption text-brand-primary">Me</span>}
             {profile.trainerCount !== undefined && (
-              <span className="text-caption text-[var(--text-secondary)]">
+              <span className="text-caption text-text-secondary">
                 {profile.trainerCount} {profile.trainerCount === 1 ? 'trainer' : 'trainers'}
               </span>
             )}
@@ -54,7 +54,7 @@ export function ProfileCardGrid({ profiles, canAddChild, onAddChild }: ProfileCa
           <button
             type="button"
             onClick={onAddChild}
-            className="flex w-48 flex-col items-center justify-center gap-xxs rounded-md border border-dashed border-[var(--border-soft)] p-md text-body-lg font-semibold text-[var(--text-secondary)] hover:border-[var(--brand-primary)] hover:text-[var(--brand-primary)]"
+            className="flex w-48 flex-col items-center justify-center gap-xxs rounded-md border border-dashed border-border-soft p-md text-body-lg font-semibold text-text-secondary hover:border-brand-primary hover:text-brand-primary"
           >
             + Add Child
           </button>

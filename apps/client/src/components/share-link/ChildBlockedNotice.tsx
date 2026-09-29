@@ -17,10 +17,10 @@ export function ChildBlockedNotice() {
   return (
     <div
       role="alert"
-      className="flex flex-col gap-sm rounded-md border border-[var(--border-soft)] bg-[var(--surface-1)] p-lg text-center"
+      className="flex flex-col gap-sm rounded-md border border-border-soft bg-surface-1 p-lg text-center"
     >
-      <p className="text-body text-[var(--text-primary)]">Ask your parent to register you with this trainer.</p>
-      <p className="text-caption text-[var(--text-secondary)]">
+      <p className="text-body text-text-primary">Ask your parent to register you with this trainer.</p>
+      <p className="text-caption text-text-secondary">
         Share this invitation link with them so they can complete your registration.
       </p>
     </div>

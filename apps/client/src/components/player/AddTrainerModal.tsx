@@ -44,7 +44,7 @@ interface AddTrainerFormValues {
 const GENERIC_ERROR_MESSAGE = 'Something went wrong adding this trainer. Please try again.';
 
 const INPUT_CLASSNAME =
-  'rounded-sm border border-[var(--border-soft)] bg-[var(--surface-0)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]';
+  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
 
 // fe §4.6 — AddTrainerModal: `/profiles/[id]`'s "Add Trainer" trigger
 // (`TrainerAssociationList`, Task 14.4). FR-032 option A (manual ShareLink
@@ -99,20 +99,20 @@ export function AddTrainerModal({ isOpen, profileId, availableTrainers, onClose,
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="add-trainer-heading" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg">
-      <div className="w-full max-w-md rounded-md border border-[var(--border-soft)] bg-[var(--surface-1)] p-lg shadow-card-strong">
-        <h2 id="add-trainer-heading" className="text-block-title font-semibold text-[var(--text-primary)]">
+      <div className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
+        <h2 id="add-trainer-heading" className="text-block-title font-semibold text-text-primary">
           Add a trainer
         </h2>
 
         <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
           <fieldset className="flex flex-col gap-xxs">
-            <legend className="text-body text-[var(--text-secondary)]">How would you like to add a trainer?</legend>
-            <label className="flex items-center gap-sm text-body text-[var(--text-primary)]">
+            <legend className="text-body text-text-secondary">How would you like to add a trainer?</legend>
+            <label className="flex items-center gap-sm text-body text-text-primary">
               <input type="radio" value="code" {...register('mode')} />
               Enter a share link code
             </label>
             {availableTrainers.length > 0 && (
-              <label className="flex items-center gap-sm text-body text-[var(--text-primary)]">
+              <label className="flex items-center gap-sm text-body text-text-primary">
                 <input type="radio" value="pick" {...register('mode')} />
                 Pick from my trainers
               </label>
@@ -121,14 +121,14 @@ export function AddTrainerModal({ isOpen, profileId, availableTrainers, onClose,
 
           {mode === 'code' ? (
             <div className="flex flex-col gap-xxs">
-              <label htmlFor="add-trainer-code" className="text-body text-[var(--text-secondary)]">
+              <label htmlFor="add-trainer-code" className="text-body text-text-secondary">
                 Share link code
               </label>
               <input id="add-trainer-code" className={INPUT_CLASSNAME} {...register('shareLinkCode', { required: mode === 'code' })} />
             </div>
           ) : (
             <div className="flex flex-col gap-xxs">
-              <label htmlFor="add-trainer-picker" className="text-body text-[var(--text-secondary)]">
+              <label htmlFor="add-trainer-picker" className="text-body text-text-secondary">
                 Trainer
               </label>
               <select id="add-trainer-picker" className={INPUT_CLASSNAME} defaultValue="" {...register('trainerId', { required: mode === 'pick' })}>
@@ -145,19 +145,19 @@ export function AddTrainerModal({ isOpen, profileId, availableTrainers, onClose,
           )}
 
           {formError && (
-            <p role="alert" className="text-body text-[var(--danger)]">
+            <p role="alert" className="text-body text-danger">
               {formError}
             </p>
           )}
 
           <div className="mt-sm flex justify-end gap-sm">
-            <button type="button" onClick={handleClose} className="rounded-sm p-sm text-body text-[var(--text-secondary)]">
+            <button type="button" onClick={handleClose} className="rounded-sm p-sm text-body text-text-secondary">
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+              className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
             >
               {isSubmitting ? 'Adding…' : 'Add'}
             </button>

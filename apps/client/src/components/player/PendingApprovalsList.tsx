@@ -42,7 +42,7 @@ export function PendingApprovalsList({ approvals, onApprove, onDeny }: PendingAp
   return (
     <div className="flex flex-col gap-md">
       {pending.length === 0 ? (
-        <p role="status" className="text-body text-[var(--text-secondary)]">
+        <p role="status" className="text-body text-text-secondary">
           No pending approvals — you&apos;re all caught up.
         </p>
       ) : (
@@ -54,8 +54,8 @@ export function PendingApprovalsList({ approvals, onApprove, onDeny }: PendingAp
       )}
 
       {recentlyResolved.length > 0 && (
-        <details className="rounded-md border border-[var(--border-soft)] p-sm">
-          <summary className="cursor-pointer text-body text-[var(--text-secondary)]">Recently resolved (last 7 days)</summary>
+        <details className="rounded-md border border-border-soft p-sm">
+          <summary className="cursor-pointer text-body text-text-secondary">Recently resolved (last 7 days)</summary>
           <div className="mt-sm flex flex-col gap-sm">
             {recentlyResolved.map((approval) => (
               <ApprovalCard key={approval.id} approval={approval} />

@@ -27,7 +27,7 @@ export interface GenerateShareLinkModalProps {
 const GENERIC_ERROR_MESSAGE = 'Something went wrong generating the link. Please try again.';
 
 const INPUT_CLASSNAME =
-  'rounded-sm border border-[var(--border-soft)] bg-[var(--surface-0)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]';
+  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
 
 // fe §4.4 — GenerateShareLinkModal: type toggle Player-Static/Coach-Unique,
 // conditional `targetEmail` field (mirrors `CreateShareLinkDto`'s
@@ -90,19 +90,19 @@ export function GenerateShareLinkModal({ isOpen, onClose, onGenerated }: Generat
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="generate-share-link-heading" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg">
-      <div className="w-full max-w-md rounded-md border border-[var(--border-soft)] bg-[var(--surface-1)] p-lg shadow-card-strong">
-        <h2 id="generate-share-link-heading" className="text-block-title font-semibold text-[var(--text-primary)]">
+      <div className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
+        <h2 id="generate-share-link-heading" className="text-block-title font-semibold text-text-primary">
           Generate share link
         </h2>
 
         <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
           <fieldset className="flex flex-col gap-xxs">
-            <legend className="text-body text-[var(--text-secondary)]">Link type</legend>
-            <label className="flex items-center gap-sm text-body text-[var(--text-primary)]">
+            <legend className="text-body text-text-secondary">Link type</legend>
+            <label className="flex items-center gap-sm text-body text-text-primary">
               <input type="radio" value="PLAYER_STATIC" {...register('type')} />
               Player (unlimited, no expiry)
             </label>
-            <label className="flex items-center gap-sm text-body text-[var(--text-primary)]">
+            <label className="flex items-center gap-sm text-body text-text-primary">
               <input type="radio" value="COACH_UNIQUE" {...register('type')} />
               Coach (single-use, expires in 7 days)
             </label>
@@ -110,7 +110,7 @@ export function GenerateShareLinkModal({ isOpen, onClose, onGenerated }: Generat
 
           {type === 'COACH_UNIQUE' && (
             <div className="flex flex-col gap-xxs">
-              <label htmlFor="generate-share-link-email" className="text-body text-[var(--text-secondary)]">
+              <label htmlFor="generate-share-link-email" className="text-body text-text-secondary">
                 Coach email
               </label>
               <input
@@ -122,7 +122,7 @@ export function GenerateShareLinkModal({ isOpen, onClose, onGenerated }: Generat
                 {...register('targetEmail')}
               />
               {errors.targetEmail && (
-                <p id="generate-share-link-email-error" role="alert" className="text-caption text-[var(--danger)]">
+                <p id="generate-share-link-email-error" role="alert" className="text-caption text-danger">
                   {errors.targetEmail.message}
                 </p>
               )}
@@ -130,19 +130,19 @@ export function GenerateShareLinkModal({ isOpen, onClose, onGenerated }: Generat
           )}
 
           {formError && (
-            <p role="alert" className="text-body text-[var(--danger)]">
+            <p role="alert" className="text-body text-danger">
               {formError}
             </p>
           )}
 
           <div className="mt-sm flex justify-end gap-sm">
-            <button type="button" onClick={handleClose} className="rounded-sm p-sm text-body text-[var(--text-secondary)]">
+            <button type="button" onClick={handleClose} className="rounded-sm p-sm text-body text-text-secondary">
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+              className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
             >
               {isSubmitting ? 'Generating…' : 'Generate'}
             </button>

@@ -39,7 +39,7 @@ function ShareLinkPreviewContent({ trainerDisplayName, children }: { trainerDisp
         />
       </BootRevealItem>
       <BootRevealItem>
-        <h1 className="font-display text-hero-title text-[var(--text-primary)]">Join {trainerDisplayName}</h1>
+        <h1 className="font-display text-hero-title text-text-primary">Join {trainerDisplayName}</h1>
       </BootRevealItem>
       <BootRevealItem>{children}</BootRevealItem>
     </BootRevealShell>

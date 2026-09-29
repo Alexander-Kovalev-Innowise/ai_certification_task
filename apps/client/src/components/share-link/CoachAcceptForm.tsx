@@ -13,10 +13,10 @@ export interface CoachAcceptFormProps {
 export function CoachAcceptForm({ trainerDisplayName, onSubmit, isSubmitting = false, submitError = null }: CoachAcceptFormProps) {
   return (
     <div className="flex w-full flex-col gap-md text-center">
-      <p className="text-body text-[var(--text-primary)]">Accept this invitation to coach for {trainerDisplayName}?</p>
+      <p className="text-body text-text-primary">Accept this invitation to coach for {trainerDisplayName}?</p>
 
       {submitError && (
-        <p role="alert" className="text-body text-[var(--danger)]">
+        <p role="alert" className="text-body text-danger">
           {submitError}
         </p>
       )}
@@ -25,7 +25,7 @@ export function CoachAcceptForm({ trainerDisplayName, onSubmit, isSubmitting = f
         type="button"
         onClick={() => onSubmit()}
         disabled={isSubmitting}
-        className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+        className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
       >
         {isSubmitting ? 'Joining…' : 'Accept invitation'}
       </button>

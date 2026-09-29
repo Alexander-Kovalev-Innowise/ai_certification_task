@@ -11,7 +11,7 @@ export function RateLimitNotice({ retryAfterSeconds }: RateLimitNoticeProps) {
   return (
     <div
       role="alert"
-      className="rounded-md border border-[var(--warning)]/40 bg-[var(--warning)]/10 p-sm text-body text-[var(--warning)]"
+      className="rounded-md border border-warning/40 bg-warning/10 p-sm text-body text-warning"
     >
       Too many attempts.{' '}
       {retryAfterSeconds ? `Please try again in ${retryAfterSeconds} seconds.` : 'Please try again shortly.'}

@@ -42,14 +42,14 @@ export interface CoachRosterTableProps {
 export function CoachRosterTable({ items, hasMore, isFetchingNextPage = false, onLoadMore, onStatusChange, onResend }: CoachRosterTableProps) {
   if (items.length === 0) {
     return (
-      <p role="status" className="p-lg text-body text-[var(--text-secondary)]">
+      <p role="status" className="p-lg text-body text-text-secondary">
         No coaches yet — invite one to get started.
       </p>
     );
   }
 
   return (
-    <div role="table" aria-label="Coach roster" className="rounded-md border border-[var(--border-soft)]">
+    <div role="table" aria-label="Coach roster" className="rounded-md border border-border-soft">
       {items.map((row) => {
         const displayName = row.name ?? row.email;
         const canToggleStatus = row.userId !== null && row.invitationStatus === 'Accepted';
@@ -61,14 +61,14 @@ export function CoachRosterTable({ items, hasMore, isFetchingNextPage = false, o
             key={row.id}
             role="row"
             aria-label={displayName}
-            className="flex items-center gap-md border-b border-[var(--border-soft)]/40 p-md text-body text-[var(--text-primary)] last:border-b-0"
+            className="flex items-center gap-md border-b border-border-soft/40 p-md text-body text-text-primary last:border-b-0"
           >
             <span className="w-1/4 truncate">{displayName}</span>
             <span className="w-1/4 truncate">{row.email}</span>
             <span className="w-1/6">
               <CoachStatusBadge status={row.invitationStatus} />
             </span>
-            <span className="w-1/6 text-caption text-[var(--text-secondary)]">
+            <span className="w-1/6 text-caption text-text-secondary">
               {row.joinedAt ? new Date(row.joinedAt).toLocaleDateString() : '—'}
             </span>
             <span className="flex flex-1 justify-end gap-sm">
@@ -76,7 +76,7 @@ export function CoachRosterTable({ items, hasMore, isFetchingNextPage = false, o
                 <button
                   type="button"
                   onClick={() => onStatusChange(row.id, nextStatus)}
-                  className="rounded-sm border border-[var(--border-soft)] p-xxs text-caption text-[var(--text-primary)] hover:border-[var(--brand-primary)]"
+                  className="rounded-sm border border-border-soft p-xxs text-caption text-text-primary hover:border-brand-primary"
                 >
                   Set to {nextStatus === 'ACTIVE' ? 'Active' : 'Pending'}
                 </button>
@@ -85,7 +85,7 @@ export function CoachRosterTable({ items, hasMore, isFetchingNextPage = false, o
                 <button
                   type="button"
                   onClick={() => onResend({ email: row.email, name: row.name })}
-                  className="rounded-sm border border-[var(--border-soft)] p-xxs text-caption text-[var(--text-primary)] hover:border-[var(--brand-primary)]"
+                  className="rounded-sm border border-border-soft p-xxs text-caption text-text-primary hover:border-brand-primary"
                 >
                   Resend invite
                 </button>
@@ -101,7 +101,7 @@ export function CoachRosterTable({ items, hasMore, isFetchingNextPage = false, o
             type="button"
             onClick={onLoadMore}
             disabled={isFetchingNextPage}
-            className="rounded-sm p-sm text-body text-[var(--brand-primary)] disabled:opacity-60"
+            className="rounded-sm p-sm text-body text-brand-primary disabled:opacity-60"
           >
             {isFetchingNextPage ? 'Loading…' : 'Load more'}
           </button>

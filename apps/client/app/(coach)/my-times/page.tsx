@@ -77,7 +77,7 @@ export default function MyTimesPage() {
 
   if (isError || !data) {
     return (
-      <p role="alert" className="p-lg text-body text-[var(--danger)]">
+      <p role="alert" className="p-lg text-body text-danger">
         Something went wrong loading your availability. Please try again.
       </p>
     );
@@ -85,15 +85,15 @@ export default function MyTimesPage() {
 
   return (
     <section className="flex flex-col gap-lg p-lg">
-      <h1 className="text-xl font-semibold text-[var(--text-primary)]">My Times</h1>
+      <h1 className="text-xl font-semibold text-text-primary">My Times</h1>
 
       {savedMessage && (
-        <p role="status" className="text-body text-[var(--success)]">
+        <p role="status" className="text-body text-success">
           Availability saved.
         </p>
       )}
       {mutation.isError && (
-        <p role="alert" className="text-body text-[var(--danger)]">
+        <p role="alert" className="text-body text-danger">
           Something went wrong saving your availability. Please try again.
         </p>
       )}

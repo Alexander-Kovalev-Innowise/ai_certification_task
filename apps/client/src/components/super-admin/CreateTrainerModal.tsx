@@ -28,7 +28,7 @@ const DUPLICATE_EMAIL_MESSAGE = 'A user with this email already exists.';
 const GENERIC_ERROR_MESSAGE = 'Something went wrong creating the trainer. Please try again.';
 
 const INPUT_CLASSNAME =
-  'rounded-sm border border-[var(--border-soft)] bg-[var(--surface-0)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]';
+  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
 
 // fe §4.3/§11.1 — CreateTrainerModal: posts `CreateTrainerDto {businessName,
 // firstName, lastName, email, phone}` (api §4.1) — the resolved
@@ -88,14 +88,14 @@ export function CreateTrainerModal({ isOpen, onClose, onCreated }: CreateTrainer
       aria-labelledby="create-trainer-heading"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg"
     >
-      <div className="w-full max-w-md rounded-md border border-[var(--border-soft)] bg-[var(--surface-1)] p-lg shadow-card-strong">
-        <h2 id="create-trainer-heading" className="text-block-title font-semibold text-[var(--text-primary)]">
+      <div className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
+        <h2 id="create-trainer-heading" className="text-block-title font-semibold text-text-primary">
           Create Trainer
         </h2>
 
         <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="create-trainer-business-name" className="text-body text-[var(--text-secondary)]">
+            <label htmlFor="create-trainer-business-name" className="text-body text-text-secondary">
               Business name
             </label>
             <input
@@ -106,7 +106,7 @@ export function CreateTrainerModal({ isOpen, onClose, onCreated }: CreateTrainer
               {...register('businessName')}
             />
             {errors.businessName && (
-              <p id="create-trainer-business-name-error" role="alert" className="text-caption text-[var(--danger)]">
+              <p id="create-trainer-business-name-error" role="alert" className="text-caption text-danger">
                 {errors.businessName.message}
               </p>
             )}
@@ -114,7 +114,7 @@ export function CreateTrainerModal({ isOpen, onClose, onCreated }: CreateTrainer
 
           <div className="flex gap-md">
             <div className="flex flex-1 flex-col gap-xxs">
-              <label htmlFor="create-trainer-first-name" className="text-body text-[var(--text-secondary)]">
+              <label htmlFor="create-trainer-first-name" className="text-body text-text-secondary">
                 First name
               </label>
               <input
@@ -125,14 +125,14 @@ export function CreateTrainerModal({ isOpen, onClose, onCreated }: CreateTrainer
                 {...register('firstName')}
               />
               {errors.firstName && (
-                <p id="create-trainer-first-name-error" role="alert" className="text-caption text-[var(--danger)]">
+                <p id="create-trainer-first-name-error" role="alert" className="text-caption text-danger">
                   {errors.firstName.message}
                 </p>
               )}
             </div>
 
             <div className="flex flex-1 flex-col gap-xxs">
-              <label htmlFor="create-trainer-last-name" className="text-body text-[var(--text-secondary)]">
+              <label htmlFor="create-trainer-last-name" className="text-body text-text-secondary">
                 Last name
               </label>
               <input
@@ -143,7 +143,7 @@ export function CreateTrainerModal({ isOpen, onClose, onCreated }: CreateTrainer
                 {...register('lastName')}
               />
               {errors.lastName && (
-                <p id="create-trainer-last-name-error" role="alert" className="text-caption text-[var(--danger)]">
+                <p id="create-trainer-last-name-error" role="alert" className="text-caption text-danger">
                   {errors.lastName.message}
                 </p>
               )}
@@ -151,7 +151,7 @@ export function CreateTrainerModal({ isOpen, onClose, onCreated }: CreateTrainer
           </div>
 
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="create-trainer-email" className="text-body text-[var(--text-secondary)]">
+            <label htmlFor="create-trainer-email" className="text-body text-text-secondary">
               Email
             </label>
             <input
@@ -163,14 +163,14 @@ export function CreateTrainerModal({ isOpen, onClose, onCreated }: CreateTrainer
               {...register('email')}
             />
             {errors.email && (
-              <p id="create-trainer-email-error" role="alert" className="text-caption text-[var(--danger)]">
+              <p id="create-trainer-email-error" role="alert" className="text-caption text-danger">
                 {errors.email.message}
               </p>
             )}
           </div>
 
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="create-trainer-phone" className="text-body text-[var(--text-secondary)]">
+            <label htmlFor="create-trainer-phone" className="text-body text-text-secondary">
               Phone
             </label>
             <input
@@ -182,26 +182,26 @@ export function CreateTrainerModal({ isOpen, onClose, onCreated }: CreateTrainer
               {...register('phone')}
             />
             {errors.phone && (
-              <p id="create-trainer-phone-error" role="alert" className="text-caption text-[var(--danger)]">
+              <p id="create-trainer-phone-error" role="alert" className="text-caption text-danger">
                 {errors.phone.message}
               </p>
             )}
           </div>
 
           {formError && (
-            <p role="alert" className="text-body text-[var(--danger)]">
+            <p role="alert" className="text-body text-danger">
               {formError}
             </p>
           )}
 
           <div className="mt-sm flex justify-end gap-sm">
-            <button type="button" onClick={handleClose} className="rounded-sm p-sm text-body text-[var(--text-secondary)]">
+            <button type="button" onClick={handleClose} className="rounded-sm p-sm text-body text-text-secondary">
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+              className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
             >
               {isSubmitting ? 'Creating…' : 'Create trainer'}
             </button>

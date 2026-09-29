@@ -38,20 +38,20 @@ function formatDuration(durationSeconds: number): string {
 export function ImpersonationHistoryTable({ items, hasMore, isFetchingNextPage = false, onLoadMore }: ImpersonationHistoryTableProps) {
   if (items.length === 0) {
     return (
-      <p role="status" className="p-lg text-body text-[var(--text-secondary)]">
+      <p role="status" className="p-lg text-body text-text-secondary">
         No impersonation sessions found.
       </p>
     );
   }
 
   return (
-    <div role="table" aria-label="Impersonation history" className="rounded-md border border-[var(--border-soft)]">
+    <div role="table" aria-label="Impersonation history" className="rounded-md border border-border-soft">
       {items.map((entry) => (
         <div
           key={entry.id}
           role="row"
           aria-label={`${entry.admin.firstName} ${entry.admin.lastName}`}
-          className="flex flex-wrap items-center gap-md border-b border-[var(--border-soft)]/40 p-md text-body text-[var(--text-primary)] last:border-b-0"
+          className="flex flex-wrap items-center gap-md border-b border-border-soft/40 p-md text-body text-text-primary last:border-b-0"
         >
           <span className="w-1/4 truncate">
             {entry.admin.firstName} {entry.admin.lastName}
@@ -59,8 +59,8 @@ export function ImpersonationHistoryTable({ items, hasMore, isFetchingNextPage =
           <span className="w-1/4 truncate">
             {entry.target.firstName} {entry.target.lastName} ({entry.target.role})
           </span>
-          <span className="w-1/5 text-caption text-[var(--text-secondary)]">{new Date(entry.startedAt).toLocaleString()}</span>
-          <span className="w-1/5 text-caption text-[var(--text-secondary)]">
+          <span className="w-1/5 text-caption text-text-secondary">{new Date(entry.startedAt).toLocaleString()}</span>
+          <span className="w-1/5 text-caption text-text-secondary">
             {entry.endedAt ? new Date(entry.endedAt).toLocaleString() : 'In progress'}
           </span>
           <span className="flex-1 text-right font-numeric text-caption">
@@ -75,7 +75,7 @@ export function ImpersonationHistoryTable({ items, hasMore, isFetchingNextPage =
             type="button"
             onClick={onLoadMore}
             disabled={isFetchingNextPage}
-            className="rounded-sm p-sm text-body text-[var(--brand-primary)] disabled:opacity-60"
+            className="rounded-sm p-sm text-body text-brand-primary disabled:opacity-60"
           >
             {isFetchingNextPage ? 'Loading…' : 'Load more'}
           </button>

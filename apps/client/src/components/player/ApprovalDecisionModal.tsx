@@ -19,8 +19,8 @@ export interface ApprovalDecisionModalProps {
 const GENERIC_ERROR_MESSAGE = "Something went wrong recording your decision. Please try again.";
 
 const COPY = {
-  approve: { heading: 'Approve request', confirmLabel: 'Confirm approval', confirmClass: 'bg-[var(--success)] text-[#0D0D0D]' },
-  deny: { heading: 'Deny request', confirmLabel: 'Confirm denial', confirmClass: 'bg-[var(--danger)] text-white' },
+  approve: { heading: 'Approve request', confirmLabel: 'Confirm approval', confirmClass: 'bg-success text-[#0D0D0D]' },
+  deny: { heading: 'Deny request', confirmLabel: 'Confirm denial', confirmClass: 'bg-danger text-white' },
 } as const;
 
 // fe §9.1 — ApprovalDecisionModal: `/approvals`' approve/deny confirmation,
@@ -82,34 +82,34 @@ export function ApprovalDecisionModal({ isOpen, approval, decision, onClose, onR
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="approval-decision-heading" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg">
-      <div className="w-full max-w-md rounded-md border border-[var(--border-soft)] bg-[var(--surface-1)] p-lg shadow-card-strong">
-        <h2 id="approval-decision-heading" className="text-block-title font-semibold text-[var(--text-primary)]">
+      <div className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
+        <h2 id="approval-decision-heading" className="text-block-title font-semibold text-text-primary">
           {copy.heading}
         </h2>
-        <p className="mt-sm text-body text-[var(--text-secondary)]">
+        <p className="mt-sm text-body text-text-secondary">
           {approval.playerName} — {approval.amount} {approval.paymentType}
         </p>
 
         <div className="mt-md flex flex-col gap-xxs">
-          <label htmlFor="approval-decision-notes" className="text-body text-[var(--text-secondary)]">
+          <label htmlFor="approval-decision-notes" className="text-body text-text-secondary">
             Notes (optional)
           </label>
           <textarea
             id="approval-decision-notes"
             value={notes}
             onChange={(event) => setNotes(event.target.value)}
-            className="rounded-sm border border-[var(--border-soft)] bg-[var(--surface-0)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]"
+            className="rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-brand-primary"
           />
         </div>
 
         {error && (
-          <p role="alert" className="mt-sm text-body text-[var(--danger)]">
+          <p role="alert" className="mt-sm text-body text-danger">
             {error}
           </p>
         )}
 
         <div className="mt-md flex justify-end gap-sm">
-          <button type="button" onClick={handleClose} disabled={isSubmitting} className="rounded-sm p-sm text-body text-[var(--text-secondary)]">
+          <button type="button" onClick={handleClose} disabled={isSubmitting} className="rounded-sm p-sm text-body text-text-secondary">
             Cancel
           </button>
           <button

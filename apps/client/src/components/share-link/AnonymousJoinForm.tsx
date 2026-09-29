@@ -40,14 +40,14 @@ export interface AnonymousJoinFormProps {
 }
 
 const inputClassName =
-  'rounded-sm border border-[var(--border-soft)] bg-[var(--surface-1)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]';
+  'rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
 
 function SubmitError({ message }: { message: string | null }) {
   if (!message) {
     return null;
   }
   return (
-    <p role="alert" className="text-body text-[var(--danger)]">
+    <p role="alert" className="text-body text-danger">
       {message}
     </p>
   );
@@ -65,7 +65,7 @@ function AnonymousCoachAcceptFields({ onSubmit, isSubmitting, submitError }: Omi
   return (
     <form onSubmit={submit} noValidate className="flex w-full flex-col gap-md">
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="anon-coach-password" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="anon-coach-password" className="text-body text-text-secondary">
           Choose a password
         </label>
         <input
@@ -78,7 +78,7 @@ function AnonymousCoachAcceptFields({ onSubmit, isSubmitting, submitError }: Omi
           {...register('password')}
         />
         {errors.password && (
-          <p id="anon-coach-password-error" role="alert" className="text-caption text-[var(--danger)]">
+          <p id="anon-coach-password-error" role="alert" className="text-caption text-danger">
             {errors.password.message}
           </p>
         )}
@@ -89,7 +89,7 @@ function AnonymousCoachAcceptFields({ onSubmit, isSubmitting, submitError }: Omi
       <button
         type="submit"
         disabled={isSubmitting}
-        className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+        className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
       >
         {isSubmitting ? 'Joining…' : 'Accept invitation'}
       </button>
@@ -122,7 +122,7 @@ function AnonymousPlayerRegistrationFields({ onSubmit, isSubmitting, submitError
   return (
     <form onSubmit={submit} noValidate className="flex w-full flex-col gap-md">
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="anon-player-is-self" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="anon-player-is-self" className="text-body text-text-secondary">
           Who is this registration for?
         </label>
         <select id="anon-player-is-self" className={inputClassName} defaultValue="true" {...register('isSelf')}>
@@ -132,19 +132,19 @@ function AnonymousPlayerRegistrationFields({ onSubmit, isSubmitting, submitError
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="anon-player-email" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="anon-player-email" className="text-body text-text-secondary">
           Email
         </label>
         <input id="anon-player-email" type="email" autoComplete="email" className={inputClassName} {...register('email')} />
         {errors.email && (
-          <p role="alert" className="text-caption text-[var(--danger)]">
+          <p role="alert" className="text-caption text-danger">
             {errors.email.message}
           </p>
         )}
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="anon-player-password" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="anon-player-password" className="text-body text-text-secondary">
           Password
         </label>
         <input
@@ -155,50 +155,50 @@ function AnonymousPlayerRegistrationFields({ onSubmit, isSubmitting, submitError
           {...register('password')}
         />
         {errors.password && (
-          <p role="alert" className="text-caption text-[var(--danger)]">
+          <p role="alert" className="text-caption text-danger">
             {errors.password.message}
           </p>
         )}
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="anon-player-phone" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="anon-player-phone" className="text-body text-text-secondary">
           Phone number
         </label>
         <input id="anon-player-phone" type="tel" autoComplete="tel" className={inputClassName} {...register('phone')} />
         {errors.phone && (
-          <p role="alert" className="text-caption text-[var(--danger)]">
+          <p role="alert" className="text-caption text-danger">
             {errors.phone.message}
           </p>
         )}
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="anon-player-name" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="anon-player-name" className="text-body text-text-secondary">
           Player&apos;s name
         </label>
         <input id="anon-player-name" type="text" className={inputClassName} {...register('playerName')} />
         {errors.playerName && (
-          <p role="alert" className="text-caption text-[var(--danger)]">
+          <p role="alert" className="text-caption text-danger">
             {errors.playerName.message}
           </p>
         )}
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="anon-player-dob" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="anon-player-dob" className="text-body text-text-secondary">
           Date of birth
         </label>
         <input id="anon-player-dob" type="date" className={inputClassName} {...register('dateOfBirth')} />
         {errors.dateOfBirth && (
-          <p role="alert" className="text-caption text-[var(--danger)]">
+          <p role="alert" className="text-caption text-danger">
             {errors.dateOfBirth.message}
           </p>
         )}
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="anon-player-gender" className="text-body text-[var(--text-secondary)]">
+        <label htmlFor="anon-player-gender" className="text-body text-text-secondary">
           Gender
         </label>
         <select id="anon-player-gender" className={inputClassName} defaultValue="" {...register('gender')}>
@@ -212,7 +212,7 @@ function AnonymousPlayerRegistrationFields({ onSubmit, isSubmitting, submitError
           ))}
         </select>
         {errors.gender && (
-          <p role="alert" className="text-caption text-[var(--danger)]">
+          <p role="alert" className="text-caption text-danger">
             {errors.gender.message}
           </p>
         )}
@@ -223,7 +223,7 @@ function AnonymousPlayerRegistrationFields({ onSubmit, isSubmitting, submitError
       <button
         type="submit"
         disabled={isSubmitting}
-        className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+        className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
       >
         {isSubmitting ? 'Joining…' : 'Create account'}
       </button>

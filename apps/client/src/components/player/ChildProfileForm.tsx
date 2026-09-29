@@ -39,7 +39,7 @@ export interface ChildProfileFormProps {
 const GENERIC_ERROR_MESSAGE = 'Something went wrong adding this profile. Please try again.';
 
 const INPUT_CLASSNAME =
-  'rounded-sm border border-[var(--border-soft)] bg-[var(--surface-0)] p-sm text-body text-[var(--text-primary)] outline-none focus:border-[var(--brand-primary)]';
+  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
 
 // fe §4.6 — ChildProfileForm: `/profiles`' "+Add Child" modal, posts
 // `POST /player-profiles` (api §4.3, FR-030/FR-031). Create only — a
@@ -106,14 +106,14 @@ export function ChildProfileForm({ isOpen, onClose, onCreated, availableTrainers
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="child-profile-heading" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg">
-      <div className="w-full max-w-md rounded-md border border-[var(--border-soft)] bg-[var(--surface-1)] p-lg shadow-card-strong">
-        <h2 id="child-profile-heading" className="text-block-title font-semibold text-[var(--text-primary)]">
+      <div className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
+        <h2 id="child-profile-heading" className="text-block-title font-semibold text-text-primary">
           Add a child profile
         </h2>
 
         <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="child-profile-name" className="text-body text-[var(--text-secondary)]">
+            <label htmlFor="child-profile-name" className="text-body text-text-secondary">
               Name
             </label>
             <input
@@ -124,14 +124,14 @@ export function ChildProfileForm({ isOpen, onClose, onCreated, availableTrainers
               {...register('name')}
             />
             {errors.name && (
-              <p id="child-profile-name-error" role="alert" className="text-caption text-[var(--danger)]">
+              <p id="child-profile-name-error" role="alert" className="text-caption text-danger">
                 {errors.name.message}
               </p>
             )}
           </div>
 
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="child-profile-dob" className="text-body text-[var(--text-secondary)]">
+            <label htmlFor="child-profile-dob" className="text-body text-text-secondary">
               Date of birth
             </label>
             <input
@@ -143,14 +143,14 @@ export function ChildProfileForm({ isOpen, onClose, onCreated, availableTrainers
               {...register('dateOfBirth')}
             />
             {errors.dateOfBirth && (
-              <p id="child-profile-dob-error" role="alert" className="text-caption text-[var(--danger)]">
+              <p id="child-profile-dob-error" role="alert" className="text-caption text-danger">
                 {errors.dateOfBirth.message}
               </p>
             )}
           </div>
 
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="child-profile-gender" className="text-body text-[var(--text-secondary)]">
+            <label htmlFor="child-profile-gender" className="text-body text-text-secondary">
               Gender
             </label>
             <select
@@ -171,21 +171,21 @@ export function ChildProfileForm({ isOpen, onClose, onCreated, availableTrainers
               ))}
             </select>
             {errors.gender && (
-              <p id="child-profile-gender-error" role="alert" className="text-caption text-[var(--danger)]">
+              <p id="child-profile-gender-error" role="alert" className="text-caption text-danger">
                 {errors.gender.message}
               </p>
             )}
           </div>
 
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="child-profile-school" className="text-body text-[var(--text-secondary)]">
+            <label htmlFor="child-profile-school" className="text-body text-text-secondary">
               School (optional)
             </label>
             <input id="child-profile-school" className={INPUT_CLASSNAME} {...register('school')} />
           </div>
 
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="child-profile-photo" className="text-body text-[var(--text-secondary)]">
+            <label htmlFor="child-profile-photo" className="text-body text-text-secondary">
               Photo URL (optional)
             </label>
             <input id="child-profile-photo" className={INPUT_CLASSNAME} {...register('photoUrl')} />
@@ -193,9 +193,9 @@ export function ChildProfileForm({ isOpen, onClose, onCreated, availableTrainers
 
           {availableTrainers.length > 0 && (
             <fieldset className="flex flex-col gap-xxs">
-              <legend className="text-body text-[var(--text-secondary)]">Connect with trainers (optional)</legend>
+              <legend className="text-body text-text-secondary">Connect with trainers (optional)</legend>
               {availableTrainers.map((trainer) => (
-                <label key={trainer.id} className="flex items-center gap-sm text-body text-[var(--text-primary)]">
+                <label key={trainer.id} className="flex items-center gap-sm text-body text-text-primary">
                   <input type="checkbox" value={trainer.id} {...register('trainerIds')} />
                   {trainer.businessName}
                 </label>
@@ -204,19 +204,19 @@ export function ChildProfileForm({ isOpen, onClose, onCreated, availableTrainers
           )}
 
           {formError && (
-            <p role="alert" className="text-body text-[var(--danger)]">
+            <p role="alert" className="text-body text-danger">
               {formError}
             </p>
           )}
 
           <div className="mt-sm flex justify-end gap-sm">
-            <button type="button" onClick={handleClose} className="rounded-sm p-sm text-body text-[var(--text-secondary)]">
+            <button type="button" onClick={handleClose} className="rounded-sm p-sm text-body text-text-secondary">
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="rounded-sm bg-[var(--brand-primary)] p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+              className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
             >
               {isSubmitting ? 'Adding…' : 'Add child'}
             </button>
