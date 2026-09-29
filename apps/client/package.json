@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev -p 3001",
+    "dev": "next dev -p 3001 --webpack",
     "build": "cross-env NODE_ENV=production next build",
     "start": "cross-env NODE_ENV=production next start -p 3001",
     "lint": "eslint --no-error-on-unmatched-pattern \"app/**/*.{ts,tsx}\" \"src/**/*.{ts,tsx}\"",

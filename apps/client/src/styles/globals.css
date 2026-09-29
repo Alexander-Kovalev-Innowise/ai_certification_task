@@ -1,5 +1,122 @@
 @import 'tailwindcss';
-@config '../../tailwind.config.ts';
+
+/* No @config here — deliberately. tailwind.config.ts (legacy JS config) was
+   removed; every theme value lives in this native @theme block instead.
+   Two separate, real bugs were found and fixed getting here:
+
+   1. max-w-{name} bug (fixed for real, root cause confirmed): Tailwind v4
+      prefers a matching custom `--spacing-{name}` variable over its own
+      built-in `--container-{name}` scale when both exist with the same key
+      — this is genuine native v4 behavior, not a JS-config-bridge artifact
+      (confirmed by inspecting the compiled CSS directly: `.max-w-md` compiled
+      to `max-width: var(--spacing-md)`, not `var(--container-md)`, even
+      after removing @config entirely). Our --spacing-* scale's xxs..xxl keys
+      collide by name with max-w-*'s reserved xs/sm/md/lg/xl scale. Every
+      `max-w-{name}` call site in the app was changed to an arbitrary literal
+      value instead (`max-w-[28rem]`, not `max-w-md`) to route around the
+      collision entirely — see git history for the affected files.
+
+   2. Opacity-modifier corruption bug (worked around, root cause NOT fully
+      understood — flagging honestly): a CSS custom-property name reused
+      across many files, combined with an opacity modifier (`bg-warning/15`,
+      or the old `bg-[var(--warning)]/15` arbitrary-value form — both hit
+      it), gets corrupted in the generated color-mix() fallback
+      (`var(--warning)` becomes `var(--war&)`, `var(--border-soft)` becomes
+      `var(--)`, etc.), sometimes producing entirely fabricated variable
+      names (`var(--A0)`) with no source-code counterpart at all. Confirmed
+      via direct binary inspection of the compiled CSS that this is NOT
+      caused by: the source files (byte-clean, no hidden characters), the
+      @config JS-bridge (persists after removing it), or Turbopack
+      specifically (also reproduces under `next dev --webpack`). It IS
+      confirmed absent from `next build`'s production output (verified
+      twice, byte-for-byte clean) and from webpack dev mode specifically —
+      only Turbopack dev mode treats the resulting malformed selector as a
+      hard parse error (500); webpack's CSS pipeline tolerates the same
+      malformed rule as dead, unmatched, harmless byte-noise and renders
+      correctly. **Workaround in place**: apps/client's `dev` script uses
+      `next dev --webpack` instead of the Turbopack default. This looks like
+      a genuine upstream Tailwind v4.3.3 / Next.js 16.3.5 Turbopack bug
+      worth a minimal-repro report — not something fixable from application
+      code, since the corrupted rules match no real class name anywhere in
+      this app's source. */
+@theme {
+  /* Fonts — self-hosted next/font/local (src/lib/fonts.ts) */
+  --font-sans: var(--font-general-sans), 'Segoe UI', sans-serif;
+  --font-display: var(--font-clash-display), 'Archivo Black', sans-serif;
+
+  /* Spacing scale — DESIGN_TOKENS.md, verbatim */
+  --spacing-xxs: 4px;
+  --spacing-xs: 8px;
+  --spacing-sm: 12px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-xxl: 40px;
+
+  /* Border radius scale — DESIGN_TOKENS.md, verbatim */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+  --radius-pill: 999px;
+
+  /* Shadows — fe §1.3 */
+  --shadow-card-soft: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-card-strong: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-button-primary: 0 10px 30px rgba(var(--brand-primary-rgb), 0.55);
+  --shadow-button-primary-hover: 0 12px 34px rgba(var(--brand-primary-rgb), 0.7);
+
+  /* Typography scale — DESIGN_TOKENS.md. Tailwind v4's {name}--line-height
+     pairing convention (weight is applied separately via font-weight
+     utilities per component, as before). */
+  --text-hero-title: 30px;
+  --text-hero-title--line-height: 38px;
+  --text-section-title: 22px;
+  --text-section-title--line-height: 28px;
+  --text-block-title: 18px;
+  --text-block-title--line-height: 24px;
+  --text-card-title: 16px;
+  --text-card-title--line-height: 22px;
+  --text-body-lg: 16px;
+  --text-body-lg--line-height: 26px;
+  --text-body: 14px;
+  --text-body--line-height: 22px;
+  --text-caption: 12px;
+  --text-caption--line-height: 18px;
+  --text-eyebrow: 11px;
+  --text-eyebrow--line-height: 16px;
+
+  /* Named color utilities (bg-warning, text-ink, border-border-soft/40, ...)
+     mapped straight through to the live :root custom properties below, so
+     BrandingProvider's runtime overrides (--brand-primary*) still work.
+     This is Tailwind v4's real mechanism for custom themed colors — it
+     exists specifically to replace `[var(--x)]` arbitrary-value classes,
+     which turned out to have a serious bug in this Tailwind version: reusing
+     the same arbitrary var() class name across many files corrupts the
+     generated CSS selector (var(--warning) became var(--war&), etc.),
+     producing ~100 silent build failures across the app that a warm
+     Turbopack cache had been masking since Phase 10. Named utilities go
+     through Tailwind's normal, non-buggy code path and support opacity
+     modifiers (bg-warning/15) natively. */
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border-soft: var(--border-soft);
+  --color-border-strong: var(--border-strong);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-primary-soft: var(--brand-primary-soft);
+  --color-brand-primary-deep: var(--brand-primary-deep);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+}
 
 :root {
   --surface-0: #0d0d0d;
@@ -20,6 +137,16 @@
      Static platform-default value here; BrandingProvider (Task 10.10) overrides
      all three at runtime per tenant. */
   --brand-primary-rgb: 110, 231, 183;
+
+  /* Aliases — 76 components across the app reference --text-primary/
+     --text-secondary (a naming convention from an earlier design pass) but
+     these were never actually defined, so `color` fell back to whatever was
+     inherited (masking the bug for text) while any non-inherited property
+     using them (backgrounds, borders, fills) silently computed to its
+     CSS-initial value instead. Aliasing to the tokens that ARE defined
+     (--ink/--ink-muted) fixes every call site without a 76-file rename. */
+  --text-primary: var(--ink);
+  --text-secondary: var(--ink-muted);
 }
 
 /* fe §1.1 — self-hosted font families (next/font/local, src/lib/fonts.ts).
