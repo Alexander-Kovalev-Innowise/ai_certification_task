@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import type { DashboardShellProps } from './DashboardShellProps';
 
 // fe §8 point 4 — same platform-default logo fallback as TrainerDashboardShell.
@@ -49,9 +51,9 @@ export function CoachDashboardShell({ ctx }: DashboardShellProps) {
       {!availabilitySet && (
         <p role="status" className="rounded-md border border-warning bg-surface-1 p-md text-body text-text-primary">
           You haven&apos;t set your availability yet.{' '}
-          <a href="/my-times" className="font-semibold text-brand-primary hover:underline">
+          <Link href="/my-times" className="font-semibold text-brand-primary hover:underline">
             Set your availability
-          </a>{' '}
+          </Link>{' '}
           so your trainer knows when you&apos;re free to coach.
         </p>
       )}

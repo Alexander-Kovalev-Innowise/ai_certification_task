@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { ContextSwitcher, type ContextEntry } from '../../src/components/player/ContextSwitcher';
@@ -48,13 +49,13 @@ function PlayerNav({ showApprovals }: { showApprovals: boolean }) {
       className="flex items-center gap-lg border-b border-border-soft bg-surface-1 px-lg py-sm"
     >
       {links.map((link) => (
-        <a key={link.href} href={link.href} className="text-body text-text-primary hover:text-brand-primary">
+        <Link key={link.href} href={link.href} className="text-body text-text-primary hover:text-brand-primary">
           {link.label}
-        </a>
+        </Link>
       ))}
-      <a href={ACCOUNT_LINK.href} className="ml-auto text-body text-text-primary hover:text-brand-primary">
+      <Link href={ACCOUNT_LINK.href} className="ml-auto text-body text-text-primary hover:text-brand-primary">
         {ACCOUNT_LINK.label}
-      </a>
+      </Link>
     </nav>
   );
 }

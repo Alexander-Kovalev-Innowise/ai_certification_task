@@ -1,6 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -21,9 +22,9 @@ function InvalidOrExpiredLink() {
       <p role="alert" className="text-body text-text-primary">
         This link is invalid or has expired.
       </p>
-      <a href="/forgot-password" className="text-body text-brand-primary underline">
+      <Link href="/forgot-password" className="text-body text-brand-primary underline">
         Request a new link
-      </a>
+      </Link>
     </div>
   );
 }
@@ -79,9 +80,9 @@ export function ResetPasswordForm() {
         <p role="status" className="text-body text-text-primary">
           Your password has been reset. You can now sign in.
         </p>
-        <a href="/login" className="text-body text-brand-primary underline">
+        <Link href="/login" className="text-body text-brand-primary underline">
           Go to sign in
-        </a>
+        </Link>
       </div>
     );
   }

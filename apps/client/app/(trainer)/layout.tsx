@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { RoleGuard } from '../../src/components/RoleGuard';
@@ -33,13 +34,13 @@ function TrainerNav() {
       className="flex items-center gap-lg border-b border-border-soft bg-surface-1 px-lg py-sm"
     >
       {NAV_LINKS.map((link) => (
-        <a key={link.href} href={link.href} className="text-body text-text-primary hover:text-brand-primary">
+        <Link key={link.href} href={link.href} className="text-body text-text-primary hover:text-brand-primary">
           {link.label}
-        </a>
+        </Link>
       ))}
-      <a href={ACCOUNT_LINK.href} className="ml-auto text-body text-text-primary hover:text-brand-primary">
+      <Link href={ACCOUNT_LINK.href} className="ml-auto text-body text-text-primary hover:text-brand-primary">
         {ACCOUNT_LINK.label}
-      </a>
+      </Link>
     </nav>
   );
 }

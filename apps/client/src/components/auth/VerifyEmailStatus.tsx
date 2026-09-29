@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -59,9 +60,9 @@ export function VerifyEmailStatus() {
         <p role="status" className="text-body text-text-primary">
           Your email has been verified.
         </p>
-        <a href="/dashboard" className="text-body text-brand-primary underline">
+        <Link href="/dashboard" className="text-body text-brand-primary underline">
           Continue
-        </a>
+        </Link>
       </div>
     );
   }
