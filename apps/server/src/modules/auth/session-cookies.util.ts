@@ -10,7 +10,13 @@ export const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 export function setSessionCookies(res: Response, rawRefreshToken: string, csrfToken: string): void {
   const cookieOptions = {
     httpOnly: true,
-    secure: true,
+    // `Secure` cookies are silently refused by the browser over plain HTTP
+    // (this app runs on http://localhost in local dev, not HTTPS) — hardcoding
+    // `true` meant the refresh cookie never actually persisted, so a session
+    // looked fine in-memory right after login but vanished on any full page
+    // reload (nothing to restore it from). Real HTTPS deployments still get
+    // `secure: true` via NODE_ENV=production.
+    secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax' as const,
     path: '/auth',
     maxAge: REFRESH_TOKEN_TTL_MS,
