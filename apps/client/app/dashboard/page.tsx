@@ -49,16 +49,6 @@ function DashboardContent() {
   }
 }
 
-// specs/frontend-design-spec.md §3 (2026-09-24 note) — single unified
-// `/dashboard` route replacing the four route-grouped `dashboard/page.tsx`
-// leaves that used to collide on this exact URL (Next.js route groups never
-// add a URL segment, so `(super-admin)/dashboard`, `(trainer)/dashboard`,
-// `(coach)/dashboard`, and `(player)/dashboard` all resolved to `/dashboard`
-// and could not coexist — see RoleGuard.tsx's own note on this). Reads
-// `GET /me/bootstrap` (useBootstrap) and dispatches to the role-specific
-// shell based on the response's `role` discriminant. Shell *content* is a
-// later phase's job per fe §4.3–§4.6 — these are intentionally minimal
-// scaffolds that only prove the routing/dispatch mechanism.
 export default function DashboardPage() {
   return (
     <RoleGuard allow={ALL_ROLES}>

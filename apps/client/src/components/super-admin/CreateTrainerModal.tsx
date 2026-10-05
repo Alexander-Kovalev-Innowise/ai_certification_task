@@ -2,11 +2,12 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 
 import { apiRequest } from '../../lib/api/apiClient';
 import { parseApiErrorBody } from '../../lib/api/apiError';
 import { createTrainerSchema, type CreateTrainerFormValues } from '../../lib/schemas/createTrainerSchema';
+import { PhoneInput } from '../shared/PhoneInput';
 
 // api §4.1 POST /trainers — `201 TrainerResponseDto`.
 export interface CreateTrainerResult {
@@ -28,7 +29,7 @@ const DUPLICATE_EMAIL_MESSAGE = 'A user with this email already exists.';
 const GENERIC_ERROR_MESSAGE = 'Something went wrong creating the trainer. Please try again.';
 
 const INPUT_CLASSNAME =
-  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
+  'w-full min-w-0';
 
 // fe §4.3/§11.1 — CreateTrainerModal: posts `CreateTrainerDto {businessName,
 // firstName, lastName, email, phone}` (api §4.1) — the resolved
@@ -42,8 +43,13 @@ export function CreateTrainerModal({ isOpen, onClose, onCreated }: CreateTrainer
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors, isSubmitting },
-  } = useForm<CreateTrainerFormValues>({ resolver: zodResolver(createTrainerSchema) });
+  } = useForm<CreateTrainerFormValues>({
+    resolver: zodResolver(createTrainerSchema),
+    mode: 'onTouched',
+    defaultValues: { businessName: '', firstName: '', lastName: '', email: '', phone: '' },
+  });
 
   if (!isOpen) {
     return null;
@@ -88,18 +94,20 @@ export function CreateTrainerModal({ isOpen, onClose, onCreated }: CreateTrainer
       aria-labelledby="create-trainer-heading"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg"
     >
-      <div className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
+      <div className="max-h-full w-full max-w-[28rem] overflow-y-auto rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
         <h2 id="create-trainer-heading" className="text-block-title font-semibold text-text-primary">
           Create Trainer
         </h2>
 
         <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="create-trainer-business-name" className="text-body text-text-secondary">
+            <label htmlFor="create-trainer-business-name" className="field-label">
               Business name
             </label>
             <input
               id="create-trainer-business-name"
+              placeholder="Elite Basketball Academy"
+              autoComplete="organization"
               className={INPUT_CLASSNAME}
               aria-invalid={!!errors.businessName}
               aria-describedby={errors.businessName ? 'create-trainer-business-name-error' : undefined}
@@ -112,13 +120,15 @@ export function CreateTrainerModal({ isOpen, onClose, onCreated }: CreateTrainer
             )}
           </div>
 
-          <div className="flex gap-md">
-            <div className="flex flex-1 flex-col gap-xxs">
-              <label htmlFor="create-trainer-first-name" className="text-body text-text-secondary">
+          <div className="flex flex-wrap gap-md">
+            <div className="flex min-w-0 flex-[1_1_11rem] flex-col gap-xxs">
+              <label htmlFor="create-trainer-first-name" className="field-label">
                 First name
               </label>
               <input
                 id="create-trainer-first-name"
+                placeholder="John"
+                autoComplete="given-name"
                 className={INPUT_CLASSNAME}
                 aria-invalid={!!errors.firstName}
                 aria-describedby={errors.firstName ? 'create-trainer-first-name-error' : undefined}
@@ -131,12 +141,14 @@ export function CreateTrainerModal({ isOpen, onClose, onCreated }: CreateTrainer
               )}
             </div>
 
-            <div className="flex flex-1 flex-col gap-xxs">
-              <label htmlFor="create-trainer-last-name" className="text-body text-text-secondary">
+            <div className="flex min-w-0 flex-[1_1_11rem] flex-col gap-xxs">
+              <label htmlFor="create-trainer-last-name" className="field-label">
                 Last name
               </label>
               <input
                 id="create-trainer-last-name"
+                placeholder="Smith"
+                autoComplete="family-name"
                 className={INPUT_CLASSNAME}
                 aria-invalid={!!errors.lastName}
                 aria-describedby={errors.lastName ? 'create-trainer-last-name-error' : undefined}
@@ -151,12 +163,14 @@ export function CreateTrainerModal({ isOpen, onClose, onCreated }: CreateTrainer
           </div>
 
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="create-trainer-email" className="text-body text-text-secondary">
+            <label htmlFor="create-trainer-email" className="field-label">
               Email
             </label>
             <input
               id="create-trainer-email"
               type="email"
+              placeholder="trainer@example.com"
+              autoComplete="email"
               className={INPUT_CLASSNAME}
               aria-invalid={!!errors.email}
               aria-describedby={errors.email ? 'create-trainer-email-error' : undefined}
@@ -170,16 +184,23 @@ export function CreateTrainerModal({ isOpen, onClose, onCreated }: CreateTrainer
           </div>
 
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="create-trainer-phone" className="text-body text-text-secondary">
+            <label htmlFor="create-trainer-phone" className="field-label">
               Phone
             </label>
-            <input
-              id="create-trainer-phone"
-              type="tel"
-              className={INPUT_CLASSNAME}
-              aria-invalid={!!errors.phone}
-              aria-describedby={errors.phone ? 'create-trainer-phone-error' : undefined}
-              {...register('phone')}
+            <Controller
+              control={control}
+              name="phone"
+              render={({ field }) => (
+                <PhoneInput
+                  id="create-trainer-phone"
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  className={INPUT_CLASSNAME}
+                  aria-invalid={!!errors.phone}
+                  aria-describedby={errors.phone ? 'create-trainer-phone-error' : undefined}
+                />
+              )}
             />
             {errors.phone && (
               <p id="create-trainer-phone-error" role="alert" className="text-caption text-danger">
@@ -195,13 +216,13 @@ export function CreateTrainerModal({ isOpen, onClose, onCreated }: CreateTrainer
           )}
 
           <div className="mt-sm flex justify-end gap-sm">
-            <button type="button" onClick={handleClose} className="rounded-sm p-sm text-body text-text-secondary">
+            <button type="button" onClick={handleClose} className="btn btn-ghost">
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+              className="btn btn-primary"
             >
               {isSubmitting ? 'Creating…' : 'Create trainer'}
             </button>

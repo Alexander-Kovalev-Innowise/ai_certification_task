@@ -45,11 +45,32 @@ describe('UserDetailForm', () => {
   it('shows the read-only email, role, and status alongside editable fields', () => {
     render(<UserDetailForm user={baseUser()} />);
 
+    expect(screen.getByRole('heading', { level: 2, name: 'Ada Lovelace' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Account' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Profile' })).toBeInTheDocument();
     expect(screen.getByText('ada@example.com')).toBeInTheDocument();
-    expect(screen.getByText('TRAINER')).toBeInTheDocument();
-    expect(screen.getByText('ACTIVE')).toBeInTheDocument();
+    // Role and status appear both as header badges and in the Account list.
+    expect(screen.getAllByText('TRAINER')).toHaveLength(2);
+    expect(screen.getAllByText('ACTIVE')).toHaveLength(2);
+    expect(screen.queryByText('Last login')).not.toBeInTheDocument();
     expect(screen.getByLabelText(/first name/i)).toHaveValue('Ada');
     expect(screen.getByLabelText(/last name/i)).toHaveValue('Lovelace');
+  });
+
+  it('shows last login when available and renders the actions slot in the footer next to Save', () => {
+    render(
+      <UserDetailForm
+        user={{ ...baseUser(), lastLoginAt: '2026-02-03T10:00:00.000Z' }}
+        actions={<button type="button">Extra action</button>}
+      />,
+    );
+
+    expect(screen.getByText('Last login')).toBeInTheDocument();
+    const footer = screen.getByRole('button', { name: /save changes/i }).closest('[data-slot="card-footer"]');
+    expect(footer).not.toBeNull();
+    expect(footer).toContainElement(screen.getByRole('button', { name: 'Extra action' }));
+    expect(screen.getByRole('button', { name: /save changes/i })).toHaveAttribute('type', 'submit');
+    expect(screen.getByRole('button', { name: /save changes/i }).closest('form')).toHaveAttribute('id', 'user-detail-form');
   });
 
   it('submits PATCH /users/:id with the edited name/phone fields and calls onSaved', async () => {

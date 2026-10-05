@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
+import { useToastStore } from '../../../../src/stores/useToastStore';
+
 import UserDetailPage from './page';
 
 jest.mock('next/navigation', () => ({
@@ -63,8 +65,66 @@ describe('UserDetailPage', () => {
     renderPage();
 
     await waitFor(() => expect(screen.getByRole('heading', { name: /ada lovelace/i })).toBeInTheDocument());
+    expect(screen.getByRole('heading', { level: 1, name: 'Edit user' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Back to users' })).toHaveAttribute('href', '/users');
     const [url] = (global.fetch as jest.Mock).mock.calls[0] as [string];
     expect(url).toContain('/users/u1');
+  });
+
+  describe('Resend setup email', () => {
+    beforeEach(() => {
+      useToastStore.setState({ toasts: [] });
+    });
+
+    it('is offered for a trainer who has not finished setup and POSTs the resend endpoint', async () => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockResponse(200, { ...baseUserBody(), mustChangePassword: true }))
+        .mockResolvedValueOnce(mockResponse(202, { message: 'Setup invitation sent' }));
+
+      renderPage();
+      fireEvent.click(await screen.findByRole('button', { name: 'Resend setup email' }));
+
+      await waitFor(() => {
+        const call = (global.fetch as jest.Mock).mock.calls.find(([url]) => String(url).includes('/trainers/by-user/u1/resend-setup'));
+        expect(call).toBeDefined();
+        expect((call as [string, RequestInit])[1].method).toBe('POST');
+      });
+      await waitFor(() => expect(useToastStore.getState().toasts.some((toast) => toast.message.includes('ada@example.com'))).toBe(true));
+    });
+
+    it('is not shown once the trainer has completed setup, nor for other roles', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, baseUserBody()));
+      const { unmount } = renderPage();
+      await screen.findByRole('heading', { name: /ada lovelace/i });
+      expect(screen.queryByRole('button', { name: 'Resend setup email' })).not.toBeInTheDocument();
+      unmount();
+
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, { ...baseUserBody(), role: 'COACH', mustChangePassword: true }));
+      renderPage();
+      await screen.findByRole('heading', { name: /ada lovelace/i });
+      expect(screen.queryByRole('button', { name: 'Resend setup email' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('puts Save and the action buttons in the card footer, with Delete styled as danger', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, baseUserBody()));
+
+    renderPage();
+    await screen.findByRole('heading', { level: 2, name: /ada lovelace/i });
+
+    const save = screen.getByRole('button', { name: /save changes/i });
+    const footer = save.closest('[data-slot="card-footer"]');
+    expect(footer).not.toBeNull();
+    expect(save).toHaveAttribute('type', 'submit');
+    expect(save).toHaveClass('btn-primary');
+
+    for (const name of [/^deactivate user$/i, /^impersonate$/i, /delete user \(gdpr\)/i]) {
+      const button = screen.getByRole('button', { name });
+      expect(footer).toContainElement(button);
+      expect(button).toHaveAttribute('type', 'button');
+    }
+    expect(screen.getByRole('button', { name: /delete user \(gdpr\)/i })).toHaveClass('btn', 'btn-danger');
+    expect(screen.getByRole('button', { name: /^deactivate user$/i })).toHaveClass('btn-secondary');
   });
 
   it('shows a not-found message on a 404 (cross-tenant reads are never a 403)', async () => {

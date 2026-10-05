@@ -1,4 +1,9 @@
+import { PageHeader, PageLayout } from '../shared/PageLayout';
+
+import { DashboardMetrics } from './DashboardMetrics';
 import type { DashboardShellProps } from './DashboardShellProps';
+import { type QuickLinkItem, QuickLinks } from './QuickLinks';
+import { StatCard } from './StatCard';
 
 // fe §8 point 4 — same platform-default logo path BrandingProvider falls
 // back to ("falling back to the platform default mark (default_logo.svg)
@@ -19,10 +24,15 @@ interface TrainerBrandingSummary {
   primaryColorHex: string | null;
 }
 
-const QUICK_LINKS = [
-  { href: '/coaches', label: 'Manage Coaches' },
-  { href: '/share-links', label: 'Manage Share Links' },
-] as const;
+const QUICK_LINKS: readonly QuickLinkItem[] = [
+  { href: '/coaches', title: 'Manage Coaches', description: 'Invite and review your coaching team', icon: 'user-check' },
+  { href: '/players', title: 'Players', description: 'Your roster of connected players', icon: 'users' },
+  { href: '/share-links', title: 'Manage Share Links', description: 'Create and revoke sign-up links', icon: 'link' },
+  { href: '/branding', title: 'Branding', description: 'Logo and colours of your portal', icon: 'palette' },
+];
+
+// Already covered by the bootstrap-backed tiles below.
+const BOOTSTRAP_METRIC_KEYS = ['active_coaches', 'connected_players'] as const;
 
 function hasTrainerShape(
   ctx: DashboardShellProps['ctx'],
@@ -36,10 +46,10 @@ function hasTrainerShape(
 }
 
 // fe §4.4 — TrainerDashboardShell: `GET /me/bootstrap` TRAINER shape
-// (`TrainerBootstrapDto`) — a branding preview (business name, logo,
-// primary color swatch), `coachCount`/`activePlayerCount` stat tiles, and
-// quick links into `/coaches`/`/share-links` (the two routes Task
-// 13.1-13.3 add). Task 13.4.
+// (`TrainerBootstrapDto`) — a branding preview, `coachCount`/
+// `activePlayerCount` tiles (available instantly from bootstrap), the rest of
+// the tenant-scoped metrics from `GET /dashboard/stats`, and quick-link cards
+// into the trainer's pages. Task 13.4.
 export function TrainerDashboardShell({ ctx }: DashboardShellProps) {
   if (!hasTrainerShape(ctx)) {
     return null;
@@ -49,10 +59,8 @@ export function TrainerDashboardShell({ ctx }: DashboardShellProps) {
   const logoUrl = branding.logoUrl ?? DEFAULT_LOGO_URL;
 
   return (
-    <section aria-labelledby="dashboard-heading" className="flex flex-col gap-lg p-lg">
-      <h1 id="dashboard-heading" className="text-xl font-semibold text-text-primary">
-        Welcome, {ctx.user.firstName}
-      </h1>
+    <PageLayout aria-labelledby="dashboard-heading">
+      <PageHeader titleId="dashboard-heading" title={`Welcome, ${ctx.user.firstName}`} />
 
       <div className="flex items-center gap-md rounded-md border border-border-soft bg-surface-1 p-md shadow-card-soft">
         {/* eslint-disable-next-line @next/next/no-img-element -- external, trainer-supplied logo URL; next/image's remote-pattern allowlist doesn't fit an arbitrary per-tenant host */}
@@ -72,28 +80,18 @@ export function TrainerDashboardShell({ ctx }: DashboardShellProps) {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-md">
-        <div className="flex-1 rounded-md border border-border-soft bg-surface-1 p-md shadow-card-soft">
-          <p className="text-caption text-text-secondary">Coaches</p>
-          <p className="text-xl font-semibold text-text-primary">{coachCount}</p>
-        </div>
-        <div className="flex-1 rounded-md border border-border-soft bg-surface-1 p-md shadow-card-soft">
-          <p className="text-caption text-text-secondary">Active Players</p>
-          <p className="text-xl font-semibold text-text-primary">{activePlayerCount}</p>
-        </div>
-      </div>
+      <DashboardMetrics
+        excludeKeys={BOOTSTRAP_METRIC_KEYS}
+        skeletonCount={6}
+        leading={
+          <>
+            <StatCard label="Coaches" value={coachCount} icon="user-check" href="/coaches" />
+            <StatCard label="Active Players" value={activePlayerCount} icon="users" href="/players" />
+          </>
+        }
+      />
 
-      <nav aria-label="Quick links" className="flex flex-col gap-sm">
-        {QUICK_LINKS.map((link) => (
-          <a
-            key={link.href}
-            href={link.href}
-            className="rounded-md border border-border-soft bg-surface-1 p-md text-body-lg font-semibold text-text-primary shadow-card-soft hover:border-brand-primary"
-          >
-            {link.label}
-          </a>
-        ))}
-      </nav>
-    </section>
+      <QuickLinks links={QUICK_LINKS} />
+    </PageLayout>
   );
 }

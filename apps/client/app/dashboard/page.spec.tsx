@@ -10,6 +10,7 @@ const replaceMock = jest.fn();
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ replace: replaceMock }),
+  usePathname: () => '/',
 }));
 
 function userWithRole(role: UserSummaryDto['role']): UserSummaryDto {
@@ -50,7 +51,9 @@ describe('DashboardPage (fe §3, unified /dashboard route)', () => {
   beforeEach(() => {
     useAuthStore.getState().clear();
     replaceMock.mockClear();
-    global.fetch = jest.fn();
+    // Default for the shells' follow-up GET /dashboard/stats; each test's own
+    // mockResolvedValueOnce still wins for the first (bootstrap) call.
+    global.fetch = jest.fn().mockResolvedValue(mockResponse(200, { role: 'TRAINER', generatedAt: '2026-10-04T00:00:00.000Z', metrics: [] }));
   });
 
   afterEach(() => {
@@ -66,7 +69,7 @@ describe('DashboardPage (fe §3, unified /dashboard route)', () => {
 
   it.each([['SUPER_ADMIN', /super admin dashboard/i]] as const)('renders the %s shell for a %s session', async (role, expectedCopy) => {
     const user = userWithRole(role);
-    useAuthStore.getState().setSession({ accessToken: 't', user, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, { role, user }));
 
     renderDashboard();
@@ -82,7 +85,7 @@ describe('DashboardPage (fe §3, unified /dashboard route)', () => {
   // as the TRAINER/PLAYER_PARENT shells above, Tasks 13.4/14.2).
   it('renders the COACH shell with an employing-trainer card and availabilitySet prompt for a COACH session', async () => {
     const user = userWithRole('COACH');
-    useAuthStore.getState().setSession({ accessToken: 't', user, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock).mockResolvedValueOnce(
       mockResponse(200, {
         role: 'COACH',
@@ -107,7 +110,7 @@ describe('DashboardPage (fe §3, unified /dashboard route)', () => {
   // shells' still-placeholder `{ role, user }` body.
   it('renders the TRAINER shell with branding preview, stat tiles and quick links for a TRAINER session', async () => {
     const user = userWithRole('TRAINER');
-    useAuthStore.getState().setSession({ accessToken: 't', user, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock).mockResolvedValueOnce(
       mockResponse(200, {
         role: 'TRAINER',
@@ -133,7 +136,7 @@ describe('DashboardPage (fe §3, unified /dashboard route)', () => {
   // `PlayerParentBootstrapDto` shape rather than the placeholder `{ role, user }` body.
   it('renders the player/parent shell with a pendingApprovalsCount tile for an ADULT PLAYER_PARENT session', async () => {
     const user = userWithRole('PLAYER_PARENT');
-    useAuthStore.getState().setSession({ accessToken: 't', user, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock).mockResolvedValueOnce(
       mockResponse(200, {
         role: 'PLAYER_PARENT',
@@ -156,7 +159,7 @@ describe('DashboardPage (fe §3, unified /dashboard route)', () => {
 
   it('shows an error state when the bootstrap request fails', async () => {
     const user = userWithRole('TRAINER');
-    useAuthStore.getState().setSession({ accessToken: 't', user, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(500));
 
     renderDashboard();

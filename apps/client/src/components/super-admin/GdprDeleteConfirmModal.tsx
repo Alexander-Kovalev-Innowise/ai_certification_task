@@ -1,8 +1,11 @@
 'use client';
 
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
 
 import { apiRequest } from '../../lib/api/apiClient';
+import { GDPR_CONFIRM_WORD, gdprDeleteSchema, type GdprDeleteFormValues } from '../../lib/schemas/gdprDeleteSchema';
 
 export interface GdprDeleteConfirmModalProps {
   isOpen: boolean;
@@ -11,10 +14,8 @@ export interface GdprDeleteConfirmModalProps {
   onDeleted: () => void;
 }
 
-const CONFIRM_WORD = 'DELETE';
-
 const TEXTAREA_CLASSNAME =
-  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-danger';
+  'w-full min-w-0';
 
 // fe §4.3/§9.4 — GdprDeleteConfirmModal: DELETE /users/:id (api §3, FR-014/
 // SEC-005) with the required `{ reason }` body. Two-step, typed-confirmation
@@ -24,48 +25,51 @@ const TEXTAREA_CLASSNAME =
 // literal word DELETE is typed, and a blocking spinner covers the request.
 // Task 12.5.
 export function GdprDeleteConfirmModal({ isOpen, userId, onClose, onDeleted }: GdprDeleteConfirmModalProps) {
-  const [reason, setReason] = useState('');
-  const [confirmText, setConfirmText] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    watch,
+    formState: { errors, isSubmitting },
+  } = useForm<GdprDeleteFormValues>({
+    resolver: zodResolver(gdprDeleteSchema),
+    mode: 'onTouched',
+    defaultValues: { reason: '', confirmText: '' },
+  });
 
   if (!isOpen) {
     return null;
   }
 
-  const canConfirm = confirmText === CONFIRM_WORD && reason.trim().length > 0 && !isSubmitting;
+  // Synchronous (not `formState.isValid`, which settles a tick later) so the
+  // destructive button flips the instant both fields are valid.
+  const canConfirm = gdprDeleteSchema.safeParse(watch()).success && !isSubmitting;
 
   function handleClose() {
-    setReason('');
-    setConfirmText('');
+    reset();
     setError(null);
     onClose();
   }
 
-  async function handleConfirm() {
-    if (!canConfirm) {
-      return;
-    }
-    setIsSubmitting(true);
+  const handleConfirm = handleSubmit(async (values) => {
     setError(null);
 
     const res = await apiRequest(`/users/${userId}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({ reason: values.reason }),
     });
-
-    setIsSubmitting(false);
 
     if (!res.ok) {
       setError(res.status === 409 ? 'This user has already been deleted.' : 'Something went wrong. Please try again.');
       return;
     }
 
-    setReason('');
-    setConfirmText('');
+    reset();
     onDeleted();
-  }
+  });
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="gdpr-delete-heading" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg">
@@ -78,29 +82,48 @@ export function GdprDeleteConfirmModal({ isOpen, userId, onClose, onDeleted }: G
         </p>
 
         <div className="mt-md flex flex-col gap-xxs">
-          <label htmlFor="gdpr-delete-reason" className="text-body text-text-secondary">
+          <label htmlFor="gdpr-delete-reason" className="field-label">
             Reason (for the retention record)
           </label>
           <textarea
             id="gdpr-delete-reason"
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
+            rows={3}
+            placeholder="e.g. User requested account erasure under GDPR Art. 17 (ticket #1234)"
+            autoComplete="off"
             disabled={isSubmitting}
             className={TEXTAREA_CLASSNAME}
+            aria-invalid={!!errors.reason}
+            aria-describedby={errors.reason ? 'gdpr-delete-reason-error' : undefined}
+            {...register('reason')}
           />
+          {errors.reason && (
+            <p id="gdpr-delete-reason-error" role="alert" className="text-caption text-danger">
+              {errors.reason.message}
+            </p>
+          )}
         </div>
 
         <div className="mt-md flex flex-col gap-xxs">
-          <label htmlFor="gdpr-delete-confirm-text" className="text-body text-text-secondary">
-            Type {CONFIRM_WORD} to confirm
+          <label htmlFor="gdpr-delete-confirm-text" className="field-label">
+            Type {GDPR_CONFIRM_WORD} to confirm
           </label>
           <input
             id="gdpr-delete-confirm-text"
-            value={confirmText}
-            onChange={(event) => setConfirmText(event.target.value)}
+            placeholder={GDPR_CONFIRM_WORD}
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
             disabled={isSubmitting}
             className={TEXTAREA_CLASSNAME}
+            aria-invalid={!!errors.confirmText}
+            aria-describedby={errors.confirmText ? 'gdpr-delete-confirm-text-error' : undefined}
+            {...register('confirmText')}
           />
+          {errors.confirmText && (
+            <p id="gdpr-delete-confirm-text-error" role="alert" className="text-caption text-danger">
+              {errors.confirmText.message}
+            </p>
+          )}
         </div>
 
         {error && (
@@ -110,14 +133,14 @@ export function GdprDeleteConfirmModal({ isOpen, userId, onClose, onDeleted }: G
         )}
 
         <div className="mt-md flex justify-end gap-sm">
-          <button type="button" onClick={handleClose} disabled={isSubmitting} className="rounded-sm p-sm text-body text-text-secondary">
+          <button type="button" onClick={handleClose} disabled={isSubmitting} className="btn btn-ghost">
             Cancel
           </button>
           <button
             type="button"
             onClick={handleConfirm}
             disabled={!canConfirm}
-            className="rounded-sm bg-danger p-sm text-body font-semibold text-white disabled:opacity-60"
+            className="btn btn-danger"
           >
             {isSubmitting ? 'Deleting…' : 'Permanently delete'}
           </button>

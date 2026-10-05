@@ -1,12 +1,14 @@
 'use client';
 
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
+import { PageHeader, PageLayout } from '../../../src/components/shared/PageLayout';
 import { UsersTableSkeleton } from '../../../src/components/shared/RouteSkeletons';
 import { CreateTrainerModal } from '../../../src/components/super-admin/CreateTrainerModal';
 import { UserFilters, type UserFiltersValue } from '../../../src/components/super-admin/UserFilters';
 import { UsersTable, type UserDirectoryRow } from '../../../src/components/super-admin/UsersTable';
+import { useDebouncedValue } from '../../../src/hooks/useDebouncedValue';
 import { apiRequest } from '../../../src/lib/api/apiClient';
 
 const PAGE_LIMIT = 50;
@@ -19,6 +21,7 @@ interface UsersPageResponse {
 }
 
 const EMPTY_FILTERS: UserFiltersValue = { search: '', role: '', status: '' };
+const FILTER_DEBOUNCE_MS = 300;
 
 function buildQuery(filters: UserFiltersValue, cursor: string | null): string {
   const params = new URLSearchParams({ limit: String(PAGE_LIMIT) });
@@ -55,31 +58,39 @@ export default function UsersPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const queryClient = useQueryClient();
 
-  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ['users', filters],
-    queryFn: ({ pageParam }) => fetchUsers(filters, pageParam),
+  // Inputs stay immediate (`filters`); the query only sees the debounced copy,
+  // and `placeholderData: keepPreviousData` keeps the old rows on screen while
+  // the next filter's page loads, so the list never blinks to a skeleton.
+  const debouncedFilters = useDebouncedValue(filters, FILTER_DEBOUNCE_MS);
+
+  const { data, isLoading, isFetching, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+    queryKey: ['users', debouncedFilters],
+    queryFn: ({ pageParam }) => fetchUsers(debouncedFilters, pageParam),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
+    placeholderData: keepPreviousData,
   });
+
+  const isInitialLoading = isLoading && !data;
+  const isRefreshing = (isFetching && !isFetchingNextPage && !isLoading) || filters !== debouncedFilters;
+  const hasActiveFilters = filters.search !== '' || filters.role !== '' || filters.status !== '';
 
   const items = data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
-    <section className="flex flex-col gap-lg p-lg">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-text-primary">Users</h1>
-        <button
-          type="button"
-          onClick={() => setIsCreateModalOpen(true)}
-          className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary"
-        >
-          Create Trainer
-        </button>
-      </div>
+    <PageLayout>
+      <PageHeader
+        title="Users"
+        actions={
+          <button type="button" onClick={() => setIsCreateModalOpen(true)} className="btn btn-primary">
+            Create Trainer
+          </button>
+        }
+      />
 
       <UserFilters value={filters} onChange={setFilters} />
 
-      {isLoading && <UsersTableSkeleton />}
+      {isInitialLoading && <UsersTableSkeleton />}
 
       {isError && (
         <p role="alert" className="text-body text-danger">
@@ -87,8 +98,15 @@ export default function UsersPage() {
         </p>
       )}
 
-      {!isLoading && !isError && (
-        <UsersTable items={items} hasMore={!!hasNextPage} isFetchingNextPage={isFetchingNextPage} onLoadMore={() => void fetchNextPage()} />
+      {!isInitialLoading && !isError && (
+        <UsersTable
+          items={items}
+          hasMore={!!hasNextPage}
+          isFetchingNextPage={isFetchingNextPage}
+          onLoadMore={() => void fetchNextPage()}
+          isRefreshing={isRefreshing}
+          onClearFilters={hasActiveFilters ? () => setFilters(EMPTY_FILTERS) : undefined}
+        />
       )}
 
       <CreateTrainerModal
@@ -96,6 +114,6 @@ export default function UsersPage() {
         onClose={() => setIsCreateModalOpen(false)}
         onCreated={() => void queryClient.invalidateQueries({ queryKey: ['users'] })}
       />
-    </section>
+    </PageLayout>
   );
 }

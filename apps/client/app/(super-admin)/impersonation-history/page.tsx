@@ -1,10 +1,12 @@
 'use client';
 
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
+import { PageHeader, PageLayout } from '../../../src/components/shared/PageLayout';
 import { HistoryFilters, type HistoryFiltersValue } from '../../../src/components/super-admin/HistoryFilters';
 import { ImpersonationHistoryTable, type ImpersonationHistoryRow } from '../../../src/components/super-admin/ImpersonationHistoryTable';
+import { useDebouncedValue } from '../../../src/hooks/useDebouncedValue';
 import { apiRequest } from '../../../src/lib/api/apiClient';
 
 const PAGE_LIMIT = 50;
@@ -17,6 +19,7 @@ interface ImpersonationHistoryPageResponse {
 }
 
 const EMPTY_FILTERS: HistoryFiltersValue = { adminUserId: '', targetUserId: '', dateFrom: '', dateTo: '' };
+const FILTER_DEBOUNCE_MS = 300;
 
 function buildQuery(filters: HistoryFiltersValue, cursor: string | null): string {
   const params = new URLSearchParams({ limit: String(PAGE_LIMIT) });
@@ -55,18 +58,28 @@ async function fetchHistory(filters: HistoryFiltersValue, cursor: string | null)
 export default function ImpersonationHistoryPage() {
   const [filters, setFilters] = useState<HistoryFiltersValue>(EMPTY_FILTERS);
 
-  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ['impersonation-history', filters],
-    queryFn: ({ pageParam }) => fetchHistory(filters, pageParam),
+  // Inputs stay immediate (`filters`); the query only sees the debounced copy,
+  // and `placeholderData: keepPreviousData` keeps the old rows on screen while
+  // the next filter's page loads.
+  const debouncedFilters = useDebouncedValue(filters, FILTER_DEBOUNCE_MS);
+
+  const { data, isLoading, isFetching, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+    queryKey: ['impersonation-history', debouncedFilters],
+    queryFn: ({ pageParam }) => fetchHistory(debouncedFilters, pageParam),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
+    placeholderData: keepPreviousData,
   });
+
+  const isInitialLoading = isLoading && !data;
+  const isRefreshing = (isFetching && !isFetchingNextPage && !isLoading) || filters !== debouncedFilters;
+  const hasActiveFilters = filters.adminUserId !== '' || filters.targetUserId !== '' || filters.dateFrom !== '' || filters.dateTo !== '';
 
   const items = data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
-    <section className="flex flex-col gap-lg p-lg">
-      <h1 className="text-xl font-semibold text-text-primary">Impersonation History</h1>
+    <PageLayout>
+      <PageHeader title="Impersonation History" />
 
       <HistoryFilters value={filters} onChange={setFilters} />
 
@@ -76,9 +89,16 @@ export default function ImpersonationHistoryPage() {
         </p>
       )}
 
-      {!isLoading && !isError && (
-        <ImpersonationHistoryTable items={items} hasMore={!!hasNextPage} isFetchingNextPage={isFetchingNextPage} onLoadMore={() => void fetchNextPage()} />
+      {!isInitialLoading && !isError && (
+        <ImpersonationHistoryTable
+          items={items}
+          hasMore={!!hasNextPage}
+          isFetchingNextPage={isFetchingNextPage}
+          onLoadMore={() => void fetchNextPage()}
+          isRefreshing={isRefreshing}
+          onClearFilters={hasActiveFilters ? () => setFilters(EMPTY_FILTERS) : undefined}
+        />
       )}
-    </section>
+    </PageLayout>
   );
 }

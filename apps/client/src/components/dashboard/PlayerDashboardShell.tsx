@@ -1,6 +1,23 @@
-import type { DashboardShellProps } from './DashboardShellProps';
+import { PageHeader, PageLayout } from '../shared/PageLayout';
 
-const QUICK_LINKS = [{ href: '/profiles', label: 'Manage Profiles' }] as const;
+import { DashboardMetrics } from './DashboardMetrics';
+import type { DashboardShellProps } from './DashboardShellProps';
+import { type QuickLinkItem, QuickLinks } from './QuickLinks';
+import { StatCard } from './StatCard';
+
+const PROFILES_LINK: QuickLinkItem = {
+  href: '/profiles',
+  title: 'Manage Profiles',
+  description: 'Player profiles and trainer connections',
+  icon: 'users',
+};
+
+const APPROVALS_LINK: QuickLinkItem = {
+  href: '/approvals',
+  title: 'Approvals',
+  description: 'Respond to purchase requests',
+  icon: 'check-circle',
+};
 
 interface PlayerParentDashboardShape {
   accountType: 'ADULT' | 'CHILD';
@@ -15,42 +32,29 @@ function hasPlayerParentShape(ctx: DashboardShellProps['ctx']): ctx is Dashboard
 // (`PlayerParentBootstrapDto`) — adult accounts see a `pendingApprovalsCount`
 // stat tile linking to `/approvals`; a `CHILD` session's bootstrap response
 // never carries `pendingApprovalsCount` at all (`VIEW_GUARDIAN_DATA` is
-// CHILD-denied, api §5), so the tile is omitted based on the field's
-// presence — not a role/accountType check alone — matching §9.4's
-// "deny-listed field" framing. Task 14.2 (correction from the plan's literal
-// `(player)/dashboard/page.tsx`: the single unified `/dashboard` route,
-// fe §3's 2026-09-24 note, already dispatches to this shell — no new page
-// file).
+// CHILD-denied, api §5), so the tile (and the Approvals quick link) is
+// omitted based on the field's presence — not a role/accountType check alone
+// — matching §9.4's "deny-listed field" framing. The remaining metrics come
+// from `GET /dashboard/stats`. Task 14.2.
 export function PlayerDashboardShell({ ctx }: DashboardShellProps) {
   const pendingApprovalsCount = hasPlayerParentShape(ctx) ? ctx.pendingApprovalsCount : undefined;
+  const links = pendingApprovalsCount !== undefined ? [PROFILES_LINK, APPROVALS_LINK] : [PROFILES_LINK];
 
   return (
-    <section aria-labelledby="dashboard-heading" className="flex flex-col gap-lg p-lg">
-      <h1 id="dashboard-heading" className="text-xl font-semibold text-text-primary">
-        Welcome, {ctx.user.firstName}
-      </h1>
+    <PageLayout aria-labelledby="dashboard-heading">
+      <PageHeader titleId="dashboard-heading" title={`Welcome, ${ctx.user.firstName}`} />
 
-      {pendingApprovalsCount !== undefined && (
-        <a
-          href="/approvals"
-          className="flex-1 rounded-md border border-border-soft bg-surface-1 p-md shadow-card-soft hover:border-brand-primary"
-        >
-          <p className="text-caption text-text-secondary">Pending Approvals</p>
-          <p className="text-xl font-semibold text-text-primary">{pendingApprovalsCount}</p>
-        </a>
-      )}
+      <DashboardMetrics
+        excludeKeys={['pending_approvals']}
+        skeletonCount={3}
+        leading={
+          pendingApprovalsCount !== undefined ? (
+            <StatCard label="Pending Approvals" value={pendingApprovalsCount} icon="check-circle" href="/approvals" />
+          ) : null
+        }
+      />
 
-      <nav aria-label="Quick links" className="flex flex-col gap-sm">
-        {QUICK_LINKS.map((link) => (
-          <a
-            key={link.href}
-            href={link.href}
-            className="rounded-md border border-border-soft bg-surface-1 p-md text-body-lg font-semibold text-text-primary shadow-card-soft hover:border-brand-primary"
-          >
-            {link.label}
-          </a>
-        ))}
-      </nav>
-    </section>
+      <QuickLinks links={links} />
+    </PageLayout>
   );
 }

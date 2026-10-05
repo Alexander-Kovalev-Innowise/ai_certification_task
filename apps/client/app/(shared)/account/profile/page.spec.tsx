@@ -15,7 +15,7 @@ jest.mock('next/navigation', () => ({
 const testUser: UserSummaryDto = {
   id: 'user-1',
   email: 'alex@example.com',
-  role: 'TRAINER',
+  role: 'PLAYER_PARENT',
   accountType: 'ADULT',
   firstName: 'Alex',
   lastName: 'Kovalev',
@@ -35,7 +35,7 @@ function meBody(overrides: Record<string, unknown> = {}) {
   return {
     id: 'user-1',
     email: 'alex@example.com',
-    role: 'TRAINER',
+    role: 'PLAYER_PARENT',
     accountType: 'ADULT',
     firstName: 'Alex',
     lastName: 'Kovalev',
@@ -77,7 +77,7 @@ describe('AccountProfilePage', () => {
   });
 
   it('pre-fills AccountProfileForm from GET /me and renders ChangePasswordLink', async () => {
-    useAuthStore.getState().setSession({ accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, meBody()));
 
     renderPage();
@@ -87,7 +87,7 @@ describe('AccountProfilePage', () => {
   });
 
   it('saves edits via PATCH /me and shows a success message', async () => {
-    useAuthStore.getState().setSession({ accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock)
       .mockResolvedValueOnce(mockResponse(200, meBody()))
       .mockResolvedValueOnce(mockResponse(200, meBody({ firstName: 'Alexander' })));
@@ -110,21 +110,115 @@ describe('AccountProfilePage', () => {
       accessToken: 'token-abc',
       user: { ...testUser, role: 'PLAYER_PARENT', accountType: 'CHILD' },
       expiresAt: Date.now() + 60_000,
+      csrfToken: 'test-csrf-token',
     });
     (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, meBody({ role: 'PLAYER_PARENT', accountType: 'CHILD' })));
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByLabelText(/photo url/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText('Photo')).toBeInTheDocument());
     expect(screen.queryByLabelText(/first name/i)).not.toBeInTheDocument();
   });
 
   it('shows an error state when GET /me fails', async () => {
-    useAuthStore.getState().setSession({ accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(500));
 
     renderPage();
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+  });
+
+  it('shows the read-only account-created date for every role', async () => {
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, meBody({ createdAt: '2026-03-15T12:00:00.000Z' })));
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/account created/i)).toBeInTheDocument());
+    expect(screen.getByText(/account created/i).textContent).toMatch(/2026/);
+  });
+
+  it('does not render the Business section for a non-trainer', async () => {
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, meBody()));
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByLabelText(/first name/i)).toBeInTheDocument());
+    expect(screen.queryByLabelText(/business name/i)).not.toBeInTheDocument();
+  });
+
+  describe('TRAINER Business section', () => {
+    const trainerSession = () =>
+      useAuthStore.getState().setSession({
+        csrfToken: 'test-csrf-token',
+        accessToken: 'token-abc',
+        user: { ...testUser, role: 'TRAINER' },
+        expiresAt: Date.now() + 60_000,
+      });
+
+    function routeFetch(handlers: Record<string, (init?: RequestInit) => Response>) {
+      (global.fetch as jest.Mock).mockImplementation(async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET';
+        const key = Object.keys(handlers).find((k) => `${method} ${new URL(url, 'http://x').pathname}` === k);
+        return key && handlers[key] ? handlers[key]!(init) : mockResponse(404);
+      });
+    }
+
+    const bootstrap = {
+      role: 'TRAINER',
+      user: { ...testUser, role: 'TRAINER' },
+      trainerProfile: { id: 'trainer-1', businessName: 'Acme Co', address: '1 Main St', website: 'https://acme.example.com', description: null },
+      branding: { logoUrl: null, primaryColorHex: null },
+    };
+
+    it('prefills from bootstrap and saves via PATCH /trainers/:id, sending null for cleared optional fields', async () => {
+      trainerSession();
+      routeFetch({
+        'GET /me': () => mockResponse(200, meBody({ role: 'TRAINER' })),
+        'GET /me/bootstrap': () => mockResponse(200, bootstrap),
+        'PATCH /trainers/trainer-1': () => mockResponse(200, { id: 'trainer-1', businessName: 'Acme Sports' }),
+      });
+
+      renderPage();
+
+      await waitFor(() => expect(screen.getByLabelText(/business name/i)).toHaveValue('Acme Co'));
+      expect(screen.getByLabelText(/address/i)).toHaveValue('1 Main St');
+      expect(screen.getByLabelText(/website/i)).toHaveValue('https://acme.example.com');
+
+      fireEvent.change(screen.getByLabelText(/business name/i), { target: { value: 'Acme Sports' } });
+      fireEvent.change(screen.getByLabelText(/address/i), { target: { value: '' } });
+      fireEvent.click(screen.getByRole('button', { name: /save business details/i }));
+
+      await waitFor(() => {
+        const call = (global.fetch as jest.Mock).mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'PATCH');
+        expect(call).toBeDefined();
+      });
+      const patch = (global.fetch as jest.Mock).mock.calls.find(([url]) => String(url).includes('/trainers/trainer-1')) as [string, RequestInit];
+      expect(JSON.parse(patch[1].body as string)).toEqual({
+        businessName: 'Acme Sports',
+        address: null,
+        website: 'https://acme.example.com',
+        description: null,
+      });
+    });
+
+    it('validates the website before calling the API', async () => {
+      trainerSession();
+      routeFetch({
+        'GET /me': () => mockResponse(200, meBody({ role: 'TRAINER' })),
+        'GET /me/bootstrap': () => mockResponse(200, bootstrap),
+      });
+
+      renderPage();
+      await waitFor(() => expect(screen.getByLabelText(/business name/i)).toBeInTheDocument());
+
+      fireEvent.change(screen.getByLabelText(/website/i), { target: { value: 'not a url' } });
+      fireEvent.click(screen.getByRole('button', { name: /save business details/i }));
+
+      await waitFor(() => expect(screen.getAllByRole('alert').some((a) => /website/i.test(a.textContent ?? ''))).toBe(true));
+      expect((global.fetch as jest.Mock).mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'PATCH')).toBe(false);
+    });
   });
 });

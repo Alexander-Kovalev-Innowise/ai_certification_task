@@ -1,9 +1,18 @@
 import Link from 'next/link';
 
+import { PageHeader, PageLayout } from '../shared/PageLayout';
+
+import { DashboardMetrics } from './DashboardMetrics';
 import type { DashboardShellProps } from './DashboardShellProps';
+import { type QuickLinkItem, QuickLinks } from './QuickLinks';
 
 // fe §8 point 4 — same platform-default logo fallback as TrainerDashboardShell.
 const DEFAULT_LOGO_URL = '/default_logo.svg';
+
+const QUICK_LINKS: readonly QuickLinkItem[] = [
+  { href: '/my-times', title: 'My Times', description: 'Your weekly times to coach', icon: 'clock' },
+  { href: '/profile', title: 'Profile', description: 'Your bio and credentials', icon: 'user' },
+];
 
 interface EmployingTrainerSummary {
   businessName: string;
@@ -24,7 +33,8 @@ function hasCoachShape(
 // (`CoachBootstrapDto`) — an employing-trainer card (business name, logo)
 // and a prompt to set availability when `availabilitySet` is `false` (this
 // is the "My Times" nudge FR-062 relies on to get a coach's grid populated
-// before a trainer ever tries to schedule them). Task 15.2.
+// before a trainer ever tries to schedule them), followed by the coach's
+// own metrics (`GET /dashboard/stats`) and quick-link cards. Task 15.2.
 export function CoachDashboardShell({ ctx }: DashboardShellProps) {
   if (!hasCoachShape(ctx)) {
     return null;
@@ -34,10 +44,8 @@ export function CoachDashboardShell({ ctx }: DashboardShellProps) {
   const logoUrl = employingTrainer.logoUrl ?? DEFAULT_LOGO_URL;
 
   return (
-    <section aria-labelledby="dashboard-heading" className="flex flex-col gap-lg p-lg">
-      <h1 id="dashboard-heading" className="text-xl font-semibold text-text-primary">
-        Welcome, {ctx.user.firstName}
-      </h1>
+    <PageLayout aria-labelledby="dashboard-heading">
+      <PageHeader titleId="dashboard-heading" title={`Welcome, ${ctx.user.firstName}`} />
 
       <div className="flex items-center gap-md rounded-md border border-border-soft bg-surface-1 p-md shadow-card-soft">
         {/* eslint-disable-next-line @next/next/no-img-element -- external, trainer-supplied logo URL; next/image's remote-pattern allowlist doesn't fit an arbitrary per-tenant host */}
@@ -57,6 +65,10 @@ export function CoachDashboardShell({ ctx }: DashboardShellProps) {
           so your trainer knows when you&apos;re free to coach.
         </p>
       )}
-    </section>
+
+      <DashboardMetrics skeletonCount={4} />
+
+      <QuickLinks links={QUICK_LINKS} />
+    </PageLayout>
   );
 }

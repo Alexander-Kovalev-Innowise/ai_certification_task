@@ -91,7 +91,15 @@ export function ImpersonateConfirmModal({ isOpen, target, onClose, onStarted }: 
     }
 
     const data = (await res.json()) as ImpersonationStartResponseDto;
-    setSession(toAuthSession({ accessToken: data.accessToken, expiresIn: data.expiresIn, user: data.target }, true));
+    // csrfToken: '' — ImpersonationStartResponseDto has no csrf pair at all
+    // (ADR-03: no refresh token is ever issued for an impersonation session,
+    // so there's nothing for the double-submit CSRF check to protect).
+    // csrfHeaders() treats an empty/falsy token as "omit the header", which
+    // is exactly correct here — never sending X-CSRF-Token while
+    // impersonating, not sending a wrong one.
+    setSession(
+      toAuthSession({ accessToken: data.accessToken, expiresIn: data.expiresIn, csrfToken: '', user: data.target }, true),
+    );
     setIsSubmitting(false);
     onStarted?.();
     router.push(DASHBOARD_PATH);
@@ -121,7 +129,7 @@ export function ImpersonateConfirmModal({ isOpen, target, onClose, onStarted }: 
         )}
 
         <div className="mt-md flex justify-end gap-sm">
-          <button type="button" onClick={onClose} disabled={isSubmitting} className="rounded-sm p-sm text-body text-text-secondary">
+          <button type="button" onClick={onClose} disabled={isSubmitting} className="btn btn-ghost">
             Cancel
           </button>
           {!targetIsSuperAdmin && (
@@ -129,7 +137,7 @@ export function ImpersonateConfirmModal({ isOpen, target, onClose, onStarted }: 
               type="button"
               onClick={handleConfirm}
               disabled={isSubmitting}
-              className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+              className="btn btn-primary"
             >
               {isSubmitting ? 'Starting…' : 'Impersonate'}
             </button>

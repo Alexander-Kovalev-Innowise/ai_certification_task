@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import UsersPage from './page';
 
@@ -60,9 +60,57 @@ describe('UsersPage', () => {
 
     fireEvent.change(screen.getByLabelText(/role/i), { target: { value: 'COACH' } });
 
+    // Filter changes are debounced (300ms) before they reach the query key.
     await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
     const [url] = (global.fetch as jest.Mock).mock.calls[1] as [string];
     expect(url).toContain('role=COACH');
+  });
+
+  it('keeps the previous rows (no skeleton flash) until the new filter data arrives', async () => {
+    let resolveSecond: (value: Response) => void = () => undefined;
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(
+        mockResponse(200, {
+          items: [
+            { id: 'u1', email: 'a@example.com', role: 'TRAINER', status: 'ACTIVE', firstName: 'Ada', lastName: 'Lovelace', createdAt: '2026-01-01T00:00:00.000Z', lastLoginAt: null },
+          ],
+          nextCursor: null,
+          hasMore: false,
+        }),
+      )
+      .mockReturnValueOnce(new Promise<Response>((resolve) => (resolveSecond = resolve)));
+
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('row', { name: /ada lovelace/i })).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/^role$/i), { target: { value: 'COACH' } });
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
+
+    expect(screen.getByRole('row', { name: /ada lovelace/i })).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: /loading users/i })).not.toBeInTheDocument();
+
+    resolveSecond(mockResponse(200, { items: [], nextCursor: null, hasMore: false }));
+    await waitFor(() => expect(screen.queryByRole('row', { name: /ada lovelace/i })).not.toBeInTheDocument());
+  });
+
+  it('issues a single fetch for rapid successive search keystrokes', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue(mockResponse(200, { items: [], nextCursor: null, hasMore: false }));
+
+    renderPage();
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+
+    const search = screen.getByLabelText(/search/i);
+    fireEvent.change(search, { target: { value: 'a' } });
+    fireEvent.change(search, { target: { value: 'ad' } });
+    fireEvent.change(search, { target: { value: 'ada' } });
+    expect(search).toHaveValue('ada');
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    const [url] = (global.fetch as jest.Mock).mock.calls[1] as [string];
+    expect(url).toContain('search=ada');
   });
 
   it('shows an error state when the request fails', async () => {
@@ -90,7 +138,7 @@ describe('UsersPage', () => {
     fireEvent.change(screen.getByLabelText(/business name/i), { target: { value: 'Ace Tennis Academy' } });
     fireEvent.change(screen.getByLabelText(/first name/i), { target: { value: 'Ada' } });
     fireEvent.change(screen.getByLabelText(/last name/i), { target: { value: 'Lovelace' } });
-    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'ada@example.com' } });
+    fireEvent.change(within(screen.getByRole('dialog')).getByLabelText(/email/i), { target: { value: 'ada@example.com' } });
     fireEvent.change(screen.getByLabelText(/phone/i), { target: { value: '+14155552671' } });
     fireEvent.click(screen.getByRole('dialog').querySelector('button[type="submit"]')!);
 

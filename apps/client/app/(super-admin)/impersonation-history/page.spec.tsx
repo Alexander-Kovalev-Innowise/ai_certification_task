@@ -64,7 +64,52 @@ describe('ImpersonationHistoryPage', () => {
 
     fireEvent.change(screen.getByLabelText(/admin user id/i), { target: { value: 'admin-42' } });
 
+    // Filter changes are debounced (300ms) before they reach the query key.
     await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
+    const [url] = (global.fetch as jest.Mock).mock.calls[1] as [string];
+    expect(url).toContain('adminUserId=admin-42');
+  });
+
+  it('keeps the previous rows until the new filter data arrives', async () => {
+    let resolveSecond: (value: Response) => void = () => undefined;
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(
+        mockResponse(200, {
+          items: [{ id: 'implog-1', admin: ADMIN, target: TARGET, startedAt: '2026-01-05T12:00:00.000Z', endedAt: '2026-01-05T12:20:00.000Z', durationSeconds: 1200 }],
+          nextCursor: null,
+          hasMore: false,
+        }),
+      )
+      .mockReturnValueOnce(new Promise<Response>((resolve) => (resolveSecond = resolve)));
+
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('row', { name: /ada admin/i })).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/admin user id/i), { target: { value: 'admin-42' } });
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
+
+    expect(screen.getByRole('row', { name: /ada admin/i })).toBeInTheDocument();
+
+    resolveSecond(mockResponse(200, { items: [], nextCursor: null, hasMore: false }));
+    await waitFor(() => expect(screen.queryByRole('row', { name: /ada admin/i })).not.toBeInTheDocument());
+  });
+
+  it('issues a single fetch for rapid successive filter changes', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue(mockResponse(200, { items: [], nextCursor: null, hasMore: false }));
+
+    renderPage();
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+
+    const admin = screen.getByLabelText(/admin user id/i);
+    fireEvent.change(admin, { target: { value: 'a' } });
+    fireEvent.change(admin, { target: { value: 'ad' } });
+    fireEvent.change(admin, { target: { value: 'admin-42' } });
+    expect(admin).toHaveValue('admin-42');
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
     const [url] = (global.fetch as jest.Mock).mock.calls[1] as [string];
     expect(url).toContain('adminUserId=admin-42');
   });

@@ -1,33 +1,28 @@
+import { PageHeader, PageLayout } from '../shared/PageLayout';
+
+import { DashboardMetrics } from './DashboardMetrics';
 import type { DashboardShellProps } from './DashboardShellProps';
+import { type QuickLinkItem, QuickLinks } from './QuickLinks';
 
-const QUICK_LINKS = [
-  { href: '/users', label: 'Users' },
-  { href: '/impersonation-history', label: 'Impersonation History' },
-] as const;
+const QUICK_LINKS: readonly QuickLinkItem[] = [
+  { href: '/users', title: 'Users', description: 'Browse and manage every account', icon: 'users' },
+  { href: '/impersonation-history', title: 'Impersonation History', description: 'Audit trail of support sessions', icon: 'clock' },
+];
 
-// fe §4.3 — deliberately sparse (api-spec §5: SUPER_ADMIN bootstrap shape
-// has no stats block in Epic-01, "nothing in the requirements asks for an SA
-// dashboard beyond the Users tool, which paginates separately"). Quick links
-// into Users / Impersonation History only — Task 12.2.
+// fe §4.3 — platform-wide metrics (GET /dashboard/stats, SUPER_ADMIN shape)
+// followed by quick-link cards into Users / Impersonation History.
 export function SuperAdminDashboardShell({ ctx }: DashboardShellProps) {
   return (
-    <section aria-labelledby="dashboard-heading" className="flex flex-col gap-lg p-lg">
-      <h1 id="dashboard-heading" className="text-xl font-semibold text-text-primary">
-        Welcome, {ctx.user.firstName}
-      </h1>
-      <p className="text-text-secondary">Super Admin dashboard — quick links to manage the platform.</p>
+    <PageLayout aria-labelledby="dashboard-heading">
+      <PageHeader
+        titleId="dashboard-heading"
+        title={`Welcome, ${ctx.user.firstName}`}
+        subtitle="Super Admin dashboard — platform overview and quick links."
+      />
 
-      <nav aria-label="Quick links" className="flex flex-col gap-sm">
-        {QUICK_LINKS.map((link) => (
-          <a
-            key={link.href}
-            href={link.href}
-            className="rounded-md border border-border-soft bg-surface-1 p-md text-body-lg font-semibold text-text-primary shadow-card-soft hover:border-brand-primary"
-          >
-            {link.label}
-          </a>
-        ))}
-      </nav>
-    </section>
+      <DashboardMetrics skeletonCount={7} />
+
+      <QuickLinks links={QUICK_LINKS} />
+    </PageLayout>
   );
 }

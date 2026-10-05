@@ -3,6 +3,7 @@
 import type { ChangeEvent } from 'react';
 
 import type { Role } from '../../types/auth';
+import { FILTER_CARD_CLASSNAME } from '../shared/filterCard';
 
 import type { UserStatus } from './UsersTable';
 
@@ -38,9 +39,9 @@ export function UserFilters({ value, onChange }: UserFiltersProps) {
   }
 
   return (
-    <form role="search" aria-label="Filter users" onSubmit={(event) => event.preventDefault()} className="flex flex-wrap items-end gap-md">
-      <div className="flex flex-col gap-xxs">
-        <label htmlFor="user-filter-search" className="text-caption text-text-secondary">
+    <form role="search" aria-label="Filter users" onSubmit={(event) => event.preventDefault()} className={`flex flex-wrap items-end gap-md ${FILTER_CARD_CLASSNAME}`}>
+      <div className="flex min-w-0 flex-[1_1_14rem] flex-col gap-xxs">
+        <label htmlFor="user-filter-search" className="field-label">
           Search
         </label>
         <input
@@ -49,19 +50,21 @@ export function UserFilters({ value, onChange }: UserFiltersProps) {
           value={value.search}
           onChange={handleSearchChange}
           placeholder="Search by name or email"
-          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary"
+          autoComplete="off"
+          maxLength={100}
+          className="w-full min-w-0"
         />
       </div>
 
-      <div className="flex flex-col gap-xxs">
-        <label htmlFor="user-filter-role" className="text-caption text-text-secondary">
+      <div className="flex min-w-0 flex-[1_1_9rem] flex-col gap-xxs">
+        <label htmlFor="user-filter-role" className="field-label">
           Role
         </label>
         <select
           id="user-filter-role"
           value={value.role}
           onChange={handleRoleChange}
-          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary"
+          className="w-full min-w-0"
         >
           <option value="">All roles</option>
           {ROLE_OPTIONS.map((role) => (
@@ -72,15 +75,15 @@ export function UserFilters({ value, onChange }: UserFiltersProps) {
         </select>
       </div>
 
-      <div className="flex flex-col gap-xxs">
-        <label htmlFor="user-filter-status" className="text-caption text-text-secondary">
+      <div className="flex min-w-0 flex-[1_1_9rem] flex-col gap-xxs">
+        <label htmlFor="user-filter-status" className="field-label">
           Status
         </label>
         <select
           id="user-filter-status"
           value={value.status}
           onChange={handleStatusChange}
-          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary"
+          className="w-full min-w-0"
         >
           <option value="">All statuses</option>
           {STATUS_OPTIONS.map((status) => (

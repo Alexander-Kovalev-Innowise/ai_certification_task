@@ -1,45 +1,38 @@
 'use client';
 
-import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { RoleGuard } from '../../src/components/RoleGuard';
+import { SkeletonCard } from '../../src/components/shared/Skeleton';
+import { useBootstrap } from '../../src/hooks/useBootstrap';
 
-const NAV_LINKS = [
-  { href: '/users', label: 'Users' },
-  { href: '/impersonation-history', label: 'Impersonation History' },
-] as const;
+// The nav shell lives in the root-level <AuthenticatedShell>
+// (src/components/shell/AuthenticatedShell.tsx) so it persists across
+// navigation; this layout only gates the role and holds the content area on a
+// skeleton until GET /me/bootstrap resolves.
+function SuperAdminLayoutContent({ children }: { children: ReactNode }) {
+  const { isLoading } = useBootstrap();
 
-// fe §3/§4.7 — `/account/profile` (Task 18.1) is the shared GET/PATCH /me
-// editor every authenticated role reaches; rendered separately from
-// NAV_LINKS (pushed to the far end of the bar via `ml-auto`) since it's a
-// persistent account/settings link, not one of this role's feature routes.
-const ACCOUNT_LINK = { href: '/account/profile', label: 'Account' } as const;
+  if (isLoading) {
+    return (
+      <div className="p-lg" aria-busy="true" aria-label="Loading super admin portal">
+        <SkeletonCard />
+      </div>
+    );
+  }
 
-// fe §3/§4.3 — `(super-admin)/layout.tsx`: RoleGuard(SUPER_ADMIN) + SA nav
-// shell (Users, Impersonation History links). Wraps every Super Admin route
-// this phase adds (`/users`, `/users/[id]`) — NOT `/dashboard`, which is the
-// single unified route living outside every `(role)` group (fe §3's
-// 2026-09-24 correction, see apps/client/app/dashboard/page.tsx).
+  return <>{children}</>;
+}
+
+// fe §3/§4.3 — `(super-admin)/layout.tsx`: RoleGuard(SUPER_ADMIN). Wraps every
+// Super Admin route (`/users`, `/users/[id]`, `/impersonation-history`) — NOT
+// `/dashboard`, which is the single unified route living outside every
+// `(role)` group (fe §3's 2026-09-24 correction, see
+// apps/client/app/dashboard/page.tsx).
 export default function SuperAdminLayout({ children }: { children: ReactNode }) {
   return (
     <RoleGuard allow="SUPER_ADMIN">
-      <div className="flex min-h-screen flex-col">
-        <nav
-          aria-label="Super Admin navigation"
-          className="flex items-center gap-lg border-b border-border-soft bg-surface-1 px-lg py-sm"
-        >
-          {NAV_LINKS.map((link) => (
-            <Link key={link.href} href={link.href} className="text-body text-text-primary hover:text-brand-primary">
-              {link.label}
-            </Link>
-          ))}
-          <Link href={ACCOUNT_LINK.href} className="ml-auto text-body text-text-primary hover:text-brand-primary">
-            {ACCOUNT_LINK.label}
-          </Link>
-        </nav>
-        <main className="flex-1">{children}</main>
-      </div>
+      <SuperAdminLayoutContent>{children}</SuperAdminLayoutContent>
     </RoleGuard>
   );
 }
