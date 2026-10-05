@@ -42,6 +42,7 @@ export class ImpersonationService {
     }
 
     this.assertNotTargetingSuperAdmin(target);
+    this.assertTargetIsActive(target);
     this.assertNotAlreadyImpersonating(ctx);
 
     const log = await this.impersonationRepository.create({ adminUserId: ctx.userId, targetUserId: target.id });
@@ -85,6 +86,18 @@ export class ImpersonationService {
     if (target.role === 'SUPER_ADMIN') {
       throw new UnprocessableEntityException({
         message: 'Cannot impersonate a Super Admin',
+        errorCode: 'IMPERSONATION_TARGET_INVALID',
+      });
+    }
+  }
+
+  // Deactivated accounts stay findable (deactivation no longer soft-deletes),
+  // so reject them explicitly: JwtAuthGuard would 401 every request of the
+  // minted token anyway, there is no point issuing it.
+  private assertTargetIsActive(target: User): void {
+    if (target.status !== 'ACTIVE') {
+      throw new UnprocessableEntityException({
+        message: 'Cannot impersonate an inactive user',
         errorCode: 'IMPERSONATION_TARGET_INVALID',
       });
     }
@@ -150,11 +163,12 @@ export class ImpersonationService {
 
     const page = buildPaginatedResponse(rows, limit, (row) => ({ createdAt: row.startedAt.toISOString(), id: row.id }));
 
-    const items = await Promise.all(page.items.map((row) => this.toHistoryRow(row)));
+    const writeCounts = await this.impersonationRepository.countAuditedWrites(page.items.map((row) => row.id));
+    const items = await Promise.all(page.items.map((row) => this.toHistoryRow(row, writeCounts.get(row.id) ?? 0)));
     return { ...page, items };
   }
 
-  private async toHistoryRow(row: ImpersonationLogWithUsers): Promise<ImpersonationLogResponseDto> {
+  private async toHistoryRow(row: ImpersonationLogWithUsers, writeCount: number): Promise<ImpersonationLogResponseDto> {
     const [admin, target] = await Promise.all([this.toUserSummary(row.admin), this.toUserSummary(row.target)]);
     return {
       id: row.id,
@@ -163,6 +177,7 @@ export class ImpersonationService {
       startedAt: row.startedAt,
       endedAt: row.endedAt,
       durationSeconds: row.durationSeconds,
+      writeCount,
     };
   }
 

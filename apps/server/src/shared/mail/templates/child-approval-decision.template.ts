@@ -6,8 +6,9 @@ export interface ChildApprovalDecisionTemplateData {
   playerName: string;
   amount: string;
   paymentType: 'USD' | 'TOKEN';
-  decision: 'DENIED' | 'EXPIRED';
+  decision: 'APPROVED' | 'DENIED' | 'EXPIRED' | 'INFO_REQUESTED';
   parentNotes?: string | null;
+  title?: string | null;
 }
 
 export interface ChildApprovalDecisionEmailPayload {
@@ -17,6 +18,8 @@ export interface ChildApprovalDecisionEmailPayload {
 }
 
 const SUBJECT_BY_DECISION: Record<ChildApprovalDecisionTemplateData['decision'], string> = {
+  APPROVED: 'Your purchase request was approved',
+  INFO_REQUESTED: 'Your parent needs more information about your request',
   DENIED: 'Your purchase request was denied',
   EXPIRED: 'Your purchase request has expired',
 };

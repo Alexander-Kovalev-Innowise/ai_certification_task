@@ -38,7 +38,7 @@ export class ImpersonationController {
   @ApiResponse({ status: 400 })
   @ApiResponse({ status: 403, description: 'Non-Super-Admin caller, or already impersonating', schema: { example: { errorCode: 'IMPERSONATION_NOT_ALLOWED' } } })
   @ApiResponse({ status: 404, description: 'Unknown target' })
-  @ApiResponse({ status: 422, description: 'Target is a SUPER_ADMIN', schema: { example: { errorCode: 'IMPERSONATION_TARGET_INVALID' } } })
+  @ApiResponse({ status: 422, description: 'Target is a SUPER_ADMIN or is not ACTIVE', schema: { example: { errorCode: 'IMPERSONATION_TARGET_INVALID' } } })
   @ApiResponse({ status: 429, description: 'Too many attempts (10/hour, keyed by the admin)' })
   async start(@CurrentUser() ctx: AuthContext, @Body() dto: StartImpersonationDto): Promise<ImpersonationStartResponseDto> {
     return this.impersonationService.start(ctx, dto);

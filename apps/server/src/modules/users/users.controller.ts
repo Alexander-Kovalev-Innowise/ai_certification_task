@@ -10,7 +10,9 @@ import { RequiresCapability } from '../../shared/security/decorators/requires-ca
 import { Roles } from '../../shared/security/decorators/roles.decorator';
 
 import { AccountLifecycleService } from './account-lifecycle.service';
+import { DeletionLogRowDto } from './dto/deletion-log-row.dto';
 import { GdprDeleteUserDto } from './dto/gdpr-delete-user.dto';
+import { ListDeletionLogQueryDto } from './dto/list-deletion-log-query.dto';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import {
   CoachBootstrapDto,
@@ -107,6 +109,18 @@ export class UsersController {
   @ApiResponse({ status: 403 })
   async listUsers(@Query() query: ListUsersQueryDto): Promise<PaginatedResponseDto<UserDirectoryRowDto>> {
     return this.usersService.listUsers(query);
+  }
+
+  // GDPR deletion audit trail (read-only). MUST stay declared before
+  // `users/:id` — otherwise "deletion-log" is captured as an :id.
+  @Roles(Role.SUPER_ADMIN)
+  @RequiresCapability(Capability.GDPR_DELETE_USER)
+  @Get('users/deletion-log')
+  @ApiOperation({ summary: 'GDPR deletion log: who was erased, by whom, why, when (keyset pagination, newest first)' })
+  @ApiResponse({ status: 200, description: 'PaginatedResponse<DeletionLogRowDto> — {id, originalUserId, originalEmail, deletedBy, reason, deletedAt}', type: DeletionLogRowDto, isArray: true })
+  @ApiResponse({ status: 403 })
+  async listDeletionLog(@Query() query: ListDeletionLogQueryDto): Promise<PaginatedResponseDto<DeletionLogRowDto>> {
+    return this.accountLifecycleService.listDeletionLog(query);
   }
 
   // Task 3.2 (api §3 "GET /users/:id"). withDeleted: true opt-in (arch §11.1).

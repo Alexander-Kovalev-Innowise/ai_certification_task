@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { ImpersonationLog, Prisma, User } from '@prisma/client';
+import type { ImpersonationAuditLog, ImpersonationLog, Prisma, User } from '@prisma/client';
 
 import type { KeysetCursor } from '../../shared/http/pagination.dto';
 import { PrismaService } from '../../shared/prisma/prisma.service';
@@ -16,6 +16,15 @@ export interface ListHistoryParams {
   targetUserId?: string;
   dateFrom?: Date;
   dateTo?: Date;
+}
+
+export interface CreateImpersonationAuditEntryInput {
+  actorUserId: string;
+  effectiveUserId: string;
+  impersonationLogId: string;
+  method: string;
+  path: string;
+  statusCode: number;
 }
 
 export type ImpersonationLogWithUsers = ImpersonationLog & { admin: User; target: User };
@@ -44,6 +53,25 @@ export class ImpersonationRepository {
   async markEnded(id: string, endedAt: Date, durationSeconds: number, tx?: Prisma.TransactionClient): Promise<ImpersonationLog> {
     const client = tx ?? this.prisma;
     return client.impersonationLog.update({ where: { id }, data: { endedAt, durationSeconds } });
+  }
+
+  // Writes made while impersonating (impersonation-audit.interceptor.ts) —
+  // INSERT-only table in the `audit` schema, FK-less on purpose.
+  async createAuditEntry(data: CreateImpersonationAuditEntryInput): Promise<ImpersonationAuditLog> {
+    return this.prisma.impersonationAuditLog.create({ data });
+  }
+
+  /** logId -> number of audited (non-GET) requests made inside that session. */
+  async countAuditedWrites(logIds: string[]): Promise<Map<string, number>> {
+    if (logIds.length === 0) {
+      return new Map();
+    }
+    const groups = await this.prisma.impersonationAuditLog.groupBy({
+      by: ['impersonationLogId'],
+      where: { impersonationLogId: { in: logIds } },
+      _count: { _all: true },
+    });
+    return new Map(groups.map((g) => [g.impersonationLogId, g._count._all]));
   }
 
   /**

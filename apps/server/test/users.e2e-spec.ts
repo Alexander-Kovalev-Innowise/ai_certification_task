@@ -262,7 +262,7 @@ describe('UsersController — Super Admin directory (e2e, Task 3.1)', () => {
   it('POST /users/:id/deactivate on an already-inactive target -> 409 CONFLICT', async () => {
     const admin = await insertUser({ role: 'SUPER_ADMIN' });
     const adminToken = await signToken(admin);
-    const target = await insertUser({ status: 'INACTIVE', deletedAt: new Date() });
+    const target = await insertUser({ status: 'INACTIVE' });
 
     const res = await request(app.getHttpServer())
       .post(`/users/${target.id}/deactivate`)
@@ -325,7 +325,7 @@ describe('UsersController — Super Admin directory (e2e, Task 3.1)', () => {
 
   it('POST /users/:id/reactivate as a non-Super-Admin -> 403', async () => {
     const user = await insertUser();
-    const target = await insertUser({ status: 'INACTIVE', deletedAt: new Date() });
+    const target = await insertUser({ status: 'INACTIVE' });
     const accessToken = await signToken(user);
 
     const res = await request(app.getHttpServer())
@@ -477,6 +477,7 @@ describe('UsersController — Super Admin directory (e2e, Task 3.1)', () => {
         address: '456 Business Ave',
         website: 'https://real-trainer.example.com',
         description: 'A thriving training business',
+        logoUrl: 'http://localhost:3000/uploads/logos/real.png',
       },
     });
 
@@ -496,6 +497,7 @@ describe('UsersController — Super Admin directory (e2e, Task 3.1)', () => {
       address: null,
       website: null,
       description: null,
+      logoUrl: null,
     });
 
     // Irreversibility: reactivate hard-fails, and login is permanently impossible.
@@ -504,5 +506,163 @@ describe('UsersController — Super Admin directory (e2e, Task 3.1)', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(reactivateRes.status).toBe(409);
     expect(reactivateRes.body.errorCode).toBe('CANNOT_REACTIVATE_DELETED_USER');
+  });
+
+  // ---- deactivation keeps the user visible (status, not soft-delete) ----
+
+  it('a deactivated user stays in GET /users, filterable by status=INACTIVE, with deletedAt still null', async () => {
+    const admin = await insertUser({ role: 'SUPER_ADMIN' });
+    const adminToken = await signToken(admin);
+    const target = await insertUser();
+    const other = await insertUser();
+
+    await request(app.getHttpServer()).post(`/users/${target.id}/deactivate`).set('Authorization', `Bearer ${adminToken}`).expect(200);
+
+    const row = await db.prisma.user.findUnique({ where: { id: target.id } });
+    expect(row?.status).toBe('INACTIVE');
+    expect(row?.deletedAt).toBeNull();
+
+    const inactive = await request(app.getHttpServer()).get('/users').query({ status: 'INACTIVE' }).set('Authorization', `Bearer ${adminToken}`).expect(200);
+    expect(inactive.body.items.map((u: { id: string }) => u.id)).toEqual([target.id]);
+
+    const active = await request(app.getHttpServer()).get('/users').query({ status: 'ACTIVE' }).set('Authorization', `Bearer ${adminToken}`).expect(200);
+    const activeIds = active.body.items.map((u: { id: string }) => u.id);
+    expect(activeIds).toContain(other.id);
+    expect(activeIds).not.toContain(target.id);
+
+    const all = await request(app.getHttpServer()).get('/users').set('Authorization', `Bearer ${adminToken}`).expect(200);
+    expect(all.body.items.map((u: { id: string }) => u.id)).toContain(target.id);
+  });
+
+  it('GET /users?status=DELETED lists GDPR-deleted users', async () => {
+    const admin = await insertUser({ role: 'SUPER_ADMIN' });
+    const adminToken = await signToken(admin);
+    const target = await insertUser();
+    await request(app.getHttpServer()).delete(`/users/${target.id}`).set('Authorization', `Bearer ${adminToken}`).send({ reason: 'gdpr' }).expect(204);
+
+    const deleted = await request(app.getHttpServer()).get('/users').query({ status: 'DELETED' }).set('Authorization', `Bearer ${adminToken}`).expect(200);
+    expect(deleted.body.items).toHaveLength(1);
+    expect(deleted.body.items[0]).toMatchObject({ id: target.id, status: 'DELETED' });
+  });
+
+  it('login of a deactivated user -> 401 ACCOUNT_INACTIVE (correct password), generic 401 for a wrong password', async () => {
+    const admin = await insertUser({ role: 'SUPER_ADMIN' });
+    const adminToken = await signToken(admin);
+    const target = await insertUser();
+    await request(app.getHttpServer()).post(`/users/${target.id}/deactivate`).set('Authorization', `Bearer ${adminToken}`).expect(200);
+
+    const res = await request(app.getHttpServer()).post('/auth/login').send({ email: target.email, password: KNOWN_PASSWORD });
+    expect(res.status).toBe(401);
+    expect(res.body.errorCode).toBe('ACCOUNT_INACTIVE');
+
+    const wrong = await request(app.getHttpServer()).post('/auth/login').send({ email: target.email, password: 'WrongPassword123' });
+    expect(wrong.status).toBe(401);
+    expect(wrong.body.errorCode).toBe('UNAUTHORIZED');
+  });
+
+  it('a Super Admin can edit and then reactivate a deactivated user', async () => {
+    const admin = await insertUser({ role: 'SUPER_ADMIN' });
+    const adminToken = await signToken(admin);
+    const target = await insertUser();
+    await request(app.getHttpServer()).post(`/users/${target.id}/deactivate`).set('Authorization', `Bearer ${adminToken}`).expect(200);
+
+    const edited = await request(app.getHttpServer())
+      .patch(`/users/${target.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ firstName: 'StillEditable' });
+    expect(edited.status).toBe(200);
+    expect(edited.body).toMatchObject({ firstName: 'StillEditable', status: 'INACTIVE' });
+
+    const reactivated = await request(app.getHttpServer()).post(`/users/${target.id}/reactivate`).set('Authorization', `Bearer ${adminToken}`);
+    expect(reactivated.status).toBe(200);
+    expect(reactivated.body.status).toBe('ACTIVE');
+  });
+
+  it('forgot-password for a deactivated user enqueues no reset mail (generic response, same as unknown email)', async () => {
+    const admin = await insertUser({ role: 'SUPER_ADMIN' });
+    const adminToken = await signToken(admin);
+    const target = await insertUser();
+    await request(app.getHttpServer()).post(`/users/${target.id}/deactivate`).set('Authorization', `Bearer ${adminToken}`).expect(200);
+
+    const res = await request(app.getHttpServer()).post('/auth/forgot-password').send({ email: target.email });
+    expect(res.status).toBe(202);
+    expect(await db.prisma.outboxJob.count({ where: { type: 'EMAIL_PASSWORD_RESET' } })).toBe(0);
+  });
+
+  // ---- GDPR completeness + deletion log ----
+
+  it('GDPR delete of a coach nulls certifications and snapshots profile rows into dataBackupJson', async () => {
+    const admin = await insertUser({ role: 'SUPER_ADMIN' });
+    const adminToken = await signToken(admin);
+
+    const trainerUser = await insertUser({ role: 'TRAINER' });
+    const trainer = await db.prisma.trainerProfile.create({ data: { userId: trainerUser.id, businessName: 'Biz' } });
+    const coachUser = await insertUser({ role: 'COACH' });
+    await db.prisma.coachProfile.create({
+      data: { userId: coachUser.id, trainerId: trainer.id, bio: 'Secret bio', credentials: 'Level 5', certifications: 'CPR', status: 'ACTIVE' },
+    });
+
+    await request(app.getHttpServer()).delete(`/users/${coachUser.id}`).set('Authorization', `Bearer ${adminToken}`).send({ reason: 'gdpr' }).expect(204);
+
+    const coachRow = await db.prisma.coachProfile.findUnique({ where: { userId: coachUser.id } });
+    expect(coachRow).toMatchObject({ bio: null, credentials: null, certifications: null });
+
+    const log = await db.prisma.userDeletionLog.findFirstOrThrow({ where: { originalUserId: coachUser.id } });
+    const backup = log.dataBackupJson as { profiles: { coachProfile: { certifications: string; bio: string } | null; trainerProfile: unknown; playerProfiles: unknown[]; associations: unknown[] } };
+    expect(backup.profiles.coachProfile).toMatchObject({ certifications: 'CPR', bio: 'Secret bio' });
+    expect(backup.profiles.trainerProfile).toBeNull();
+    expect(backup.profiles.playerProfiles).toEqual([]);
+    expect(backup.profiles.associations).toEqual([]);
+  });
+
+  it('GDPR delete of a parent snapshots their player profiles and associations', async () => {
+    const admin = await insertUser({ role: 'SUPER_ADMIN' });
+    const adminToken = await signToken(admin);
+    const trainerUser = await insertUser({ role: 'TRAINER' });
+    const trainer = await db.prisma.trainerProfile.create({ data: { userId: trainerUser.id, businessName: 'Biz' } });
+    const parent = await insertUser();
+    const profile = await db.prisma.playerProfile.create({
+      data: { accountUserId: parent.id, name: 'Real Kid', dateOfBirth: new Date('2015-01-01'), gender: 'MALE', isSelf: false },
+    });
+    await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.id, playerProfileId: profile.id } });
+
+    await request(app.getHttpServer()).delete(`/users/${parent.id}`).set('Authorization', `Bearer ${adminToken}`).send({ reason: 'gdpr' }).expect(204);
+
+    const log = await db.prisma.userDeletionLog.findFirstOrThrow({ where: { originalUserId: parent.id } });
+    const backup = log.dataBackupJson as { profiles: { playerProfiles: { name: string }[]; associations: { playerProfileId: string }[] } };
+    expect(backup.profiles.playerProfiles).toHaveLength(1);
+    expect(backup.profiles.playerProfiles[0]!.name).toBe('Real Kid');
+    expect(backup.profiles.associations).toHaveLength(1);
+    expect(backup.profiles.associations[0]!.playerProfileId).toBe(profile.id);
+  });
+
+  it('GET /users/deletion-log is Super Admin only, keyset-paginated, newest first, and omits dataBackupJson', async () => {
+    const admin = await insertUser({ role: 'SUPER_ADMIN' });
+    const adminToken = await signToken(admin);
+    const targets = [await insertUser(), await insertUser(), await insertUser()];
+    for (const t of targets) {
+      await request(app.getHttpServer()).delete(`/users/${t.id}`).set('Authorization', `Bearer ${adminToken}`).send({ reason: `reason-${t.id}` }).expect(204);
+    }
+
+    const nonAdmin = await insertUser();
+    await request(app.getHttpServer()).get('/users/deletion-log').set('Authorization', `Bearer ${await signToken(nonAdmin)}`).expect(403);
+    await request(app.getHttpServer()).get('/users/deletion-log').expect(401);
+
+    const first = await request(app.getHttpServer()).get('/users/deletion-log').query({ limit: 2 }).set('Authorization', `Bearer ${adminToken}`);
+    expect(first.status).toBe(200);
+    expect(first.body.items).toHaveLength(2);
+    expect(first.body.hasMore).toBe(true);
+    expect(Object.keys(first.body.items[0]).sort()).toEqual(['deletedAt', 'deletedBy', 'id', 'originalEmail', 'originalUserId', 'reason'].sort());
+    expect(first.body.items[0].deletedBy).toBe(admin.id);
+    expect(JSON.stringify(first.body)).not.toMatch(/dataBackupJson/);
+    // newest first: the last deleted target comes first
+    expect(first.body.items[0].originalUserId).toBe(targets[2]!.id);
+    expect(first.body.items[0].reason).toBe(`reason-${targets[2]!.id}`);
+
+    const second = await request(app.getHttpServer()).get('/users/deletion-log').query({ limit: 2, cursor: first.body.nextCursor }).set('Authorization', `Bearer ${adminToken}`);
+    expect(second.status).toBe(200);
+    expect(second.body.items).toHaveLength(1);
+    expect(second.body.items[0].originalUserId).toBe(targets[0]!.id);
+    expect(second.body.hasMore).toBe(false);
   });
 });

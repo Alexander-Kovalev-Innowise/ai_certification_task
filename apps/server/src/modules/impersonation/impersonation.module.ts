@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 
 import { env } from '../../shared/config/config.module';
 import { AuthModule } from '../auth/auth.module';
 import { UsersModule } from '../users/users.module';
 
+import { ImpersonationAuditInterceptor } from './impersonation-audit.interceptor';
 import { ImpersonationMaintenanceJob } from './impersonation-maintenance.job';
 import { ImpersonationController } from './impersonation.controller';
 import { ImpersonationRepository } from './impersonation.repository';
@@ -21,6 +23,8 @@ import { ImpersonationService } from './impersonation.service';
   providers: [
     ImpersonationRepository,
     ImpersonationService,
+    // Global: audits writes made under any impersonation token, on any route.
+    { provide: APP_INTERCEPTOR, useClass: ImpersonationAuditInterceptor },
     ...(env.SCHEDULER_ENABLED ? [ImpersonationMaintenanceJob] : []),
   ],
   exports: [ImpersonationRepository, ImpersonationService],

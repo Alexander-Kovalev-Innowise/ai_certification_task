@@ -43,7 +43,6 @@ export class AuthController {
   @ApiOperation({ summary: 'Rotate the refresh token cookie, issuing a fresh access token' })
   @ApiResponse({ status: 200, type: AuthSessionResponseDto })
   @ApiResponse({ status: 401, description: 'Missing/expired/reused refresh token' })
-  @ApiResponse({ status: 403, description: 'CSRF token missing or mismatched', schema: { example: { errorCode: 'CSRF_MISMATCH' } } })
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<AuthSessionResponseDto> {
     return this.authService.refresh(req, res);
   }
@@ -61,7 +60,6 @@ export class AuthController {
   @ApiOperation({ summary: 'Revoke the current session (and, with ?everywhere=true, every session)' })
   @ApiResponse({ status: 204 })
   @ApiResponse({ status: 401 })
-  @ApiResponse({ status: 403, description: 'CSRF token missing or mismatched', schema: { example: { errorCode: 'CSRF_MISMATCH' } } })
   async logout(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,

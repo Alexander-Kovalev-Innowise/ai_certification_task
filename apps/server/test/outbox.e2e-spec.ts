@@ -124,6 +124,8 @@ describe('Outbox — end-to-end DoD sweep (Task 9.2, real feature flows)', () =>
       email: `${randomUUID()}@example.com`,
       password: 'Password1',
       phone: '+14155552671',
+      parentFirstName: 'Outbox',
+      parentLastName: 'Parent',
       playerName: 'Outbox Sweep Player',
       dateOfBirth: '2015-01-01',
       gender: 'OTHER',
@@ -239,8 +241,9 @@ describe('Outbox — end-to-end DoD sweep (Task 9.2, real feature flows)', () =>
     const link = await seedPlayerStaticLink();
     await request(app.getHttpServer()).post(`/share-links/${link.code}/redeem`).send(redeemDto());
 
+    // Anonymous registration enqueues two jobs: the ShareLink confirmation and the email verification.
     const firstPassProcessed = await outboxService.drainOnce();
-    expect(firstPassProcessed).toBe(1);
+    expect(firstPassProcessed).toBe(2);
 
     const done = await db.prisma.outboxJob.findFirstOrThrow({ where: { type: 'EMAIL_SHARELINK_CONFIRMATION' } });
     expect(done.status).toBe('DONE');

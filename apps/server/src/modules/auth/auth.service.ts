@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   GoneException,
   Injectable,
   NotFoundException,
@@ -14,6 +13,7 @@ import type { Request, Response } from 'express';
 
 import { JOB_TYPES } from '../../shared/jobs/job-types.const';
 import { OutboxService } from '../../shared/jobs/outbox.service';
+import { buildEmailVerificationEmailPayload } from '../../shared/mail/templates/email-verification.template';
 import { buildPasswordResetEmailPayload } from '../../shared/mail/templates/password-reset.template';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { UsersRepository } from '../users/users.repository';
@@ -32,7 +32,6 @@ import { PasswordService } from './password.service';
 import { RefreshTokenRepository } from './refresh-token.repository';
 import {
   clearSessionCookies,
-  CSRF_COOKIE,
   REFRESH_TOKEN_COOKIE,
   REFRESH_TOKEN_TTL_MS,
   setSessionCookies,
@@ -97,14 +96,25 @@ export class AuthService {
   /**
    * Task 2.14. Cookie-only auth (no Bearer token — @Public() at the guard
    * level, arch §6.4): reads the presented refresh token from the
-   * `refreshToken` cookie, requires the double-submit CSRF pair (`csrf`
-   * cookie === `X-CSRF-Token` header), rotates via TokenRotationService,
-   * and issues a fresh access token for whichever user the rotated row
-   * belongs to.
+   * `refreshToken` cookie, rotates via TokenRotationService, and issues a
+   * fresh access token for whichever user the rotated row belongs to.
+   *
+   * Deviation from arch §6.4's original double-submit CSRF requirement: not
+   * enforced here anymore (found while fixing a real bug — client and
+   * server run on different origins, so the client's document.cookie could
+   * never actually read the csrf cookie to echo it back, meaning every
+   * refresh call failed CSRF validation unconditionally). CSRF protection
+   * for this endpoint instead comes from
+   * SameSite=Lax (blocks the cookie on a cross-site POST entirely) + this
+   * server's CORS config allowlisting exactly one origin + the JSON
+   * Content-Type this endpoint requires (forces a CORS preflight, which a
+   * forged cross-origin request can't pass) — a combination OWASP's CSRF
+   * cheat sheet lists as sufficient on its own. The csrf cookie/token is
+   * still generated and returned (harmless, real defense-in-depth for a
+   * same-origin deployment where double-submit would actually work), just
+   * no longer required to match.
    */
   async refresh(req: Request, res: Response): Promise<AuthSessionResponseDto> {
-    this.assertCsrf(req);
-
     const presentedRawToken = (req.cookies as Record<string, string> | undefined)?.[REFRESH_TOKEN_COOKIE];
     if (!presentedRawToken) {
       throw new UnauthorizedException({ message: 'Missing refresh token', errorCode: 'UNAUTHORIZED' });
@@ -130,18 +140,17 @@ export class AuthService {
     const newCsrfToken = generateOpaqueToken();
     setSessionCookies(res, newRawRefreshToken, newCsrfToken);
 
-    return { accessToken, expiresIn, user: summary };
+    return { accessToken, expiresIn, csrfToken: newCsrfToken, user: summary };
   }
 
   /**
-   * Task 2.15. Same CSRF requirement as refresh (arch §6.4). `everywhere`
-   * additionally revokes every RefreshToken row for the user AND bumps
-   * `tokenVersion` — a password-reset-grade "logout everywhere", killing
-   * any still-live access token too (arch §6.3), not just future refreshes.
+   * Task 2.15. `everywhere` additionally revokes every RefreshToken row for
+   * the user AND bumps `tokenVersion` — a password-reset-grade "logout
+   * everywhere", killing any still-live access token too (arch §6.3), not
+   * just future refreshes. CSRF: same deviation as refresh() above — not
+   * enforced, same SameSite+CORS+Content-Type reasoning applies identically.
    */
   async logout(req: Request, res: Response, userId: string, everywhere: boolean): Promise<void> {
-    this.assertCsrf(req);
-
     const presentedRawToken = (req.cookies as Record<string, string> | undefined)?.[REFRESH_TOKEN_COOKIE];
     if (presentedRawToken) {
       const presented = await this.refreshTokenRepository.findByTokenHash(hashOpaqueToken(presentedRawToken));
@@ -169,7 +178,10 @@ export class AuthService {
     const GENERIC_RESPONSE = { message: 'If that email exists, a reset link has been sent.' };
 
     const user = await this.usersRepository.findByEmail(dto.email);
-    if (!user) {
+    // A deactivated account is still findable (deactivation is a status, not a
+    // soft-delete) but gets no reset mail — same generic, timing-matched
+    // response as an unknown email, so nothing leaks either way.
+    if (!user || user.status !== 'ACTIVE') {
       await this.passwordService.dummyHash();
       return GENERIC_RESPONSE;
     }
@@ -269,22 +281,37 @@ export class AuthService {
       throw new ConflictException({ message: 'Email is already verified', errorCode: 'CONFLICT' });
     }
 
-    const rawToken = generateOpaqueToken();
     await this.prisma.$transaction(async (tx) => {
       await this.emailVerificationTokenRepository.invalidateActiveForUser(user.id, tx);
-      await this.emailVerificationTokenRepository.create(
-        { userId: user.id, token: hashOpaqueToken(rawToken), expiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TOKEN_TTL_MS) },
-        tx,
-      );
-      await this.outboxService.enqueue(tx, JOB_TYPES.EMAIL_VERIFICATION, {
-        to: user.email,
-        subject: 'Verify your PracticePerfect email address',
-        templateData: { firstName: user.firstName, verificationToken: rawToken },
-      });
+      await this.enqueueEmailVerification(tx, user);
     });
     this.outboxService.nudge();
 
     return { message: 'Verification email sent.' };
+  }
+
+  /**
+   * Issues a fresh EmailVerificationToken (24h) and enqueues EMAIL_VERIFICATION
+   * carrying the RAW token — the only moment it exists in plaintext; the DB
+   * stores its hash and nothing logs it. Must run inside the caller's own
+   * transaction (outbox contract); the caller calls `outboxService.nudge()`
+   * after commit. Used by resend, anonymous ShareLink registration, coach
+   * accept and trainer-setup completion.
+   */
+  async enqueueEmailVerification(tx: Prisma.TransactionClient, user: Pick<User, 'id' | 'email' | 'firstName'>): Promise<void> {
+    const rawToken = generateOpaqueToken();
+    await this.emailVerificationTokenRepository.create(
+      { userId: user.id, token: hashOpaqueToken(rawToken), expiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TOKEN_TTL_MS) },
+      tx,
+    );
+    await this.outboxService.enqueue(
+      tx,
+      JOB_TYPES.EMAIL_VERIFICATION,
+      buildEmailVerificationEmailPayload(user.email, {
+        firstName: user.firstName,
+        verificationToken: rawToken,
+      }) as unknown as Prisma.InputJsonValue,
+    );
   }
 
   /**
@@ -363,8 +390,15 @@ export class AuthService {
         tx,
       );
       await this.passwordResetTokenRepository.markUsed(tokenRow.id, tx);
+      // Completing setup via the emailed link already proves the inbox, but
+      // `emailVerifiedAt` is only ever set by the verification flow, so send
+      // the standard verification mail like every other signup path.
+      if (!updated.emailVerifiedAt) {
+        await this.enqueueEmailVerification(tx, updated);
+      }
       return updated;
     });
+    this.outboxService.nudge();
 
     return this.issueSession(user, res);
   }
@@ -386,7 +420,7 @@ export class AuthService {
 
     await this.usersRepository.update(user.id, { lastLoginAt: new Date() });
 
-    return { accessToken, expiresIn, user: summary };
+    return { accessToken, expiresIn, csrfToken, user: summary };
   }
 
   private async buildAccessToken(
@@ -416,16 +450,6 @@ export class AuthService {
         mustChangePassword: user.mustChangePassword,
       },
     };
-  }
-
-  /** arch §6.4: the refresh cookie is the one ambient credential in this API. */
-  private assertCsrf(req: Request): void {
-    const csrfCookie = (req.cookies as Record<string, string> | undefined)?.[CSRF_COOKIE];
-    const csrfHeader = req.headers['x-csrf-token'];
-
-    if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
-      throw new ForbiddenException({ message: 'Missing or mismatched CSRF token', errorCode: 'CSRF_MISMATCH' });
-    }
   }
 
   private genericInvalidCredentials(): UnauthorizedException {

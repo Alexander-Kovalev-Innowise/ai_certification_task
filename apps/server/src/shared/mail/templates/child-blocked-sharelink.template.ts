@@ -9,6 +9,7 @@
 export interface ChildBlockedShareLinkTemplateData {
   guardianFirstName: string;
   childFirstName: string;
+  trainerBusinessName?: string;
   shareLinkCode: string;
 }
 
@@ -24,7 +25,7 @@ export function buildChildBlockedShareLinkEmailPayload(
 ): ChildBlockedShareLinkEmailPayload {
   return {
     to,
-    subject: 'Action needed: review a ShareLink registration attempt',
+    subject: `${data.childFirstName} wants to join ${data.trainerBusinessName ?? 'a trainer'}'s program`,
     templateData: data,
   };
 }

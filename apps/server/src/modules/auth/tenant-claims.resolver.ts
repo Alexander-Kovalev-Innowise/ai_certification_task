@@ -36,7 +36,9 @@ export class TenantClaimsResolver {
 
     if (user.role === 'COACH') {
       const coachProfile = await this.prisma.coachProfile.findUnique({ where: { userId: user.id } });
-      return { accountType: 'ADULT', trainerId: coachProfile?.trainerId ?? null, guardianUserId: null };
+      // A coach the trainer removed (INACTIVE) keeps the row as history but gets no tenant: they can't act for that trainer.
+      const trainerId = coachProfile && coachProfile.status !== 'INACTIVE' ? coachProfile.trainerId : null;
+      return { accountType: 'ADULT', trainerId, guardianUserId: null };
     }
 
     if (user.role === 'PLAYER_PARENT') {

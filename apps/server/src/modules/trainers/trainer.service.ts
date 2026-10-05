@@ -9,6 +9,7 @@ import type { AuthContext } from '../../shared/security/auth-context.interface';
 import { generateOpaqueToken, hashOpaqueToken } from '../auth/opaque-token.util';
 import { PasswordResetTokenRepository } from '../auth/password-reset-token.repository';
 import { PasswordService } from '../auth/password.service';
+import { PrismaService } from '../../shared/prisma/prisma.service';
 import { AccountProvisioningService } from '../users/account-provisioning.service';
 
 import type { CreateTrainerDto } from './dto/create-trainer.dto';
@@ -39,6 +40,7 @@ export class TrainerService {
     private readonly passwordResetTokenRepository: PasswordResetTokenRepository,
     private readonly passwordService: PasswordService,
     private readonly outboxService: OutboxService,
+    private readonly prisma: PrismaService,
   ) {}
 
   /**
@@ -55,10 +57,11 @@ export class TrainerService {
    * actual password is set for the first time by /auth/register
    * (completeTrainerSetup, Task 2.20), which overwrites this.
    */
-  async createTrainer(dto: CreateTrainerDto): Promise<TrainerCreatedResponseDto> {
+  async createTrainer(dto: CreateTrainerDto, createdByUserId: string): Promise<TrainerCreatedResponseDto> {
     const placeholderPasswordHash = await this.passwordService.hash(generateOpaqueToken());
 
     let user;
+    let trainerProfileId = '';
     try {
       user = await this.accountProvisioningService.createUserWithProfile({
         role: 'TRAINER',
@@ -70,9 +73,25 @@ export class TrainerService {
         status: 'ACTIVE',
         mustChangePassword: true,
         createProfile: async (tx, userId) => {
-          await this.trainersRepository.create({ user: { connect: { id: userId } }, businessName: dto.businessName }, tx);
+          const profile = await this.trainersRepository.create(
+            { user: { connect: { id: userId } }, businessName: dto.businessName },
+            tx,
+          );
+          trainerProfileId = profile.id;
         },
         afterCreate: async (tx, createdUser) => {
+          // Audit: who (the Super Admin) provisioned this trainer, when, and
+          // with which business details — same transaction as the account.
+          await this.trainersRepository.createCreationLog(
+            {
+              createdByUserId,
+              trainerUserId: createdUser.id,
+              trainerProfileId,
+              businessName: dto.businessName,
+              email: createdUser.email,
+            },
+            tx,
+          );
           const rawSetupToken = generateOpaqueToken();
           await this.passwordResetTokenRepository.create(
             {
@@ -121,6 +140,49 @@ export class TrainerService {
       },
       { excludeExtraneousValues: true },
     );
+  }
+
+  /**
+   * Super Admin re-sends a trainer's account-setup invite (the original link
+   * may have expired or never arrived). Only valid while setup is still
+   * pending (`mustChangePassword`, cleared by /auth/register): every open
+   * TRAINER_SETUP token is invalidated and a fresh 7-day one is mailed, so
+   * only the newest link works.
+   */
+  async resendSetupInvite(trainerUserId: string): Promise<{ message: string }> {
+    const profile = await this.trainersRepository.findWithUserByUserId(trainerUserId);
+    if (!profile || profile.user.role !== 'TRAINER') {
+      throw new NotFoundException({ message: 'Trainer not found', errorCode: 'NOT_FOUND' });
+    }
+    if (!profile.user.mustChangePassword) {
+      throw new ConflictException({ message: 'This trainer has already completed account setup', errorCode: 'CONFLICT' });
+    }
+
+    const rawSetupToken = generateOpaqueToken();
+    await this.prisma.$transaction(async (tx) => {
+      await this.passwordResetTokenRepository.invalidateOpen(profile.user.id, 'TRAINER_SETUP', tx);
+      await this.passwordResetTokenRepository.create(
+        {
+          userId: profile.user.id,
+          token: hashOpaqueToken(rawSetupToken),
+          purpose: 'TRAINER_SETUP',
+          expiresAt: new Date(Date.now() + TRAINER_SETUP_TOKEN_TTL_MS),
+        },
+        tx,
+      );
+      await this.outboxService.enqueue(
+        tx,
+        JOB_TYPES.EMAIL_TRAINER_INVITE,
+        buildTrainerInviteEmailPayload(profile.user.email, {
+          firstName: profile.user.firstName,
+          businessName: profile.businessName,
+          setupToken: rawSetupToken,
+        }) as unknown as Prisma.InputJsonValue,
+      );
+    });
+    this.outboxService.nudge();
+
+    return { message: 'Setup invitation sent' };
   }
 
   /**

@@ -18,5 +18,7 @@ export class MeResponseDto {
   @Expose() photoUrl!: string | null;
   @Expose() emailVerified!: boolean; // emailVerifiedAt !== null — informational only, arch §6.5
   @Expose() mustChangePassword!: boolean;
+  // Saved notification preferences ({ email, sms }), null until first saved. Returned so the profile form can show what is stored.
+  @Expose() notificationPrefs!: Record<string, boolean> | null;
   @Expose() createdAt!: Date;
 }

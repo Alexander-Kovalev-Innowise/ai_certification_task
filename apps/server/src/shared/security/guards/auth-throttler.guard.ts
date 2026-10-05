@@ -3,6 +3,9 @@ import { createHash } from 'node:crypto';
 import { ExecutionContext, Injectable } from '@nestjs/common';
 import { ThrottlerGuard, ThrottlerOptions } from '@nestjs/throttler';
 
+import { env } from '../../config/config.module';
+import { areRateLimitsDisabled } from '../../config/env.schema';
+
 import type { AuthenticatedRequest } from './jwt-auth.guard';
 
 // @nestjs/throttler uses sha256 internally (its own generateKey) but does
@@ -146,4 +149,13 @@ export function buildAuthThrottlerConfigs(): ThrottlerOptions[] {
 }
 
 @Injectable()
-export class AuthThrottlerGuard extends ThrottlerGuard {}
+export class AuthThrottlerGuard extends ThrottlerGuard {
+  // RATE_LIMITS_DISABLED (e2e suites log in dozens of times from one IP):
+  // skips EVERY named throttle (default, auth-ip, auth-identity,
+  // token-consume, impersonation) — `shouldSkip` runs before the per-throttler
+  // loop. `areRateLimitsDisabled` is hard-false when NODE_ENV=production, so a
+  // stray env var can never switch rate limiting off there.
+  protected override shouldSkip(_context: ExecutionContext): Promise<boolean> {
+    return Promise.resolve(areRateLimitsDisabled(env));
+  }
+}

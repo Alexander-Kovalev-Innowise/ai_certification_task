@@ -36,6 +36,8 @@ enum UserStatus {
 enum CoachStatus {
   PENDING
   ACTIVE
+  // Removed from the trainer's organisation (history kept, can't act for the trainer).
+  INACTIVE
 
   @@schema("public")
 }
@@ -291,6 +293,10 @@ model CoachAvailabilityOverride {
   trainerId String
   reason    String
   createdAt DateTime @default(now())
+  // Epic-02 stand-in: human label of the session the coach was assigned to anyway (events don't exist until Epic-02).
+  sessionLabel   String?
+  // Coach-side acknowledgement of the override notice (US-01.10); null = not yet acknowledged.
+  acknowledgedAt DateTime?
 
   coach   CoachProfile   @relation(fields: [coachId], references: [id])
   trainer TrainerProfile @relation(fields: [trainerId], references: [id])
@@ -317,17 +323,20 @@ model ImpersonationLog {
 }
 
 model ChildPurchaseApproval {
-  id              String         @id @default(uuid())
-  playerProfileId String
-  parentUserId    String
-  eventId         String         @db.Uuid // opaque FK, no relation — Epic-02 forward reference
-  amount          Decimal        @db.Decimal(10, 2)
-  paymentType     PaymentType
-  status          ApprovalStatus @default(PENDING)
-  parentNotes     String?
-  requestedAt     DateTime       @default(now())
-  respondedAt     DateTime?
-  expiresAt       DateTime
+  id                 String         @id @default(uuid())
+  playerProfileId    String
+  parentUserId       String
+  eventId            String?        @db.Uuid // opaque FK, no relation — Epic-02 forward reference; null for child-initiated stand-in requests
+  title              String? // what the child wants to buy (child-initiated requests)
+  amount             Decimal        @db.Decimal(10, 2)
+  paymentType        PaymentType
+  status             ApprovalStatus @default(PENDING)
+  parentNotes        String?
+  infoRequestMessage String? // guardian's "request more info" message (request stays PENDING)
+  infoRequestedAt    DateTime?
+  requestedAt        DateTime       @default(now())
+  respondedAt        DateTime?
+  expiresAt          DateTime
 
   playerProfile PlayerProfile @relation(fields: [playerProfileId], references: [id])
   parent        User          @relation("Parent", fields: [parentUserId], references: [id])
@@ -349,6 +358,35 @@ model UserDeletionLog {
   deletedBy User @relation("DeletedBy", fields: [deletedByUserId], references: [id])
 
   @@schema("audit") // write-only for the app's normal DB role — see Task 1.2's GRANT statements
+}
+
+// Epic-01 audit follow-ups. Both live in the `audit` schema next to
+// UserDeletionLog. Deliberately FK-less: an audit trail must never block (or
+// be cascaded by) a later user delete/anonymize.
+model ImpersonationAuditLog {
+  id                 String   @id @default(uuid())
+  actorUserId        String // the Super Admin driving the session
+  effectiveUserId    String // the impersonated user
+  impersonationLogId String
+  method             String
+  path               String
+  statusCode         Int
+  at                 DateTime @default(now())
+
+  @@index([impersonationLogId])
+  @@schema("audit")
+}
+
+model TrainerCreationLog {
+  id               String   @id @default(uuid())
+  createdByUserId  String // the Super Admin that provisioned the trainer
+  trainerUserId    String
+  trainerProfileId String
+  businessName     String
+  email            String
+  createdAt        DateTime @default(now())
+
+  @@schema("audit")
 }
 
 model EmailVerificationToken {

@@ -36,8 +36,23 @@ export class TrainersController {
   @ApiResponse({ status: 400 })
   @ApiResponse({ status: 403 })
   @ApiResponse({ status: 409, description: 'Duplicate email', schema: { example: { errorCode: 'CONFLICT' } } })
-  async createTrainer(@Body() dto: CreateTrainerDto): Promise<TrainerCreatedResponseDto> {
-    return this.trainerService.createTrainer(dto);
+  async createTrainer(@CurrentUser() ctx: AuthContext, @Body() dto: CreateTrainerDto): Promise<TrainerCreatedResponseDto> {
+    // `auditActorId`, not `userId`: while impersonating, userId is the effective (impersonated) user.
+    return this.trainerService.createTrainer(dto, ctx.auditActorId);
+  }
+
+  // Re-send the account-setup invite to a trainer who has not finished setup.
+  // Keyed by the trainer's USER id (what the Super Admin's user-detail page has).
+  @Roles(Role.SUPER_ADMIN)
+  @RequiresCapability(Capability.CREATE_TRAINER_ACCOUNT)
+  @Post('by-user/:userId/resend-setup')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: "Super Admin re-sends a trainer's account-setup email (new 7-day link, old links stop working)" })
+  @ApiResponse({ status: 202 })
+  @ApiResponse({ status: 404, description: 'Unknown user or not a trainer' })
+  @ApiResponse({ status: 409, description: 'Trainer already completed setup', schema: { example: { errorCode: 'CONFLICT' } } })
+  async resendSetupInvite(@Param('userId') userId: string): Promise<{ message: string }> {
+    return this.trainerService.resendSetupInvite(userId);
   }
 
   // Task 3.9 (api §4.1 "GET /trainers/:id"). Coarse @Roles gate + the

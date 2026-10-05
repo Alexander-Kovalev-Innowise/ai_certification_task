@@ -19,10 +19,12 @@ export const ERROR_CODES = {
   // codes) but required as GlobalExceptionFilter's fallback for anything
   // unhandled, per Task 0.10's "unhandled -> 500 INTERNAL_ERROR" requirement.
   INTERNAL_ERROR: 'INTERNAL_ERROR',
-  // Task 2.14 (arch §6.4) — missing/mismatched double-submit CSRF pair on
-  // /auth/refresh and /auth/logout. Not in api §0.5's catalog table (added
-  // there only implicitly, via §1's "403 FORBIDDEN (errorCode: CSRF_MISMATCH)"
-  // prose) but is a distinct, client-meaningful code, so it belongs here.
+  // Task 2.14 (arch §6.4) — no longer thrown (deviation, see auth.service.ts's
+  // refresh()/logout() doc comments: the double-submit CSRF check was
+  // removed as unenforceable across this app's cross-origin client/server
+  // split, superseded by SameSite=Lax + single-origin CORS + JSON
+  // Content-Type). Kept in the catalog, unused, rather than deleted — a
+  // same-origin deployment could reinstate the check and this code again.
   CSRF_MISMATCH: 'CSRF_MISMATCH',
   // Task 2.17/2.20 (api §1) — `410 Gone` for a token that was valid in
   // shape but has expired (distinct from `404 NOT_FOUND` for unknown/
@@ -46,6 +48,13 @@ export const ERROR_CODES = {
   // (e.g. a TRAINER sending `bio`, or a COACH sending `status`). Named in
   // the endpoint-specific prose only, same category as the two entries above.
   FIELD_NOT_ALLOWED_FOR_ROLE: 'FIELD_NOT_ALLOWED_FOR_ROLE',
+  // Epic-01 audit (US-01.08, BR-003) — `409 CONFLICT` variants for
+  // `POST /coaches/invite` / `POST /coaches/invites/:id/resend`: the email
+  // already belongs to an ACTIVE coach of ANOTHER trainer / of this trainer,
+  // or the invite being resent was already accepted.
+  COACH_ALREADY_ASSIGNED: 'COACH_ALREADY_ASSIGNED',
+  COACH_ALREADY_ON_ROSTER: 'COACH_ALREADY_ON_ROSTER',
+  INVITE_ALREADY_ACCEPTED: 'INVITE_ALREADY_ACCEPTED',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

@@ -8,4 +8,6 @@ export class ImpersonationLogResponseDto {
   startedAt!: Date;
   endedAt!: Date | null;
   durationSeconds!: number | null;
+  // Non-GET requests audited inside this session (audit."ImpersonationAuditLog").
+  writeCount!: number;
 }

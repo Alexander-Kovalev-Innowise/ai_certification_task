@@ -15,6 +15,10 @@ export interface SendMailOptions {
   // password-reset template) — this port doesn't need to know about either.
   templateId?: string;
   templateData?: Record<string, unknown>;
+  // Absolute URLs contained in the rendered mail (CTA first). Filled in by
+  // OutboxService.dispatchEmail from mail-renderer.ts; adapters that surface
+  // mail for debugging/e2e (console, dev) use it, real transports ignore it.
+  links?: string[];
 }
 
 export abstract class MailService {

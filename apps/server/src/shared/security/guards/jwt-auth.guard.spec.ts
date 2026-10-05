@@ -30,13 +30,13 @@ const baseClaims: AccessTokenClaims = {
 describe('JwtAuthGuard (Task 2.4)', () => {
   let reflector: Reflector;
   let jwtService: jest.Mocked<Pick<JwtService, 'verifyAsync'>>;
-  let authSnapshotRepository: jest.Mocked<Pick<AuthSnapshotRepository, 'findForAuth'>>;
+  let authSnapshotRepository: jest.Mocked<Pick<AuthSnapshotRepository, 'findForAuth' | 'findImpersonationSession'>>;
   let guard: JwtAuthGuard;
 
   beforeEach(() => {
     reflector = new Reflector();
     jwtService = { verifyAsync: jest.fn() };
-    authSnapshotRepository = { findForAuth: jest.fn() };
+    authSnapshotRepository = { findForAuth: jest.fn(), findImpersonationSession: jest.fn() };
     guard = new JwtAuthGuard(
       reflector,
       jwtService as unknown as JwtService,
@@ -141,10 +141,12 @@ describe('JwtAuthGuard (Task 2.4)', () => {
       tokenVersion: 0,
       mustChangePassword: true,
     });
+    authSnapshotRepository.findImpersonationSession.mockResolvedValue({ endedAt: null });
     const request: Partial<AuthenticatedRequest> = { headers: { authorization: 'Bearer valid' } };
 
     await guard.canActivate(makeContext(request));
 
+    expect(authSnapshotRepository.findImpersonationSession).toHaveBeenCalledWith('log-1');
     expect(request.authContext).toMatchObject({
       userId: 'user-1',
       role: 'PLAYER_PARENT',
@@ -174,5 +176,54 @@ describe('JwtAuthGuard (Task 2.4)', () => {
     await expect(guard.canActivate(makeContext(request))).resolves.toBe(true);
     expect(authSnapshotRepository.findForAuth).not.toHaveBeenCalled();
     expect(jwtService.verifyAsync).not.toHaveBeenCalled();
+  });
+
+  describe('impersonation session revocation', () => {
+    function arrangeImpersonation(session: { endedAt: Date | null } | null) {
+      jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+      jwtService.verifyAsync.mockResolvedValue({
+        ...baseClaims,
+        act: { sub: 'admin-1', role: 'SUPER_ADMIN', imp: 'log-1' },
+      });
+      authSnapshotRepository.findForAuth.mockResolvedValue({
+        id: 'user-1',
+        status: 'ACTIVE',
+        role: 'PLAYER_PARENT',
+        tokenVersion: 0,
+        mustChangePassword: false,
+      });
+      authSnapshotRepository.findImpersonationSession.mockResolvedValue(session);
+      return { headers: { authorization: 'Bearer valid' } } as Partial<AuthenticatedRequest>;
+    }
+
+    it('rejects an impersonation token whose log has endedAt set', async () => {
+      const request = arrangeImpersonation({ endedAt: new Date() });
+      await expect(guard.canActivate(makeContext(request))).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(request.authContext).toBeUndefined();
+    });
+
+    it('rejects an impersonation token whose log row does not exist', async () => {
+      const request = arrangeImpersonation(null);
+      await expect(guard.canActivate(makeContext(request))).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('accepts an impersonation token whose log is still open', async () => {
+      const request = arrangeImpersonation({ endedAt: null });
+      await expect(guard.canActivate(makeContext(request))).resolves.toBe(true);
+    });
+
+    it('never looks up an impersonation log for a normal (non-act) token', async () => {
+      jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+      jwtService.verifyAsync.mockResolvedValue(baseClaims);
+      authSnapshotRepository.findForAuth.mockResolvedValue({
+        id: 'user-1',
+        status: 'ACTIVE',
+        role: 'PLAYER_PARENT',
+        tokenVersion: 0,
+        mustChangePassword: false,
+      });
+      await guard.canActivate(makeContext({ headers: { authorization: 'Bearer valid' } }));
+      expect(authSnapshotRepository.findImpersonationSession).not.toHaveBeenCalled();
+    });
   });
 });

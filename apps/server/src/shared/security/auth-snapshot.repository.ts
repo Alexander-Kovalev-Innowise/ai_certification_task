@@ -11,6 +11,10 @@ export interface AuthSnapshot {
   mustChangePassword: boolean;
 }
 
+export interface ImpersonationSessionSnapshot {
+  endedAt: Date | null;
+}
+
 // Task 2.4 (arch §6.3). `shared/` infrastructure — the documented exception
 // to "PrismaService is injected into repositories only": this is a guard's
 // own data-access helper, not a module repository.
@@ -30,5 +34,15 @@ export class AuthSnapshotRepository {
       where: { id: userId },
       select: { id: true, status: true, role: true, tokenVersion: true, mustChangePassword: true },
     });
+  }
+
+  /**
+   * The ImpersonationLog behind an impersonation token's `act.imp` claim.
+   * JwtAuthGuard rejects the token once `endedAt` is set (explicit exit via
+   * POST /impersonation/end, or the 60-minute cron sweep) — the token
+   * itself is not revocable, so its log row is the revocation list.
+   */
+  async findImpersonationSession(logId: string): Promise<ImpersonationSessionSnapshot | null> {
+    return this.prisma.impersonationLog.findUnique({ where: { id: logId }, select: { endedAt: true } });
   }
 }

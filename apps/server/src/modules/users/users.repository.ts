@@ -35,10 +35,10 @@ export class UsersRepository {
    * Deliberately soft-delete-respecting (via `.extended`): a GDPR-deleted
    * user (deletedAt set) is indistinguishable from a nonexistent one, which
    * is the correct anti-enumeration behavior for a deleted account. A merely
-   * deactivated user (`status: INACTIVE`, `deletedAt` still null) remains
-   * visible, which is what lets AuthService.login produce the distinct
-   * `401 ACCOUNT_INACTIVE` rather than the generic "no such user" response
-   * (Task 2.13).
+   * deactivated user (`status: INACTIVE`) never has `deletedAt` set (only
+   * GDPR delete does), so it remains visible, which is what lets
+   * AuthService.login produce the distinct `401 ACCOUNT_INACTIVE` rather
+   * than the generic "no such user" response (Task 2.13).
    */
   async findByEmail(email: string, tx?: Prisma.TransactionClient): Promise<User | null> {
     const client = tx ?? this.prisma.extended;
@@ -115,11 +115,16 @@ export class UsersRepository {
    * functional index. Matching the index's exact expression here is what
    * lets a query plan (`EXPLAIN`) actually name the index.
    *
+   * No `deletedAt` filter: the directory is an admin surface and the
+   * `status` filter (ACTIVE / INACTIVE / DELETED) is the one place that
+   * decides which lifecycle states are shown — GDPR-deleted rows are already
+   * anonymized, so listing them leaks nothing.
+   *
    * Fetches `limit + 1` rows (the caller, `buildPaginatedResponse`, uses the
    * extra row to compute `hasMore` without a separate COUNT).
    */
   async findAllPaginated(params: FindAllUsersParams): Promise<User[]> {
-    const conditions: Prisma.Sql[] = [Prisma.sql`"deletedAt" IS NULL`];
+    const conditions: Prisma.Sql[] = [];
 
     if (params.role) {
       conditions.push(Prisma.sql`"role" = ${params.role}::"Role"`);
@@ -139,11 +144,11 @@ export class UsersRepository {
       );
     }
 
-    const where = Prisma.join(conditions, ' AND ');
+    const where = conditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}` : Prisma.empty;
 
     return this.prisma.$queryRaw<User[]>`
       SELECT ${Prisma.raw(DIRECTORY_COLUMNS)} FROM "User"
-      WHERE ${where}
+      ${where}
       ORDER BY "createdAt" DESC, "id" DESC
       LIMIT ${params.limit + 1}
     `;

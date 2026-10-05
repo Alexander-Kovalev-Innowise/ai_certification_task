@@ -1,5 +1,6 @@
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import sharp from 'sharp';
 
@@ -49,7 +50,7 @@ describe('OutboxService (Task 1.12)', () => {
 
     await expect(
       db.prisma.$transaction(async (tx) => {
-        await service.enqueue(tx, JOB_TYPES.EMAIL_VERIFICATION, { to: 'a@example.com', subject: 'Verify' });
+        await service.enqueue(tx, JOB_TYPES.EMAIL_VERIFICATION, { to: 'a@example.com', subject: 'Verify', templateData: { firstName: 'A', verificationToken: 'tok' } });
         throw new Error('business logic failed after enqueue');
       }),
     ).rejects.toThrow('business logic failed after enqueue');
@@ -63,14 +64,21 @@ describe('OutboxService (Task 1.12)', () => {
     const service = buildService(mail);
 
     await db.prisma.$transaction(async (tx) => {
-      await service.enqueue(tx, JOB_TYPES.EMAIL_VERIFICATION, { to: 'a@example.com', subject: 'Verify' });
+      await service.enqueue(tx, JOB_TYPES.EMAIL_VERIFICATION, { to: 'a@example.com', subject: 'Verify', templateData: { firstName: 'A', verificationToken: 'tok' } });
     });
 
     const processed = await service.drainOnce();
 
     expect(processed).toBe(1);
     expect(mail.send).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'a@example.com', subject: 'Verify', templateId: JOB_TYPES.EMAIL_VERIFICATION }),
+      expect.objectContaining({
+        to: 'a@example.com',
+        subject: 'Verify',
+        templateId: JOB_TYPES.EMAIL_VERIFICATION,
+        html: expect.stringContaining('/verify-email?token=tok'),
+        text: expect.stringContaining('/verify-email?token=tok'),
+        links: [expect.stringMatching(/\/verify-email\?token=tok$/)],
+      }),
     );
 
     const job = await db.prisma.outboxJob.findFirstOrThrow();
@@ -89,7 +97,7 @@ describe('OutboxService (Task 1.12)', () => {
     const service = buildService(mail);
 
     await db.prisma.$transaction(async (tx) => {
-      await service.enqueue(tx, JOB_TYPES.EMAIL_VERIFICATION, { to: 'a@example.com', subject: 'Verify' });
+      await service.enqueue(tx, JOB_TYPES.EMAIL_VERIFICATION, { to: 'a@example.com', subject: 'Verify', templateData: { firstName: 'A', verificationToken: 'tok' } });
     });
 
     const [processedA, processedB] = await Promise.all([service.drainOnce(), service.drainOnce()]);
@@ -108,7 +116,7 @@ describe('OutboxService (Task 1.12)', () => {
     const service = buildService(mail);
 
     await db.prisma.$transaction(async (tx) => {
-      await service.enqueue(tx, JOB_TYPES.EMAIL_VERIFICATION, { to: 'a@example.com', subject: 'Verify' });
+      await service.enqueue(tx, JOB_TYPES.EMAIL_VERIFICATION, { to: 'a@example.com', subject: 'Verify', templateData: { firstName: 'A', verificationToken: 'tok' } });
     });
 
     // MAX_ATTEMPTS is 5 (outbox.service.ts) — drain, then force nextAttemptAt
@@ -133,35 +141,78 @@ describe('OutboxService (Task 1.12)', () => {
 
   // Task 8.2 (api §4.1, "sharp resizes toward 200×200 via the
   // MEDIA_LOGO_RESIZE outbox job"). Uses the REAL LocalStorageAdapter (not
-  // fakeStorageService) end to end — this is what actually exercises
-  // dispatchMedia's readSource() `file://` branch (fetch() cannot read a
-  // `file://` URL; LocalStorageAdapter, the default STORAGE_PROVIDER=local
-  // adapter, is exactly what issues one) and proves the resize-then-upload
-  // round trip, not just that upload() was called with something.
-  it('draining a MEDIA_LOGO_RESIZE job reads the local-adapter file:// source, resizes it toward 200x200, and overwrites the same key', async () => {
-    const storage = new LocalStorageAdapter();
-    const service = buildService(fakeMailService(), storage);
+  // fakeStorageService) end to end and proves the read-resize-upload round
+  // trip: the source is read through the storage port by key, the result is
+  // always PNG under a .png key, and a foreign (non-managed) URL is skipped.
+  describe('MEDIA_LOGO_RESIZE', () => {
+    let dir: string;
+    let storage: LocalStorageAdapter;
 
-    const original = await sharp({ create: { width: 800, height: 400, channels: 3, background: { r: 10, g: 20, b: 30 } } })
-      .png()
-      .toBuffer();
-    const uploaded = await storage.upload({ key: 'logo-test.png', contentType: 'image/png', body: original });
-
-    await db.prisma.$transaction(async (tx) => {
-      await service.enqueue(tx, JOB_TYPES.MEDIA_LOGO_RESIZE, { sourceUrl: uploaded.url, targetKey: uploaded.key });
+    beforeEach(async () => {
+      dir = await mkdtemp(join(tmpdir(), 'pp-outbox-'));
+      storage = new LocalStorageAdapter();
+      storage.uploadsDir = dir;
+      storage.publicBaseUrl = 'http://localhost:3000';
     });
 
-    const processed = await service.drainOnce();
-    expect(processed).toBe(1);
+    afterEach(async () => {
+      await rm(dir, { recursive: true, force: true });
+    });
 
-    const job = await db.prisma.outboxJob.findFirstOrThrow();
-    expect(job.status).toBe('DONE');
+    it('resizes the stored source toward 200x200 and overwrites the same .png key', async () => {
+      const service = buildService(fakeMailService(), storage);
 
-    const resizedBytes = await readFile(fileURLToPath(uploaded.url));
-    const metadata = await sharp(resizedBytes).metadata();
+      const original = await sharp({ create: { width: 800, height: 400, channels: 3, background: { r: 10, g: 20, b: 30 } } })
+        .png()
+        .toBuffer();
+      const uploaded = await storage.upload({ key: 'logo-test.png', contentType: 'image/png', body: original });
+      expect(uploaded.url).toBe('http://localhost:3000/uploads/logo-test.png');
 
-    // fit: 'inside' (resizeLogo, Task 1.11) — 800x400 (2:1) bounds to 200x100.
-    expect(metadata.width).toBe(200);
-    expect(metadata.height).toBe(100);
+      await db.prisma.$transaction(async (tx) => {
+        await service.enqueue(tx, JOB_TYPES.MEDIA_LOGO_RESIZE, { sourceUrl: uploaded.url, targetKey: uploaded.key });
+      });
+
+      expect(await service.drainOnce()).toBe(1);
+      expect((await db.prisma.outboxJob.findFirstOrThrow()).status).toBe('DONE');
+
+      const metadata = await sharp(await storage.read('logo-test.png')).metadata();
+      // fit: 'inside' (resizeLogo, Task 1.11) — 800x400 (2:1) bounds to 200x100.
+      expect(metadata.format).toBe('png');
+      expect(metadata.width).toBe(200);
+      expect(metadata.height).toBe(100);
+    });
+
+    it('re-encodes a JPEG source as PNG so bytes always match the .png key', async () => {
+      const service = buildService(fakeMailService(), storage);
+      const jpeg = await sharp({ create: { width: 400, height: 400, channels: 3, background: { r: 200, g: 0, b: 0 } } })
+        .jpeg()
+        .toBuffer();
+      const uploaded = await storage.upload({ key: 'logo-mislabelled.png', contentType: 'image/png', body: jpeg });
+
+      await db.prisma.$transaction(async (tx) => {
+        await service.enqueue(tx, JOB_TYPES.MEDIA_LOGO_RESIZE, { sourceUrl: uploaded.url, targetKey: uploaded.key });
+      });
+      await service.drainOnce();
+
+      const metadata = await sharp(await storage.read('logo-mislabelled.png')).metadata();
+      expect(metadata.format).toBe('png');
+      expect(metadata.width).toBe(200);
+    });
+
+    it('skips (DONE, no write) a logoUrl that is not a managed upload instead of fetching it', async () => {
+      const read = jest.fn();
+      const upload = jest.fn();
+      const storageSpy = { keyFromUrl: () => null, read, upload, delete: jest.fn() } as unknown as StorageService;
+      const service = buildService(fakeMailService(), storageSpy);
+
+      await db.prisma.$transaction(async (tx) => {
+        await service.enqueue(tx, JOB_TYPES.MEDIA_LOGO_RESIZE, { sourceUrl: 'https://evil.example/x.png', targetKey: 'x.png' });
+      });
+      await service.drainOnce();
+
+      expect((await db.prisma.outboxJob.findFirstOrThrow()).status).toBe('DONE');
+      expect(read).not.toHaveBeenCalled();
+      expect(upload).not.toHaveBeenCalled();
+    });
   });
 });

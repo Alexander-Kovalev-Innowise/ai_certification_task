@@ -556,4 +556,100 @@ describe('ImpersonationController (e2e, Phase 7)', () => {
       expect(log.durationSeconds).toBe(3600);
     });
   });
+
+  describe('Hardening: ended sessions + audit of writes (Epic-01 audit)', () => {
+    async function startSession(): Promise<{ admin: { userId: string; accessToken: string }; target: { userId: string; trainerId: string }; token: string; logId: string }> {
+      const admin = await insertSuperAdmin();
+      const target = await insertTrainer();
+      const res = await request(app.getHttpServer())
+        .post('/impersonation/start')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ targetUserId: target.userId });
+      expect(res.status).toBe(201);
+      return { admin, target, token: res.body.accessToken as string, logId: res.body.impersonationLogId as string };
+    }
+
+    it('rejects the impersonation token with 401 once /impersonation/end was called (explicit exit)', async () => {
+      const { token } = await startSession();
+
+      await request(app.getHttpServer()).get('/me').set('Authorization', `Bearer ${token}`).expect(200);
+      await request(app.getHttpServer()).post('/impersonation/end').set('Authorization', `Bearer ${token}`).expect(204);
+
+      const after = await request(app.getHttpServer()).get('/me').set('Authorization', `Bearer ${token}`);
+      expect(after.status).toBe(401);
+    });
+
+    it('rejects the impersonation token once the cron sweep closed its log (60-minute cap)', async () => {
+      const { token, logId } = await startSession();
+      await db.prisma.impersonationLog.update({ where: { id: logId }, data: { startedAt: new Date(Date.now() - 90 * 60_000) } });
+
+      /* eslint-disable @typescript-eslint/no-require-imports -- deliberate, matches this file's own beforeAll dance */
+      const { ImpersonationMaintenanceJob } = require('../src/modules/impersonation/impersonation-maintenance.job') as typeof import('../src/modules/impersonation/impersonation-maintenance.job');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      await moduleRef.get(ImpersonationMaintenanceJob).sweep();
+
+      const after = await request(app.getHttpServer()).get('/me').set('Authorization', `Bearer ${token}`);
+      expect(after.status).toBe(401);
+    });
+
+    it('records non-GET requests made while impersonating (actor, effective user, log id, method, path, status) and not GETs', async () => {
+      const { admin, target, token, logId } = await startSession();
+
+      await request(app.getHttpServer()).get('/me').set('Authorization', `Bearer ${token}`).expect(200);
+      const patch = await request(app.getHttpServer())
+        .patch('/me')
+        .query({ ignored: 'secret-in-query' })
+        .set('Authorization', `Bearer ${token}`)
+        .send({ firstName: 'ChangedByAdmin' });
+      expect(patch.status).toBe(200);
+      // A failing write is audited too, with its error status.
+      const bad = await request(app.getHttpServer()).patch('/me').set('Authorization', `Bearer ${token}`).send({ role: 'SUPER_ADMIN' });
+      expect(bad.status).toBe(400);
+
+      const rows = await db.prisma.impersonationAuditLog.findMany({ where: { impersonationLogId: logId }, orderBy: { at: 'asc' } });
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toMatchObject({
+        actorUserId: admin.userId,
+        effectiveUserId: target.userId,
+        impersonationLogId: logId,
+        method: 'PATCH',
+        path: '/me',
+        statusCode: 200,
+      });
+      expect(rows[0].at).toBeInstanceOf(Date);
+      expect(rows[1]).toMatchObject({ method: 'PATCH', path: '/me', statusCode: 400 });
+    });
+
+    it('does not audit a normal (non-impersonated) write', async () => {
+      const trainer = await insertTrainer();
+      const token = await signToken({ id: trainer.userId, role: 'TRAINER' }, { role: 'TRAINER', tid: trainer.trainerId });
+
+      await request(app.getHttpServer()).patch('/me').set('Authorization', `Bearer ${token}`).send({ firstName: 'Self' }).expect(200);
+
+      expect(await db.prisma.impersonationAuditLog.count({ where: { effectiveUserId: trainer.userId } })).toBe(0);
+    });
+
+    it('GET /impersonation/history exposes writeCount per session', async () => {
+      const { admin, token } = await startSession();
+      await request(app.getHttpServer()).patch('/me').set('Authorization', `Bearer ${token}`).send({ firstName: 'One' }).expect(200);
+      await request(app.getHttpServer()).patch('/me').set('Authorization', `Bearer ${token}`).send({ firstName: 'Two' }).expect(200);
+
+      const history = await request(app.getHttpServer()).get('/impersonation/history').set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(history.status).toBe(200);
+      expect(history.body.items[0].writeCount).toBe(2);
+    });
+
+    it('starting an impersonation of an INACTIVE user -> 422 IMPERSONATION_TARGET_INVALID', async () => {
+      const admin = await insertSuperAdmin();
+      const inactive = await insertUser({ role: 'PLAYER_PARENT', status: 'INACTIVE' });
+
+      const res = await request(app.getHttpServer())
+        .post('/impersonation/start')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ targetUserId: inactive.id });
+
+      expect(res.status).toBe(422);
+      expect(res.body.errorCode).toBe('IMPERSONATION_TARGET_INVALID');
+    });
+  });
 });

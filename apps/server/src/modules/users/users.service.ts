@@ -138,6 +138,7 @@ export class UsersService {
       firstName: user.firstName,
       lastName: user.lastName,
       mustChangePassword: user.mustChangePassword,
+      photoUrl: user.photoUrl,
     };
   }
 

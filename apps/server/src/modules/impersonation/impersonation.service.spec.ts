@@ -63,6 +63,7 @@ describe('ImpersonationService (Task 7.1)', () => {
       findById: jest.fn(),
       markEnded: jest.fn(),
       listHistory: jest.fn(),
+      countAuditedWrites: jest.fn().mockResolvedValue(new Map()),
     } as unknown as jest.Mocked<ImpersonationRepository>;
     const usersRepository = { findById: jest.fn(), isChildLogin: jest.fn() } as unknown as jest.Mocked<UsersRepository>;
     const tenantClaimsResolver = { resolve: jest.fn() } as unknown as jest.Mocked<TenantClaimsResolver>;
@@ -100,6 +101,16 @@ describe('ImpersonationService (Task 7.1)', () => {
       expect(err).toBeInstanceOf(UnprocessableEntityException);
       expect((err as UnprocessableEntityException).getResponse()).toMatchObject({ errorCode: 'IMPERSONATION_TARGET_INVALID' });
     }
+  });
+
+  it.each(['INACTIVE', 'DELETED'] as const)('rejects with 422 IMPERSONATION_TARGET_INVALID when the target is %s', async (status) => {
+    const { service, usersRepository, impersonationRepository } = makeService();
+    usersRepository.findById.mockResolvedValue(makeUser({ status }));
+
+    await expect(service.start(makeAdminCtx(), { targetUserId: 'target-1' })).rejects.toMatchObject({
+      response: { errorCode: 'IMPERSONATION_TARGET_INVALID' },
+    });
+    expect(impersonationRepository.create).not.toHaveBeenCalled();
   });
 
   it('rejects with 404 NOT_FOUND when the target does not exist', async () => {

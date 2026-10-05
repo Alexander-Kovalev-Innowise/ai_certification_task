@@ -59,6 +59,7 @@ describe('TrainersAnonymizer (Task 3.10)', () => {
         address: '123 Real St',
         website: 'https://real-business.example.com',
         description: 'A real description',
+        logoUrl: 'http://localhost:3000/uploads/logos/real.png',
       },
     });
     return { userId, trainerId };
@@ -68,7 +69,7 @@ describe('TrainersAnonymizer (Task 3.10)', () => {
     expect(anonymizer.model).toBe('TrainerProfile');
   });
 
-  it('anonymizes exactly businessName/address/website/description, keyed by userId', async () => {
+  it('anonymizes businessName/address/website/description/logoUrl, keyed by userId', async () => {
     const { userId, trainerId } = await insertTrainerUser();
 
     await prismaService.$transaction(async (tx: unknown) => {
@@ -80,6 +81,7 @@ describe('TrainersAnonymizer (Task 3.10)', () => {
     expect(row.address).toBeNull();
     expect(row.website).toBeNull();
     expect(row.description).toBeNull();
+    expect(row.logoUrl).toBeNull();
     // Untouched: not this anonymizer's concern.
     expect(row.userId).toBe(userId);
   });

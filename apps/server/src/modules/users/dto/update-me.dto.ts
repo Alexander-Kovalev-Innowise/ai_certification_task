@@ -1,4 +1,6 @@
-import { IsObject, IsOptional, IsPhoneNumber, IsString, IsUrl, MaxLength } from 'class-validator';
+import { IsObject, IsOptional, IsPhoneNumber, IsString, MaxLength } from 'class-validator';
+
+import { IsAssetUrl } from '../../../shared/http/asset-url.decorator';
 
 // Task 2.22 (api §3), reproduced verbatim. Common fields only — role-specific
 // fields (bio, business name, etc.) go through their owning controller per
@@ -25,8 +27,8 @@ export class UpdateMeDto {
   phone?: string;
 
   @IsOptional()
-  @IsUrl()
-  photoUrl?: string;
+  @IsAssetUrl()
+  photoUrl?: string | null; // null clears the photo
 
   @IsOptional()
   @IsObject()

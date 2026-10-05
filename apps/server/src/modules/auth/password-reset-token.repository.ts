@@ -35,4 +35,10 @@ export class PasswordResetTokenRepository {
     const client = tx ?? this.prisma;
     await client.passwordResetToken.update({ where: { id }, data: { usedAt: new Date() } });
   }
+
+  /** Marks every still-open (unused) token of this purpose as used, so only the freshest link ever works. */
+  async invalidateOpen(userId: string, purpose: PasswordResetPurpose, tx?: Prisma.TransactionClient): Promise<void> {
+    const client = tx ?? this.prisma;
+    await client.passwordResetToken.updateMany({ where: { userId, purpose, usedAt: null }, data: { usedAt: new Date() } });
+  }
 }

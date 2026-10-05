@@ -1,9 +1,8 @@
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-
 import { Injectable, Logger } from '@nestjs/common';
 import { OutboxJob, Prisma } from '@prisma/client';
 
+import { env } from '../config/config.module';
+import { renderMail } from '../mail/mail-renderer';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { generateThumbnail, resizeLogo } from '../storage/image-processor';
@@ -123,51 +122,54 @@ export class OutboxService {
     throw new Error(`Unknown outbox job type: ${job.type}`);
   }
 
+  // Renders subject + HTML + plain text (+ absolute links built from
+  // CLIENT_URL) from the job's templateId (= job.type) and templateData, then
+  // hands the finished mail to the MailService adapter. A render failure (e.g.
+  // the token a link needs is missing from the payload) throws, so the job
+  // retries/fails visibly rather than sending a link-less mail. The payload
+  // `subject`, when present, wins over the template's default.
   private async dispatchEmail(job: OutboxJob): Promise<void> {
     const payload = job.payload as { to?: string; subject?: string; templateData?: Record<string, unknown> } | null;
-    if (!payload?.to || !payload?.subject) {
-      throw new Error(`Outbox job ${job.id} (${job.type}) payload missing required "to"/"subject"`);
+    if (!payload?.to) {
+      throw new Error(`Outbox job ${job.id} (${job.type}) payload missing required "to"`);
     }
+    const rendered = renderMail(job.type, payload.templateData, env.CLIENT_URL);
     await this.mailService.send({
       to: payload.to,
-      subject: payload.subject,
+      subject: payload.subject || rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+      links: rendered.links,
       templateId: job.type,
       templateData: payload.templateData,
     });
   }
 
   // Task 8.2 — PortalBrandingService.updateBranding enqueues
-  // MEDIA_LOGO_RESIZE for real when a PATCH /trainers/:id/branding sets
-  // logoUrl (the first Epic-01 flow to actually enqueue a MEDIA_* job;
-  // previously this branch only existed so `dispatch()` stayed exhaustive
-  // over every job-types constant, arch §13.2).
+  // MEDIA_LOGO_RESIZE when a PATCH /trainers/:id/branding sets logoUrl.
+  //
+  // The source is read through the StorageService port by key (never fetched
+  // from an arbitrary caller-supplied URL — that would be an SSRF vector), so
+  // only URLs this storage adapter issued are processed; a foreign logoUrl
+  // is left untouched. The output is always PNG, written back under the same
+  // key with its extension forced to .png and an image/png content type, so
+  // key, extension and content type can never disagree.
   private async dispatchMedia(job: OutboxJob): Promise<void> {
     const payload = job.payload as { sourceUrl?: string; targetKey?: string } | null;
     if (!payload?.sourceUrl || !payload?.targetKey) {
       throw new Error(`Outbox job ${job.id} (${job.type}) payload missing required "sourceUrl"/"targetKey"`);
     }
 
-    const input = await this.readSource(payload.sourceUrl);
+    const sourceKey = this.storageService.keyFromUrl(payload.sourceUrl);
+    if (!sourceKey) {
+      this.logger.warn(`Outbox job ${job.id} (${job.type}): ${payload.sourceUrl} is not a managed upload, skipping`);
+      return;
+    }
+
+    const input = await this.storageService.read(sourceKey);
     const resized = job.type === JOB_TYPES.MEDIA_LOGO_RESIZE ? await resizeLogo(input) : await generateThumbnail(input);
 
-    await this.storageService.upload({ key: payload.targetKey, contentType: 'image/png', body: resized });
-  }
-
-  /**
-   * `fetch()` (undici, Node's built-in) does not support `file://` URLs —
-   * it throws a bare "fetch failed" with no useful detail. LocalStorageAdapter
-   * (Task 1.11, the default STORAGE_PROVIDER=local adapter used in dev/test)
-   * returns exactly that scheme, so without this branch every
-   * MEDIA_LOGO_RESIZE job would fail every attempt until MAX_ATTEMPTS and
-   * land in FAILED — a real bug, not a hypothetical one, caught by Task
-   * 8.2's own outbox-drain test. A real remote adapter (e.g. S3) still goes
-   * through `fetch` over http(s) unchanged.
-   */
-  private async readSource(sourceUrl: string): Promise<Buffer> {
-    if (sourceUrl.startsWith('file://')) {
-      return readFile(fileURLToPath(sourceUrl));
-    }
-    const response = await fetch(sourceUrl);
-    return Buffer.from(await response.arrayBuffer());
+    const targetKey = payload.targetKey.replace(/\.[^./]+$/, '') + '.png';
+    await this.storageService.upload({ key: targetKey, contentType: 'image/png', body: resized });
   }
 }

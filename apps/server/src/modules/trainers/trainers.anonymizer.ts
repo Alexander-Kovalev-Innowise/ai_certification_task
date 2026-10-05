@@ -31,6 +31,7 @@ export class TrainersAnonymizer implements Anonymizer {
         address: null,
         website: null,
         description: null,
+        logoUrl: null,
       },
     });
   }

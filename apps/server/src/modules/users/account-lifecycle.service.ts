@@ -2,10 +2,13 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import type { Prisma, User } from '@prisma/client';
 
 import { DomainEventsEmitter } from '../../shared/events/domain-events.emitter';
+import { buildPaginatedResponse, decodeCursor, type PaginatedResponseDto } from '../../shared/http/pagination.dto';
 import { AnonymizerRegistry } from '../../shared/prisma/anonymizer.registry';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { RefreshTokenRepository } from '../auth/refresh-token.repository';
 
+import type { DeletionLogRowDto } from './dto/deletion-log-row.dto';
+import type { ListDeletionLogQueryDto } from './dto/list-deletion-log-query.dto';
 import { UserDeletionLogRepository } from './user-deletion-log.repository';
 import { UsersRepository } from './users.repository';
 
@@ -37,14 +40,12 @@ export class AccountLifecycleService {
 
   /**
    * Task 3.5 (api §3 "POST /users/:id/deactivate", FR-013/BR-011). One
-   * transaction: status -> INACTIVE, deletedAt -> now, tokenVersion++,
-   * every RefreshToken revoked — reproduced verbatim from the api spec.
-   * `deletedAt` is set even though status is INACTIVE, not DELETED (the DB
-   * CHECK from Task 1.2 only requires deletedAt when status = DELETED, it
-   * doesn't forbid deletedAt on INACTIVE) — this is what makes a merely
-   * deactivated user invisible to the soft-delete extension's default
-   * `findFirst`/`findMany` the same way a GDPR-deleted one is, while
-   * remaining reactivatable (Task 3.6), unlike DELETED.
+   * transaction: status -> INACTIVE, tokenVersion++, every RefreshToken
+   * revoked. `deletedAt` is deliberately NOT touched: it is the soft-delete
+   * column and belongs to GDPR delete only. Setting it here (the original
+   * behaviour) hid deactivated users from the directory, from login (so the
+   * client never saw ACCOUNT_INACTIVE) and from the Super Admin's own edit /
+   * reactivate flows. INACTIVE is expressed by `status` alone.
    */
   async deactivate(id: string): Promise<User> {
     const user = await this.usersRepository.findByIdWithDeleted(id);
@@ -58,12 +59,36 @@ export class AccountLifecycleService {
     return this.prisma.$transaction(async (tx) => {
       const updated = await this.usersRepository.update(
         id,
-        { status: 'INACTIVE', deletedAt: new Date(), tokenVersion: { increment: 1 } },
+        { status: 'INACTIVE', tokenVersion: { increment: 1 } },
         tx,
       );
       await this.refreshTokenRepository.revokeAllForUser(id, tx);
       return updated;
     });
+  }
+
+  /**
+   * GET /users/deletion-log (Super Admin). Read-only keyset page over
+   * audit."UserDeletionLog": who was erased, by whom, why, when.
+   */
+  async listDeletionLog(query: ListDeletionLogQueryDto): Promise<PaginatedResponseDto<DeletionLogRowDto>> {
+    const limit = query.limit ?? 50;
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
+
+    const rows = await this.userDeletionLogRepository.list({ limit, cursor });
+    const page = buildPaginatedResponse(rows, limit, (r) => ({ createdAt: r.deletedAt.toISOString(), id: r.id }));
+
+    return {
+      ...page,
+      items: page.items.map((r) => ({
+        id: r.id,
+        originalUserId: r.originalUserId,
+        originalEmail: r.originalEmail,
+        deletedBy: r.deletedByUserId,
+        reason: r.reason,
+        deletedAt: r.deletedAt,
+      })),
+    };
   }
 
   /**
@@ -131,7 +156,11 @@ export class AccountLifecycleService {
           originalEmail: user.email,
           deletedByUserId,
           reason,
-          dataBackupJson: user as unknown as Prisma.InputJsonValue,
+          dataBackupJson: {
+            ...(user as unknown as Record<string, unknown>),
+            // Pre-anonymization profile rows + associations (taken before any anonymizer runs).
+            profiles: await this.userDeletionLogRepository.snapshotProfiles(user.id, tx),
+          } as unknown as Prisma.InputJsonValue,
         },
         tx,
       );

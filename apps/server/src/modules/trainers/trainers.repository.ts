@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Prisma, TrainerProfile } from '@prisma/client';
+import type { Prisma, TrainerCreationLog, TrainerProfile } from '@prisma/client';
 
 import { PrismaService } from '../../shared/prisma/prisma.service';
 
@@ -17,9 +17,20 @@ export class TrainersRepository {
     return client.trainerProfile.create({ data });
   }
 
+  /** Audit row (audit."TrainerCreationLog", INSERT-only) — who provisioned this trainer, when, with what details. */
+  async createCreationLog(data: Prisma.TrainerCreationLogUncheckedCreateInput, tx?: Prisma.TransactionClient): Promise<TrainerCreationLog> {
+    const client = tx ?? this.prisma;
+    return client.trainerCreationLog.create({ data });
+  }
+
   /** Not tenant-scoped by id — used by TrainerService.createTrainer to read back the just-created row by its unique userId. */
   async findByUserId(userId: string): Promise<TrainerProfile | null> {
     return this.prisma.trainerProfile.findUnique({ where: { userId } });
+  }
+
+  /** Profile plus its account row — used to re-issue the setup invite for a trainer found by userId. */
+  async findWithUserByUserId(userId: string) {
+    return this.prisma.trainerProfile.findUnique({ where: { userId }, include: { user: true } });
   }
 
   /**

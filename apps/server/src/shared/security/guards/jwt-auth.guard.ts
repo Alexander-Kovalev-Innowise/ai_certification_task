@@ -89,6 +89,17 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException({ message: 'Account is inactive or session has been revoked', errorCode: 'ACCOUNT_INACTIVE' });
     }
 
+    // Impersonation tokens are not revocable by themselves (exp-capped at 60
+    // minutes, no refresh), so once the session's log row is closed — by an
+    // explicit /impersonation/end or the cron sweep — the token must stop
+    // working immediately, not linger until `exp`.
+    if (claims.act) {
+      const session = await this.authSnapshotRepository.findImpersonationSession(claims.act.imp);
+      if (!session || session.endedAt !== null) {
+        throw new UnauthorizedException({ message: 'Impersonation session has ended', errorCode: 'UNAUTHORIZED' });
+      }
+    }
+
     const authContext = buildAuthContext(claims);
 
     // Memoized on the request object — read directly by RolesGuard (Task

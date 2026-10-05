@@ -97,14 +97,49 @@ describe('TrainerService.createTrainer (Task 3.8)', () => {
       passwordResetTokenRepository,
       passwordService,
       outboxService,
+      prismaService,
     );
   }
+
+  describe('resendSetupInvite', () => {
+    it('invalidates the old setup link, issues a new one and queues a second invite email', async () => {
+      const service = buildService();
+      const dto = baseDto();
+      await service.createTrainer(dto, randomUUID());
+      const user = await prismaService.user.findUnique({ where: { email: dto.email } });
+
+      await expect(service.resendSetupInvite(user.id)).resolves.toEqual({ message: 'Setup invitation sent' });
+
+      const tokens = await prismaService.passwordResetToken.findMany({ where: { userId: user.id }, orderBy: { createdAt: 'asc' } });
+      expect(tokens).toHaveLength(2);
+      expect(tokens[0].usedAt).not.toBeNull();
+      expect(tokens[1].usedAt).toBeNull();
+      expect(tokens[1].purpose).toBe('TRAINER_SETUP');
+
+      const jobs = await prismaService.outboxJob.findMany({ where: { type: 'EMAIL_TRAINER_INVITE' } });
+      expect(jobs).toHaveLength(2);
+      const rawTokens = jobs.map((job) => (job.payload as { templateData: { setupToken: string } }).templateData.setupToken);
+      expect(new Set(rawTokens).size).toBe(2);
+    });
+
+    it('rejects a trainer who already completed setup (409) and an unknown user (404)', async () => {
+      const service = buildService();
+      const dto = baseDto();
+      await service.createTrainer(dto, randomUUID());
+      const user = await prismaService.user.findUnique({ where: { email: dto.email } });
+      await prismaService.user.update({ where: { id: user.id }, data: { mustChangePassword: false } });
+
+      await expect(service.resendSetupInvite(user.id)).rejects.toMatchObject({ status: 409 });
+      await expect(service.resendSetupInvite(randomUUID())).rejects.toMatchObject({ status: 404 });
+    });
+  });
 
   it('creates exactly one User + TrainerProfile + PasswordResetToken(TRAINER_SETUP) + OutboxJob(EMAIL_TRAINER_INVITE), all committed together', async () => {
     const service = buildService();
     const dto = baseDto();
 
-    const response = await service.createTrainer(dto);
+    const adminId = randomUUID();
+    const response = await service.createTrainer(dto, adminId);
 
     expect(response).toMatchObject({ businessName: dto.businessName, email: dto.email, status: 'Active' });
 
@@ -125,14 +160,30 @@ describe('TrainerService.createTrainer (Task 3.8)', () => {
     const jobs = await prismaService.outboxJob.findMany({ where: { type: 'EMAIL_TRAINER_INVITE' } });
     expect(jobs).toHaveLength(1);
     expect(jobs[0].payload).toMatchObject({ to: dto.email });
+    // The raw setup token travels in the payload (the link needs it); only its hash is stored.
+    const rawToken = (jobs[0].payload as { templateData: { setupToken: string } }).templateData.setupToken;
+    expect(rawToken).toEqual(expect.any(String));
+    expect(tokens[0].token).not.toBe(rawToken);
+
+    // audit.* tables are not truncated by resetTestDatabase (public schema only), so filter.
+    const creationLogs = await prismaService.trainerCreationLog.findMany({ where: { email: dto.email } });
+    expect(creationLogs).toHaveLength(1);
+    expect(creationLogs[0]).toMatchObject({
+      createdByUserId: adminId,
+      trainerUserId: user.id,
+      trainerProfileId: trainerProfile.id,
+      businessName: dto.businessName,
+      email: dto.email,
+    });
+    expect(creationLogs[0].createdAt).toBeInstanceOf(Date);
   });
 
   it('duplicate email -> ConflictException (409 CONFLICT), no partial rows left behind', async () => {
     const service = buildService();
     const dto = baseDto();
-    await service.createTrainer(dto);
+    await service.createTrainer(dto, randomUUID());
 
-    await expect(service.createTrainer(baseDto({ email: dto.email }))).rejects.toMatchObject({
+    await expect(service.createTrainer(baseDto({ email: dto.email }), randomUUID())).rejects.toMatchObject({
       response: { errorCode: 'CONFLICT' },
     });
 
@@ -145,11 +196,12 @@ describe('TrainerService.createTrainer (Task 3.8)', () => {
     const service = buildService(failingOutboxService);
     const dto = baseDto();
 
-    await expect(service.createTrainer(dto)).rejects.toThrow('simulated outbox failure');
+    await expect(service.createTrainer(dto, randomUUID())).rejects.toThrow('simulated outbox failure');
 
     const user = await prismaService.user.findUnique({ where: { email: dto.email } });
     expect(user).toBeNull();
     const tokens = await prismaService.passwordResetToken.findMany({});
     expect(tokens).toHaveLength(0);
+    expect(await prismaService.trainerCreationLog.count({ where: { email: dto.email } })).toBe(0);
   });
 });
