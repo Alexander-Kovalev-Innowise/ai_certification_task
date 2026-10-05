@@ -475,6 +475,90 @@ describe('AvailabilityController (e2e, Task 5.11 + Phase 6)', () => {
 
       expect(coachRes.status).toBe(403);
     });
+
+    it('stores the optional sessionLabel (Epic-02 stand-in) on the override', async () => {
+      const coach = await insertCoach();
+      const trainerToken = await trainerAccessToken(coach.trainerId);
+
+      const res = await request(app.getHttpServer())
+        .post(`/coaches/${coach.coachId}/availability/override`)
+        .set('Authorization', `Bearer ${trainerToken}`)
+        .send({ eventId: randomUUID(), reason: 'Short-staffed', sessionLabel: 'U12 drill - Tue 18:00' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.sessionLabel).toBe('U12 drill - Tue 18:00');
+    });
+
+    it('a removed (INACTIVE) coach cannot be checked or overridden -> 403', async () => {
+      const coach = await insertCoach();
+      const trainerToken = await trainerAccessToken(coach.trainerId);
+      await db.prisma.coachProfile.update({ where: { id: coach.coachId }, data: { status: 'INACTIVE' } });
+
+      await request(app.getHttpServer())
+        .get(`/coaches/${coach.coachId}/availability/check`)
+        .query({ dayOfWeek: 1, startTime: 600, endTime: 660 })
+        .set('Authorization', `Bearer ${trainerToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(`/coaches/${coach.coachId}/availability/override`)
+        .set('Authorization', `Bearer ${trainerToken}`)
+        .send({ eventId: randomUUID(), reason: 'nope' })
+        .expect(403);
+    });
+  });
+
+  describe('Coach-side override acknowledgement (US-01.10)', () => {
+    async function seedOverride(coachId: string, trainerId: string) {
+      return db.prisma.coachAvailabilityOverride.create({
+        data: { eventId: randomUUID(), coachId, trainerId, reason: 'Emergency cover', sessionLabel: 'Tue drill' },
+      });
+    }
+
+    it('the coach lists their overrides and acknowledges one (idempotent)', async () => {
+      const coach = await insertCoach();
+      const override = await seedOverride(coach.coachId, coach.trainerId);
+
+      const list = await request(app.getHttpServer())
+        .get(`/coaches/${coach.coachId}/availability/overrides`)
+        .set('Authorization', `Bearer ${coach.accessToken}`);
+      expect(list.status).toBe(200);
+      expect(list.body).toHaveLength(1);
+      expect(list.body[0]).toMatchObject({ id: override.id, reason: 'Emergency cover', sessionLabel: 'Tue drill', acknowledgedAt: null });
+
+      await request(app.getHttpServer())
+        .post(`/coaches/${coach.coachId}/availability/overrides/${override.id}/acknowledge`)
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(204);
+      const first = (await db.prisma.coachAvailabilityOverride.findUnique({ where: { id: override.id } }))?.acknowledgedAt;
+      expect(first).not.toBeNull();
+
+      await request(app.getHttpServer())
+        .post(`/coaches/${coach.coachId}/availability/overrides/${override.id}/acknowledge`)
+        .set('Authorization', `Bearer ${coach.accessToken}`)
+        .expect(204);
+      expect((await db.prisma.coachAvailabilityOverride.findUnique({ where: { id: override.id } }))?.acknowledgedAt).toEqual(first);
+    });
+
+    it('another coach and the trainer cannot read or acknowledge -> 404 / 403', async () => {
+      const coach = await insertCoach();
+      const other = await insertCoach({ trainerId: coach.trainerId });
+      const override = await seedOverride(coach.coachId, coach.trainerId);
+
+      await request(app.getHttpServer())
+        .get(`/coaches/${coach.coachId}/availability/overrides`)
+        .set('Authorization', `Bearer ${other.accessToken}`)
+        .expect(404);
+      await request(app.getHttpServer())
+        .post(`/coaches/${coach.coachId}/availability/overrides/${override.id}/acknowledge`)
+        .set('Authorization', `Bearer ${other.accessToken}`)
+        .expect(404);
+      const trainerToken = await trainerAccessToken(coach.trainerId);
+      await request(app.getHttpServer())
+        .get(`/coaches/${coach.coachId}/availability/overrides`)
+        .set('Authorization', `Bearer ${trainerToken}`)
+        .expect(403);
+      expect((await db.prisma.coachAvailabilityOverride.findUnique({ where: { id: override.id } }))?.acknowledgedAt).toBeNull();
+    });
   });
 
   // Task 6.5. CRUD correctness for both subjects (player already covered

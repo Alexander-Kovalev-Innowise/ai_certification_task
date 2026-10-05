@@ -24,6 +24,8 @@ export class InviteCoachDto {
 // REVOKED `status` enum (arch §9.1) — a fresh invite is always PENDING from
 // the coach's point of view regardless of the link's own field.
 export class InviteCoachResponseDto {
+  /** The new `ShareLink.id` — the roster row id the client uses for `POST /coaches/invites/:id/resend`. */
+  id!: string;
   shareLinkCode!: string;
   expiresAt!: Date | null;
   status!: 'PENDING';

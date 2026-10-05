@@ -17,7 +17,7 @@ import {
   ConflictCheckResponseDto,
   SetAvailabilityDto,
 } from './dto/availability-grid.dto';
-import { CoachOverrideResponseDto, CreateOverrideDto } from './dto/create-override.dto';
+import { CoachOverrideNoticeDto, CoachOverrideResponseDto, CreateOverrideDto } from './dto/create-override.dto';
 
 // Task 5.11 (api §4.5 "Player availability", the player-profile half of
 // `AvailabilityController` — the coach "My Times" pair is Phase 6). No
@@ -138,5 +138,32 @@ export class CoachAvailabilityController {
     @Body() dto: CreateOverrideDto,
   ): Promise<CoachOverrideResponseDto> {
     return this.availabilityService.createOverride(ctx, id, dto);
+  }
+
+  // US-01.10 coach-side acknowledgement ("request change" is out of scope).
+  // The coach themself only — ownership is a row-data check in AvailabilityService (404 otherwise).
+  @Roles(Role.COACH)
+  @RequiresCapability(Capability.SET_OWN_AVAILABILITY)
+  @Get('overrides')
+  @ApiOperation({ summary: 'Overrides a trainer logged against this coach (for acknowledgement)' })
+  @ApiResponse({ status: 200, type: [CoachOverrideNoticeDto] })
+  @ApiResponse({ status: 404 })
+  async listOverrides(@CurrentUser() ctx: AuthContext, @Param('id') id: string): Promise<CoachOverrideNoticeDto[]> {
+    return this.availabilityService.listOverridesForCoach(ctx, id);
+  }
+
+  @Roles(Role.COACH)
+  @RequiresCapability(Capability.SET_OWN_AVAILABILITY)
+  @Post('overrides/:overrideId/acknowledge')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Coach acknowledges an override notice (idempotent)' })
+  @ApiResponse({ status: 204 })
+  @ApiResponse({ status: 404 })
+  async acknowledgeOverride(
+    @CurrentUser() ctx: AuthContext,
+    @Param('id') id: string,
+    @Param('overrideId') overrideId: string,
+  ): Promise<void> {
+    await this.availabilityService.acknowledgeOverride(ctx, id, overrideId);
   }
 }

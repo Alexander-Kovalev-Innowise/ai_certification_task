@@ -336,4 +336,304 @@ describe('CoachesController (e2e, Task 4.11)', () => {
       expect(res.status).toBe(404);
     });
   });
+
+  describe('Invite hardening (US-01.08)', () => {
+    async function seedActiveCoach(trainerId: string) {
+      const user = await insertUser({ role: 'COACH' });
+      const coachProfile = await db.prisma.coachProfile.create({ data: { userId: user.id, trainerId, status: 'ACTIVE' } });
+      return { user, coachProfile };
+    }
+
+    it('rejects, at invite time, an email that belongs to an ACTIVE coach of ANOTHER trainer -> 409 COACH_ALREADY_ASSIGNED', async () => {
+      const trainerA = await insertTrainer();
+      const trainerB = await insertTrainer();
+      const { user } = await seedActiveCoach(trainerA.trainerId);
+
+      const res = await request(app.getHttpServer())
+        .post('/coaches/invite')
+        .set('Authorization', `Bearer ${trainerB.accessToken}`)
+        .send({ email: user.email });
+
+      expect(res.status).toBe(409);
+      expect(res.body.errorCode).toBe('COACH_ALREADY_ASSIGNED');
+      expect(await db.prisma.shareLink.count()).toBe(0);
+      expect(await db.prisma.outboxJob.count({ where: { type: 'EMAIL_COACH_INVITE' } })).toBe(0);
+    });
+
+    it('rejects an email that is already an ACTIVE coach of the SAME trainer -> 409 COACH_ALREADY_ON_ROSTER', async () => {
+      const trainer = await insertTrainer();
+      const { user } = await seedActiveCoach(trainer.trainerId);
+
+      const res = await request(app.getHttpServer())
+        .post('/coaches/invite')
+        .set('Authorization', `Bearer ${trainer.accessToken}`)
+        .send({ email: user.email.toUpperCase() });
+
+      expect(res.status).toBe(409);
+      expect(res.body.errorCode).toBe('COACH_ALREADY_ON_ROSTER');
+    });
+
+    it('a removed (INACTIVE) coach can be invited again by another trainer', async () => {
+      const trainerA = await insertTrainer();
+      const trainerB = await insertTrainer();
+      const { user, coachProfile } = await seedActiveCoach(trainerA.trainerId);
+      await db.prisma.coachProfile.update({ where: { id: coachProfile.id }, data: { status: 'INACTIVE' } });
+
+      const res = await request(app.getHttpServer())
+        .post('/coaches/invite')
+        .set('Authorization', `Bearer ${trainerB.accessToken}`)
+        .send({ email: user.email });
+
+      expect(res.status).toBe(201);
+    });
+
+    it('re-inviting the same email replaces the outstanding link (one roster row)', async () => {
+      const trainer = await insertTrainer();
+      const email = `${randomUUID()}@example.com`;
+      for (let i = 0; i < 2; i += 1) {
+        await request(app.getHttpServer())
+          .post('/coaches/invite')
+          .set('Authorization', `Bearer ${trainer.accessToken}`)
+          .send({ email })
+          .expect(201);
+      }
+
+      const roster = await request(app.getHttpServer())
+        .get(`/trainers/${trainer.trainerId}/coaches`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+      expect(roster.body.items).toHaveLength(1);
+      expect(await db.prisma.shareLink.count({ where: { status: 'REVOKED' } })).toBe(1);
+    });
+  });
+
+  describe('POST /coaches/invites/:id/resend (US-01.08)', () => {
+    async function seedInvite(trainer: { trainerId: string; userId: string }, overrides: Record<string, unknown> = {}) {
+      return db.prisma.shareLink.create({
+        data: {
+          code: `inv-${randomUUID()}`,
+          type: 'COACH_UNIQUE',
+          trainerId: trainer.trainerId,
+          createdByUserId: trainer.userId,
+          targetEmail: `${randomUUID()}@example.com`,
+          expiresAt: new Date(Date.now() - 60_000),
+          status: 'EXPIRED',
+          ...overrides,
+        },
+      });
+    }
+
+    it('revokes the old link, issues a fresh 7-day link, re-sends the email, and leaves exactly one roster row', async () => {
+      const trainer = await insertTrainer();
+      const old = await seedInvite(trainer);
+
+      const res = await request(app.getHttpServer())
+        .post(`/coaches/invites/${old.id}/resend`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+
+      expect(res.status).toBe(201);
+      expect(res.body.status).toBe('PENDING');
+      expect(res.body.id).not.toBe(old.id);
+      expect(res.body.shareLinkCode).not.toBe(old.code);
+      const msLeft = new Date(res.body.expiresAt).getTime() - Date.now();
+      expect(msLeft).toBeGreaterThan(6.9 * 24 * 3600 * 1000);
+
+      expect((await db.prisma.shareLink.findUnique({ where: { id: old.id } }))?.status).toBe('REVOKED');
+      const jobs = await db.prisma.outboxJob.findMany({ where: { type: 'EMAIL_COACH_INVITE' } });
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].payload).toMatchObject({ to: old.targetEmail });
+
+      const roster = await request(app.getHttpServer())
+        .get(`/trainers/${trainer.trainerId}/coaches`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+      expect(roster.body.items).toHaveLength(1);
+      expect(roster.body.items[0]).toMatchObject({ id: res.body.id, email: old.targetEmail, invitationStatus: 'Pending' });
+    });
+
+    it("another trainer's invite -> 404; an unknown id -> 404", async () => {
+      const trainerA = await insertTrainer();
+      const trainerB = await insertTrainer();
+      const old = await seedInvite(trainerA);
+
+      await request(app.getHttpServer())
+        .post(`/coaches/invites/${old.id}/resend`)
+        .set('Authorization', `Bearer ${trainerB.accessToken}`)
+        .expect(404);
+      await request(app.getHttpServer())
+        .post(`/coaches/invites/${randomUUID()}/resend`)
+        .set('Authorization', `Bearer ${trainerA.accessToken}`)
+        .expect(404);
+    });
+
+    it('an already-accepted (claimed) invite -> 409 INVITE_ALREADY_ACCEPTED', async () => {
+      const trainer = await insertTrainer();
+      const old = await seedInvite(trainer, { useCount: 1 });
+
+      const res = await request(app.getHttpServer())
+        .post(`/coaches/invites/${old.id}/resend`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.errorCode).toBe('INVITE_ALREADY_ACCEPTED');
+    });
+
+    it('if the email has since become an ACTIVE coach of another trainer -> 409 COACH_ALREADY_ASSIGNED', async () => {
+      const trainerA = await insertTrainer();
+      const trainerB = await insertTrainer();
+      const coachUser = await insertUser({ role: 'COACH' });
+      await db.prisma.coachProfile.create({ data: { userId: coachUser.id, trainerId: trainerB.trainerId, status: 'ACTIVE' } });
+      const old = await seedInvite(trainerA, { targetEmail: coachUser.email });
+
+      const res = await request(app.getHttpServer())
+        .post(`/coaches/invites/${old.id}/resend`)
+        .set('Authorization', `Bearer ${trainerA.accessToken}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.errorCode).toBe('COACH_ALREADY_ASSIGNED');
+    });
+
+    it('a non-trainer -> 403', async () => {
+      const user = await insertUser();
+      const accessToken = await signToken(user);
+      await request(app.getHttpServer())
+        .post(`/coaches/invites/${randomUUID()}/resend`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+    });
+  });
+
+  describe('GET /trainers/:id/coaches keyset pagination (US-01.08)', () => {
+    it('pages profiles then invites with a real cursor, no duplicates, nextCursor null at the end', async () => {
+      const trainer = await insertTrainer();
+      for (let i = 0; i < 3; i += 1) {
+        const user = await insertUser({ role: 'COACH' });
+        await db.prisma.coachProfile.create({
+          data: { userId: user.id, trainerId: trainer.trainerId, status: 'ACTIVE', joinedAt: new Date(Date.now() - i * 1000) },
+        });
+      }
+      for (let i = 0; i < 2; i += 1) {
+        await db.prisma.shareLink.create({
+          data: {
+            code: `p-${randomUUID()}`,
+            type: 'COACH_UNIQUE',
+            trainerId: trainer.trainerId,
+            createdByUserId: trainer.userId,
+            targetEmail: `${randomUUID()}@example.com`,
+            expiresAt: new Date(Date.now() + 60_000),
+            createdAt: new Date(Date.now() - i * 1000),
+          },
+        });
+      }
+      // A removed coach never shows up.
+      const removed = await insertUser({ role: 'COACH' });
+      await db.prisma.coachProfile.create({ data: { userId: removed.id, trainerId: trainer.trainerId, status: 'INACTIVE' } });
+
+      const seen: string[] = [];
+      let cursor: string | null = null;
+      let pages = 0;
+      do {
+        const res: request.Response = await request(app.getHttpServer())
+          .get(`/trainers/${trainer.trainerId}/coaches`)
+          .query({ limit: 2, ...(cursor ? { cursor } : {}) })
+          .set('Authorization', `Bearer ${trainer.accessToken}`);
+        expect(res.status).toBe(200);
+        expect(res.body.items.length).toBeLessThanOrEqual(2);
+        seen.push(...res.body.items.map((r: { id: string }) => r.id));
+        cursor = res.body.nextCursor;
+        expect(res.body.hasMore).toBe(cursor !== null);
+        pages += 1;
+      } while (cursor && pages < 10);
+
+      expect(pages).toBe(3);
+      expect(seen).toHaveLength(5);
+      expect(new Set(seen).size).toBe(5);
+    });
+
+    it('a malformed cursor -> 400 VALIDATION_ERROR', async () => {
+      const trainer = await insertTrainer();
+      const res = await request(app.getHttpServer())
+        .get(`/trainers/${trainer.trainerId}/coaches`)
+        .query({ cursor: 'not-a-cursor' })
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+      expect(res.status).toBe(400);
+      expect(res.body.errorCode).toBe('VALIDATION_ERROR');
+    });
+  });
+
+  describe('DELETE /coaches/:id (remove from organisation)', () => {
+    async function seedCoachWithToken(trainerId: string) {
+      const user = await insertUser({ role: 'COACH' });
+      const coachProfile = await db.prisma.coachProfile.create({ data: { userId: user.id, trainerId, status: 'ACTIVE' } });
+      const accessToken = await signToken(user, { role: 'COACH', tid: trainerId });
+      return { user, coachProfile, accessToken };
+    }
+
+    it('marks the coach INACTIVE (history kept), bumps tokenVersion, drops them from the roster, and the coach can no longer act', async () => {
+      const trainer = await insertTrainer();
+      const { user, coachProfile, accessToken } = await seedCoachWithToken(trainer.trainerId);
+
+      await request(app.getHttpServer())
+        .delete(`/coaches/${coachProfile.id}`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`)
+        .expect(204);
+
+      const row = await db.prisma.coachProfile.findUnique({ where: { id: coachProfile.id } });
+      expect(row?.status).toBe('INACTIVE');
+      expect((await db.prisma.user.findUnique({ where: { id: user.id } }))?.tokenVersion).toBe(1);
+
+      const roster = await request(app.getHttpServer())
+        .get(`/trainers/${trainer.trainerId}/coaches`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+      expect(roster.body.items).toHaveLength(0);
+
+      // The old session is revoked outright (tokenVersion mismatch)…
+      await request(app.getHttpServer())
+        .patch(`/coaches/${coachProfile.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ bio: 'still here?' })
+        .expect(401);
+      // …and even a token that somehow still validates cannot edit the removed profile.
+      const freshToken = await signToken(user, { role: 'COACH', tid: trainer.trainerId, tv: 1 });
+      await request(app.getHttpServer())
+        .patch(`/coaches/${coachProfile.id}`)
+        .set('Authorization', `Bearer ${freshToken}`)
+        .send({ bio: 'still here?' })
+        .expect(404);
+      // The trainer cannot revive the removed coach through PATCH either.
+      await request(app.getHttpServer())
+        .patch(`/coaches/${coachProfile.id}`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`)
+        .send({ status: 'ACTIVE' })
+        .expect(404);
+    });
+
+    it("another trainer's coach -> 404 and nothing changes; a second removal -> 404", async () => {
+      const trainerA = await insertTrainer();
+      const trainerB = await insertTrainer();
+      const { coachProfile } = await seedCoachWithToken(trainerA.trainerId);
+
+      await request(app.getHttpServer())
+        .delete(`/coaches/${coachProfile.id}`)
+        .set('Authorization', `Bearer ${trainerB.accessToken}`)
+        .expect(404);
+      expect((await db.prisma.coachProfile.findUnique({ where: { id: coachProfile.id } }))?.status).toBe('ACTIVE');
+
+      await request(app.getHttpServer())
+        .delete(`/coaches/${coachProfile.id}`)
+        .set('Authorization', `Bearer ${trainerA.accessToken}`)
+        .expect(204);
+      await request(app.getHttpServer())
+        .delete(`/coaches/${coachProfile.id}`)
+        .set('Authorization', `Bearer ${trainerA.accessToken}`)
+        .expect(404);
+    });
+
+    it('a coach cannot remove a coach -> 403', async () => {
+      const trainer = await insertTrainer();
+      const { coachProfile, accessToken } = await seedCoachWithToken(trainer.trainerId);
+      await request(app.getHttpServer())
+        .delete(`/coaches/${coachProfile.id}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+    });
+  });
 });

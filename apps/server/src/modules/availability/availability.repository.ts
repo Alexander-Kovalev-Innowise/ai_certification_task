@@ -20,6 +20,7 @@ export interface CreateOverrideInput {
   coachId: string;
   trainerId: string;
   reason: string;
+  sessionLabel?: string;
 }
 
 // Task 5.11 (api §4.5), extended in Task 6.1 (coach slots) and Task 6.3
@@ -109,5 +110,27 @@ export class AvailabilityRepository {
    */
   async createOverride(data: CreateOverrideInput, tx: Prisma.TransactionClient): Promise<CoachAvailabilityOverride> {
     return tx.coachAvailabilityOverride.create({ data });
+  }
+
+  /** US-01.10 — the coach's own override notices, newest first (base client: the caller already proved it is that coach). */
+  async listOverridesForCoach(coachId: string, limit = 50): Promise<(CoachAvailabilityOverride & { trainer: { businessName: string } })[]> {
+    return this.prisma.coachAvailabilityOverride.findMany({
+      where: { coachId },
+      include: { trainer: { select: { businessName: true } } },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+    });
+  }
+
+  /** Idempotent: only stamps `acknowledgedAt` the first time. Returns the number of rows changed. */
+  async acknowledgeOverride(id: string, coachId: string): Promise<{ count: number }> {
+    return this.prisma.coachAvailabilityOverride.updateMany({
+      where: { id, coachId, acknowledgedAt: null },
+      data: { acknowledgedAt: new Date() },
+    });
+  }
+
+  async findOverrideForCoach(id: string, coachId: string): Promise<CoachAvailabilityOverride | null> {
+    return this.prisma.coachAvailabilityOverride.findFirst({ where: { id, coachId } });
   }
 }

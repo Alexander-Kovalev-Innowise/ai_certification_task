@@ -11,12 +11,9 @@ import type { Anonymizer } from '../../shared/prisma/anonymizer.interface';
 // keyed-by-userId, find-then-no-op-if-absent shape (trainers.anonymizer.ts)
 // — most deleted users never had a `CoachProfile` either.
 //
-// Scoped to exactly `bio`/`credentials` per the architecture doc's literal
-// scope note, not `certifications`/`publicProfile` — narrower than it might
-// look at first glance, but that's the documented boundary for this
-// anonymizer, same "don't scrub more than the spec says" posture
-// TrainersAnonymizer/PlayerProfilesAnonymizer already establish for their
-// own models.
+// Scrubs `bio`, `credentials` and `certifications` (free-text professional
+// details that identify the person); `publicProfile` is a visibility flag,
+// not PII, and is left as is.
 @Injectable()
 export class CoachesAnonymizer implements Anonymizer {
   readonly model = 'CoachProfile';
@@ -29,7 +26,7 @@ export class CoachesAnonymizer implements Anonymizer {
 
     await tx.coachProfile.update({
       where: { userId },
-      data: { bio: null, credentials: null },
+      data: { bio: null, credentials: null, certifications: null },
     });
   }
 }

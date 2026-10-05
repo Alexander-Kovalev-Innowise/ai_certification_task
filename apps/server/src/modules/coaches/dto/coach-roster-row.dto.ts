@@ -15,5 +15,7 @@ export class CoachRosterRowDto {
   status!: string;
   bio?: string | null;
   joinedAt!: Date | null;
+  /** Invite-only rows: when the link expires (Pending: the deadline, Expired: when it lapsed). `null` for accepted/profile rows. */
+  expiresAt?: Date | null;
   invitationStatus!: 'Pending' | 'Accepted' | 'Expired';
 }

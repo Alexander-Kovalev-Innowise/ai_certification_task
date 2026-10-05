@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { CoachProfile, CoachStatus, Prisma, TrainerProfile, User } from '@prisma/client';
 
+import type { KeysetCursor } from '../../shared/http/pagination.dto';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 
 export type CoachProfileWithUser = CoachProfile & { user: User };
@@ -23,12 +24,47 @@ export class CoachesRepository {
    * already document. Includes the `User` relation — the roster row needs
    * `name`/`email`, neither of which lives on `CoachProfile` itself.
    */
-  async listByTrainer(trainerId: string, status?: CoachStatus): Promise<CoachProfileWithUser[]> {
+  async listByTrainer(
+    trainerId: string,
+    params: { status?: CoachStatus; limit: number; cursor?: KeysetCursor },
+  ): Promise<CoachProfileWithUser[]> {
+    // INACTIVE (removed) coaches are history, never part of the live roster.
+    const statusFilter = params.status ? { status: params.status } : { status: { not: 'INACTIVE' as const } };
     return this.prisma.extended.coachProfile.findMany({
-      where: { trainerId, ...(status ? { status } : {}) },
+      where: {
+        trainerId,
+        ...statusFilter,
+        ...(params.cursor
+          ? {
+              OR: [
+                { joinedAt: { lt: new Date(params.cursor.createdAt) } },
+                { joinedAt: new Date(params.cursor.createdAt), id: { lt: params.cursor.id } },
+              ],
+            }
+          : {}),
+      },
       include: { user: true },
-      orderBy: { joinedAt: 'desc' },
+      orderBy: [{ joinedAt: 'desc' }, { id: 'desc' }],
+      take: params.limit + 1,
     });
+  }
+
+  /** Emails of this trainer's live (non-INACTIVE) coaches — used to keep an accepted invite from also showing as a Pending/Expired row. */
+  async listLiveEmailsByTrainer(trainerId: string): Promise<string[]> {
+    const rows = await this.prisma.extended.coachProfile.findMany({
+      where: { trainerId, status: { not: 'INACTIVE' } },
+      select: { user: { select: { email: true } } },
+    });
+    return rows.map((row) => row.user.email);
+  }
+
+  /**
+   * Invite-time lookup (BR-003): the CoachProfile (if any) belonging to the
+   * user with this email. Base client, deliberately NOT tenant-scoped — the
+   * whole point is to see a profile that belongs to ANOTHER trainer.
+   */
+  async findByUserEmail(email: string): Promise<CoachProfile | null> {
+    return this.prisma.coachProfile.findFirst({ where: { user: { email: { equals: email, mode: 'insensitive' } } } });
   }
 
   /**

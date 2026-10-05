@@ -79,7 +79,7 @@ describe('CoachesAnonymizer (Task 6.4)', () => {
     expect(anonymizer.model).toBe('CoachProfile');
   });
 
-  it('anonymizes exactly bio/credentials, keyed by userId', async () => {
+  it('anonymizes bio/credentials/certifications, keyed by userId', async () => {
     const { userId, coachId } = await insertCoachUser();
 
     await prismaService.$transaction(async (tx: unknown) => {
@@ -89,8 +89,8 @@ describe('CoachesAnonymizer (Task 6.4)', () => {
     const row = await prismaService.coachProfile.findUnique({ where: { id: coachId } });
     expect(row.bio).toBeNull();
     expect(row.credentials).toBeNull();
-    // Untouched: not this anonymizer's concern (arch §11.2's literal scope note).
-    expect(row.certifications).toBe('CPR, First Aid');
+    expect(row.certifications).toBeNull();
+    // Untouched: a visibility flag, not PII.
     expect(row.publicProfile).toBe(true);
     expect(row.userId).toBe(userId);
   });

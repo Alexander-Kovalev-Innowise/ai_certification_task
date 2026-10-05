@@ -51,7 +51,7 @@ export class ConflictCheckService {
           ? await this.coachesRepository.findByIdForTrainer(coachProfileId, ctx.trainerId)
           : null;
 
-    if (!coachProfile) {
+    if (!coachProfile || coachProfile.status === 'INACTIVE') {
       throw new ForbiddenException({ message: 'Only the employing trainer may perform this action', errorCode: 'FORBIDDEN' });
     }
 

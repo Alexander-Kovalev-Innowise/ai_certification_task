@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 
@@ -34,11 +34,37 @@ export class CoachesController {
   @ApiResponse({ status: 201, type: InviteCoachResponseDto })
   @ApiResponse({ status: 400 })
   @ApiResponse({ status: 403 })
+  @ApiResponse({ status: 409, description: 'Email already belongs to an ACTIVE coach (COACH_ALREADY_ASSIGNED / COACH_ALREADY_ON_ROSTER)' })
   async inviteCoach(
     @CurrentUser() ctx: AuthContext,
     @Body() dto: InviteCoachDto,
   ): Promise<InviteCoachResponseDto> {
     return this.coachService.inviteCoach(ctx, dto);
+  }
+
+  // US-01.08 resend. Revokes the old link, issues a fresh 7-day one — never a duplicate roster row.
+  @Roles(Role.TRAINER)
+  @RequiresCapability(Capability.INVITE_COACH)
+  @Post('coaches/invites/:id/resend')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Resend a coach invite — revokes the old link and issues a new 7-day link' })
+  @ApiResponse({ status: 201, type: InviteCoachResponseDto })
+  @ApiResponse({ status: 404, description: 'Not found or not this trainer invite' })
+  @ApiResponse({ status: 409, description: 'Already accepted / coach already assigned' })
+  async resendInvite(@CurrentUser() ctx: AuthContext, @Param('id') id: string): Promise<InviteCoachResponseDto> {
+    return this.coachService.resendInvite(ctx, id);
+  }
+
+  // Epic §3 "Manage own organization users": remove a coach from the trainer's org (soft, INACTIVE).
+  @Roles(Role.TRAINER)
+  @RequiresCapability(Capability.INVITE_COACH)
+  @Delete('coaches/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: "Remove a coach from the trainer's organisation (soft — status becomes INACTIVE)" })
+  @ApiResponse({ status: 204 })
+  @ApiResponse({ status: 404, description: 'Unknown id or another tenant coach (never 403)' })
+  async removeCoach(@CurrentUser() ctx: AuthContext, @Param('id') id: string): Promise<void> {
+    await this.coachService.removeCoach(ctx, id);
   }
 
   // Task 4.12 (api §4.2 "GET /trainers/:id/coaches", FR-060). Own tenant for

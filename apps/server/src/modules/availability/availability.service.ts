@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Availability, CoachProfile, PlayerProfile, Prisma } from '@prisma/client';
 
 import { JOB_TYPES } from '../../shared/jobs/job-types.const';
@@ -12,7 +12,7 @@ import { PlayerProfilesRepository } from '../player-profiles/player-profiles.rep
 
 import { AvailabilityRepository } from './availability.repository';
 import { AvailabilityGridResponseDto, AvailabilitySlotDto, CoachAvailabilityGridResponseDto } from './dto/availability-grid.dto';
-import { CoachOverrideResponseDto, CreateOverrideDto } from './dto/create-override.dto';
+import { CoachOverrideNoticeDto, CoachOverrideResponseDto, CreateOverrideDto } from './dto/create-override.dto';
 
 // Task 5.11 (api §4.5 "Player availability", FR-090). `Availability` has no
 // `trainerId` column (api §0.3's explicit design note) — the SAME weekly
@@ -22,6 +22,8 @@ import { CoachOverrideResponseDto, CreateOverrideDto } from './dto/create-overri
 // here — api §4.5).
 @Injectable()
 export class AvailabilityService {
+  private readonly logger = new Logger(AvailabilityService.name);
+
   constructor(
     private readonly availabilityRepository: AvailabilityRepository,
     private readonly playerProfilesRepository: PlayerProfilesRepository,
@@ -138,7 +140,13 @@ export class AvailabilityService {
 
     const override = await this.prisma.$transaction(async (tx) => {
       const created = await this.availabilityRepository.createOverride(
-        { eventId: dto.eventId, coachId: coachProfile.id, trainerId: coachProfile.trainerId, reason: dto.reason },
+        {
+          eventId: dto.eventId,
+          coachId: coachProfile.id,
+          trainerId: coachProfile.trainerId,
+          reason: dto.reason,
+          sessionLabel: dto.sessionLabel,
+        },
         tx,
       );
       await this.outboxService.enqueue(
@@ -154,14 +162,68 @@ export class AvailabilityService {
     });
     this.outboxService.nudge();
 
+    // FR-063 audit line: event_id / coach_id / reason / overridden_by.
+    this.logger.log(
+      JSON.stringify({
+        event: 'coach.availability.override',
+        event_id: override.eventId,
+        coach_id: override.coachId,
+        reason: override.reason,
+        overridden_by: ctx.userId,
+        trainer_id: override.trainerId,
+      }),
+    );
+
     return {
       id: override.id,
       eventId: override.eventId,
       coachId: override.coachId,
       trainerId: override.trainerId,
       reason: override.reason,
+      sessionLabel: override.sessionLabel,
       createdAt: override.createdAt,
     };
+  }
+
+  /**
+   * US-01.10 coach-side acknowledgement — the coach (and only that coach) sees
+   * the overrides logged against them. 404 for everybody else (no existence
+   * disclosure), including a removed (INACTIVE) coach.
+   */
+  async listOverridesForCoach(ctx: AuthContext, coachProfileId: string): Promise<CoachOverrideNoticeDto[]> {
+    await this.requireOwnActiveCoach(ctx, coachProfileId);
+    const rows = await this.availabilityRepository.listOverridesForCoach(coachProfileId);
+    return rows.map((row) => ({
+      id: row.id,
+      eventId: row.eventId,
+      reason: row.reason,
+      sessionLabel: row.sessionLabel,
+      trainerBusinessName: row.trainer.businessName,
+      createdAt: row.createdAt,
+      acknowledgedAt: row.acknowledgedAt,
+    }));
+  }
+
+  async acknowledgeOverride(ctx: AuthContext, coachProfileId: string, overrideId: string): Promise<void> {
+    await this.requireOwnActiveCoach(ctx, coachProfileId);
+    const override = await this.availabilityRepository.findOverrideForCoach(overrideId, coachProfileId);
+    if (!override) {
+      throw new NotFoundException({ message: 'Override not found', errorCode: 'NOT_FOUND' });
+    }
+    const { count } = await this.availabilityRepository.acknowledgeOverride(overrideId, coachProfileId);
+    if (count > 0) {
+      this.logger.log(
+        JSON.stringify({ event: 'coach.availability.override.acknowledged', override_id: overrideId, coach_id: coachProfileId, by: ctx.userId }),
+      );
+    }
+  }
+
+  private async requireOwnActiveCoach(ctx: AuthContext, coachProfileId: string): Promise<CoachProfileWithUser> {
+    const coachProfile = await this.coachesRepository.findById(coachProfileId);
+    if (!coachProfile || ctx.role !== 'COACH' || coachProfile.userId !== ctx.userId || coachProfile.status === 'INACTIVE') {
+      throw new NotFoundException({ message: 'Coach not found', errorCode: 'NOT_FOUND' });
+    }
+    return coachProfile;
   }
 
   /**
@@ -183,7 +245,7 @@ export class AvailabilityService {
           ? await this.coachesRepository.findByIdForTrainer(coachProfileId, ctx.trainerId)
           : null;
 
-    if (!coachProfile) {
+    if (!coachProfile || coachProfile.status === 'INACTIVE') {
       throw new ForbiddenException({ message: 'Only the employing trainer may perform this action', errorCode: 'FORBIDDEN' });
     }
 

@@ -1,7 +1,8 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import type { CoachProfile, Prisma } from '@prisma/client';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import type { CoachProfile, Prisma, ShareLink } from '@prisma/client';
 
-import type { PaginatedResponseDto } from '../../shared/http/pagination.dto';
+import { decodeCursor, encodeCursor } from '../../shared/http/pagination.dto';
+import type { KeysetCursor, PaginatedResponseDto } from '../../shared/http/pagination.dto';
 import { JOB_TYPES } from '../../shared/jobs/job-types.const';
 import { OutboxService } from '../../shared/jobs/outbox.service';
 import { buildCoachInviteEmailPayload } from '../../shared/mail/templates/coach-invite.template';
@@ -25,6 +26,8 @@ const COACH_ALLOWED_FIELDS: readonly (keyof UpdateCoachDto)[] = ['bio', 'credent
 // 4.13 (updateCoach).
 @Injectable()
 export class CoachService {
+  private readonly logger = new Logger(CoachService.name);
+
   constructor(
     private readonly shareLinkService: ShareLinkService,
     private readonly shareLinksRepository: ShareLinksRepository,
@@ -43,15 +46,14 @@ export class CoachService {
    * `businessName` for the email (`ctx` carries no display name of its own).
    */
   async inviteCoach(ctx: AuthContext, dto: InviteCoachDto): Promise<InviteCoachResponseDto> {
-    if (!ctx.trainerId) {
-      // Unreachable via the real route (@Roles(TRAINER) guarantees a `tid`
-      // claim) — narrows the type below, same defensive posture as
-      // ShareLinkService.requireTrainerId.
-      throw new BadRequestException({ message: 'Caller has no tenant to invite a coach into', errorCode: 'VALIDATION_ERROR' });
-    }
-    const trainerProfile = await this.prisma.trainerProfile.findUniqueOrThrow({ where: { id: ctx.trainerId } });
+    const trainerId = this.requireTrainerId(ctx);
+    const trainerProfile = await this.prisma.trainerProfile.findUniqueOrThrow({ where: { id: trainerId } });
+
+    await this.assertEmailInvitable(trainerId, dto.email);
 
     const link = await this.prisma.$transaction(async (tx) => {
+      // One live invite per (trainer, email): a re-invite replaces the old link.
+      await this.shareLinksRepository.revokeActiveCoachInvitesForEmail(trainerId, dto.email, tx);
       const created = await this.shareLinkService.generateCoachLink(ctx, dto.email, tx);
       await this.outboxService.enqueue(
         tx,
@@ -67,47 +69,146 @@ export class CoachService {
     });
     this.outboxService.nudge();
 
+    return this.toInviteResponse(link);
+  }
+
+  /**
+   * `POST /coaches/invites/:id/resend` (US-01.08). `:id` is the `ShareLink.id`
+   * of a roster invite row. Revokes the old link and issues a fresh 7-day
+   * `COACH_UNIQUE` link to the same email (re-sending the invite email) in one
+   * transaction — the old row becomes `REVOKED` and drops off the roster, so
+   * there is never a duplicate row. 404 for a link that is not this trainer's
+   * COACH_UNIQUE invite; 409 `INVITE_ALREADY_ACCEPTED` for a claimed one.
+   */
+  async resendInvite(ctx: AuthContext, linkId: string): Promise<InviteCoachResponseDto> {
+    const trainerId = this.requireTrainerId(ctx);
+    const old = await this.shareLinksRepository.findByIdForTrainer(linkId, trainerId);
+    if (!old || old.type !== 'COACH_UNIQUE' || !old.targetEmail) {
+      throw new NotFoundException({ message: 'Invite not found', errorCode: 'NOT_FOUND' });
+    }
+    if (old.useCount >= 1) {
+      throw new ConflictException({
+        message: 'This invite was already accepted',
+        errorCode: 'INVITE_ALREADY_ACCEPTED',
+      });
+    }
+    const email = old.targetEmail;
+    await this.assertEmailInvitable(trainerId, email);
+
+    const trainerProfile = await this.prisma.trainerProfile.findUniqueOrThrow({ where: { id: trainerId } });
+    const link = await this.prisma.$transaction(async (tx) => {
+      await this.shareLinksRepository.revoke(old.id, tx);
+      await this.shareLinksRepository.revokeActiveCoachInvitesForEmail(trainerId, email, tx);
+      const created = await this.shareLinkService.generateCoachLink(ctx, email, tx);
+      await this.outboxService.enqueue(
+        tx,
+        JOB_TYPES.EMAIL_COACH_INVITE,
+        buildCoachInviteEmailPayload(email, {
+          trainerBusinessName: trainerProfile.businessName,
+          shareLinkCode: created.code,
+        }) as unknown as Prisma.InputJsonValue,
+      );
+      return created;
+    });
+    this.outboxService.nudge();
+
+    this.logger.log(
+      JSON.stringify({ event: 'coach.invite.resent', trainerId, oldLinkId: old.id, newLinkId: link.id, by: ctx.userId }),
+    );
+    return this.toInviteResponse(link);
+  }
+
+  /**
+   * BR-003 at INVITE time (not only at accept time): an email that already
+   * belongs to an ACTIVE coach — of ANOTHER trainer (`COACH_ALREADY_ASSIGNED`)
+   * or of this one (`COACH_ALREADY_ON_ROSTER`) — cannot be invited.
+   */
+  private async assertEmailInvitable(trainerId: string, email: string): Promise<void> {
+    const existing = await this.coachesRepository.findByUserEmail(email);
+    if (existing?.status !== 'ACTIVE') {
+      return;
+    }
+    if (existing.trainerId === trainerId) {
+      throw new ConflictException({
+        message: 'This coach is already on your roster',
+        errorCode: 'COACH_ALREADY_ON_ROSTER',
+      });
+    }
+    throw new ConflictException({
+      message: 'This coach is already assigned to another trainer',
+      errorCode: 'COACH_ALREADY_ASSIGNED',
+    });
+  }
+
+  /**
+   * `DELETE /coaches/:id` — the trainer removes a coach from their
+   * organisation (Epic §3 "Manage own organization users"). Soft: the
+   * `CoachProfile` becomes `INACTIVE` (history, overrides and availability
+   * stay), the coach's sessions are revoked (`tokenVersion++`, refresh tokens
+   * revoked) and every later coach-side action for this trainer is refused
+   * (`updateCoach` 404s on an INACTIVE profile; the tenant-claims resolver
+   * stops issuing a `tid` for it). 404 (never 403) for another tenant's coach.
+   */
+  async removeCoach(ctx: AuthContext, id: string): Promise<void> {
+    const trainerId = this.requireTrainerId(ctx);
+    const coachProfile = await this.coachesRepository.findByIdForTrainer(id, trainerId);
+    if (!coachProfile || coachProfile.status === 'INACTIVE') {
+      throw new NotFoundException({ message: 'Coach not found', errorCode: 'NOT_FOUND' });
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.coachProfile.update({ where: { id }, data: { status: 'INACTIVE' } });
+      await tx.user.update({ where: { id: coachProfile.userId }, data: { tokenVersion: { increment: 1 } } });
+      await tx.refreshToken.updateMany({
+        where: { userId: coachProfile.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    });
+
+    this.logger.log(
+      JSON.stringify({
+        event: 'coach.removed',
+        trainerId,
+        coachProfileId: id,
+        coachUserId: coachProfile.userId,
+        previousStatus: coachProfile.status,
+        removedBy: ctx.userId,
+      }),
+    );
+  }
+
+  private toInviteResponse(link: { id: string; code: string; expiresAt: Date | null }): InviteCoachResponseDto {
     const response = new InviteCoachResponseDto();
+    response.id = link.id;
     response.shareLinkCode = link.code;
     response.expiresAt = link.expiresAt;
     response.status = 'PENDING';
     return response;
   }
 
+  private requireTrainerId(ctx: AuthContext): string {
+    if (!ctx.trainerId) {
+      // Unreachable via the real route (@Roles(TRAINER) guarantees a `tid`
+      // claim) — narrows the type below.
+      throw new BadRequestException({ message: 'Caller has no tenant to manage coaches for', errorCode: 'VALIDATION_ERROR' });
+    }
+    return ctx.trainerId;
+  }
+
   /**
    * Task 4.12 (api §4.2 "GET /trainers/:id/coaches", FR-060's "trainer can
    * view invitation status"). `assertOwnershipOrNotFound` runs BEFORE any
-   * repository call — same ordering ShareLinkService.listShareLinks
-   * documents, and for the same reason (keeps a mismatched TRAINER `:id`
-   * from ever reaching `.extended`, where the tenant-guard extension would
-   * throw a 500 instead of a clean 404).
+   * repository call (keeps a mismatched TRAINER `:id` from reaching
+   * `.extended`, where the tenant-guard would 500 instead of a clean 404).
    *
-   * Merges two sources into one roster:
-   *  - `CoachProfile` rows (a real coach account exists) — `invitationStatus`
-   *    is `'Accepted'` (status ACTIVE) or `'Pending'` (status PENDING, only
-   *    ever reached via a trainer manually setting it back, Task 4.13).
-   *  - Still-outstanding `ShareLink(COACH_UNIQUE)` invites with no matching
-   *    `CoachProfile` yet — `'Pending'` (still `ACTIVE`, not time-expired) or
-   *    `'Expired'` otherwise. Matched against accepted profiles by
-   *    `targetEmail` so an invite that WAS successfully claimed doesn't
-   *    double-count: arch §9.1's single-use claim sets a `ShareLink`'s own
-   *    `status` to `'EXPIRED'` on both a successful accept and genuine
-   *    time-expiry alike (there is no `CoachProfile.shareLinkId` column to
-   *    disambiguate the two directly, unlike `PlayerTrainerAssociation`) —
-   *    this email cross-reference is the practical workaround, flagged here
-   *    as a known limitation rather than silently assumed correct: it can
-   *    misclassify an already-expired, never-accepted invite as excluded if
-   *    a *different, later* invite to the same email was accepted, and it
-   *    entirely misses a targetEmail change between invite and account
-   *    creation (not possible in this codebase today, since email is fixed
-   *    at redemption, but noted for completeness).
-   *
-   * Pagination is a plain in-memory slice after merging both sources, not a
-   * DB-level keyset query — a trainer's coach roster is a small, bounded
-   * list (arch §18: "no dashboard, no aggregation" for ShareLink analytics
-   * either), and a true cross-source keyset cursor over two different tables
-   * with different sort keys is materially more complex for a resource this
-   * size; flagged as a deliberate simplification, not an oversight.
+   * One logical roster built from two DB sources, paged with a real keyset
+   * cursor: first the `CoachProfile` rows (Accepted / Pending; removed
+   * `INACTIVE` coaches are history and never listed), ordered `(joinedAt,
+   * id)` DESC, then the outstanding `ShareLink(COACH_UNIQUE)` invites (no
+   * account yet — Pending / Expired), ordered `(createdAt, id)` DESC. The
+   * cursor is `{createdAt, id}` with the id prefixed `p:`/`i:` naming which
+   * source the last returned row came from; a page that exhausts the profiles
+   * is topped up from the invites, so pages are always full except the last.
    */
   async listCoaches(
     ctx: AuthContext,
@@ -116,38 +217,78 @@ export class CoachService {
   ): Promise<PaginatedResponseDto<CoachRosterRowDto>> {
     this.assertOwnershipOrNotFound(ctx, trainerId);
 
-    const coachProfiles = await this.coachesRepository.listByTrainer(trainerId, query.status);
-    const acceptedEmails = new Set(coachProfiles.filter((cp) => cp.status === 'ACTIVE').map((cp) => cp.user.email));
+    const limit = query.limit ?? 50;
+    const cursor = query.cursor ? this.parseRosterCursor(query.cursor) : undefined;
+    const includeInvites = query.status !== 'ACTIVE';
 
-    const profileRows = coachProfiles.map((cp) => this.toProfileRow(cp));
+    const items: CoachRosterRowDto[] = [];
+    let hasMore = false;
+    let last: KeysetCursor | null = null;
 
-    let inviteRows: CoachRosterRowDto[] = [];
-    if (query.status !== 'ACTIVE') {
-      const invites = await this.shareLinksRepository.listCoachInvitesByTrainer(trainerId);
-      inviteRows = invites
-        .filter((link) => !!link.targetEmail && !acceptedEmails.has(link.targetEmail))
-        .map((link) => {
-          const invalidReason = resolveShareLinkInvalidReason(link);
-          const row = new CoachRosterRowDto();
-          row.id = link.id;
-          row.userId = null;
-          row.name = null;
-          row.email = link.targetEmail!;
-          row.status = link.status;
-          row.bio = undefined;
-          row.joinedAt = null;
-          row.invitationStatus = invalidReason !== null ? 'Expired' : 'Pending';
-          return row;
-        });
+    if (!cursor || cursor.source === 'p') {
+      const profiles = await this.coachesRepository.listByTrainer(trainerId, {
+        status: query.status,
+        limit,
+        cursor: cursor?.keyset,
+      });
+      for (const cp of profiles.slice(0, limit)) {
+        items.push(this.toProfileRow(cp));
+        last = { createdAt: cp.joinedAt.toISOString(), id: `p:${cp.id}` };
+      }
+      hasMore = profiles.length > limit;
     }
 
-    const limit = query.limit ?? 50;
-    const merged = [...profileRows, ...inviteRows];
+    if (!hasMore && includeInvites) {
+      const remaining = limit - items.length;
+      const liveEmails = await this.coachesRepository.listLiveEmailsByTrainer(trainerId);
+      const invites = await this.shareLinksRepository.listCoachInvitesPage(trainerId, {
+        limit: remaining,
+        cursor: cursor?.source === 'i' ? cursor.keyset : undefined,
+        excludeEmails: liveEmails,
+      });
+      for (const link of invites.slice(0, remaining)) {
+        items.push(this.toInviteRow(link));
+        last = { createdAt: link.createdAt.toISOString(), id: `i:${link.id}` };
+      }
+      hasMore = invites.length > remaining;
+    }
 
-    // No real cursor across two merged sources (see method comment) —
-    // `nextCursor` is always `null`; `hasMore` still tells the caller
-    // whether this bounded, single-page slice cut anything off.
-    return { items: merged.slice(0, limit), nextCursor: null, hasMore: merged.length > limit };
+    return { items, nextCursor: hasMore && last ? encodeCursor(last) : null, hasMore };
+  }
+
+  private parseRosterCursor(raw: string): { source: 'p' | 'i'; keyset: KeysetCursor } {
+    try {
+      const decoded = decodeCursor(raw);
+      const prefix = decoded.id.slice(0, 2);
+      if (prefix !== 'p:' && prefix !== 'i:') {
+        throw new Error('Invalid pagination cursor');
+      }
+      return {
+        source: prefix === 'p:' ? 'p' : 'i',
+        keyset: { createdAt: decoded.createdAt, id: decoded.id.slice(2) },
+      };
+    } catch {
+      throw new BadRequestException({
+        message: 'Invalid pagination cursor',
+        errorCode: 'VALIDATION_ERROR',
+        details: [{ field: 'cursor', message: 'Invalid pagination cursor' }],
+      });
+    }
+  }
+
+  private toInviteRow(link: ShareLink): CoachRosterRowDto {
+    const expired = resolveShareLinkInvalidReason(link) !== null;
+    const row = new CoachRosterRowDto();
+    row.id = link.id;
+    row.userId = null;
+    row.name = null;
+    row.email = link.targetEmail!;
+    row.status = expired ? 'EXPIRED' : 'PENDING';
+    row.bio = undefined;
+    row.joinedAt = null;
+    row.expiresAt = link.expiresAt;
+    row.invitationStatus = expired ? 'Expired' : 'Pending';
+    return row;
   }
 
   private toProfileRow(cp: CoachProfileWithUser): CoachRosterRowDto {
@@ -194,7 +335,8 @@ export class CoachService {
     }
 
     const coachProfile = await this.coachesRepository.findByIdForTrainer(id, ctx.trainerId);
-    if (!coachProfile) {
+    // A removed (INACTIVE) coach is history: neither side may act on the profile any more.
+    if (!coachProfile || coachProfile.status === 'INACTIVE') {
       throw new NotFoundException({ message: 'Coach not found', errorCode: 'NOT_FOUND' });
     }
 
