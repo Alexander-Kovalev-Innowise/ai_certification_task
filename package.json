@@ -11,7 +11,8 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
-    "test": "turbo run test"
+    "test": "turbo run test",
+    "test:e2e": "npm run test:e2e -w e2e"
   },
   "devDependencies": {
     "turbo": "^2.11.2"

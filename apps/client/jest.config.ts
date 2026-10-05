@@ -16,6 +16,10 @@ const config: Config = {
   coverageProvider: 'v8',
   testEnvironment: 'jsdom',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  moduleNameMapper: {
+    '^@fontsource(-variable)?/.+$': '<rootDir>/jest.styleMock.js',
+    '^@paper-design/shaders-react$': '<rootDir>/jest.paperShadersMock.js',
+  },
   testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/.next/'],
 };
 
