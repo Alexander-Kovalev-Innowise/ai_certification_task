@@ -109,11 +109,15 @@ export class UsersRepository {
    *
    * Raw SQL, not the Prisma query builder: `search` must hit the `pg_trgm`
    * GIN index from Task 1.2 (`user_email_trgm_idx` on `lower(email)`,
-   * `user_name_trgm_idx` on `lower(firstName || ' ' || lastName)`). Prisma's
+   * `user_name_trgm_idx` on `lower(firstName) || ' ' || lower(lastName)`). Prisma's
    * `contains`/`mode: 'insensitive'` compiles to a plain `ILIKE` on the raw
    * column, not `lower(...) LIKE lower(...)` — it would never match either
    * functional index. Matching the index's exact expression here is what
-   * lets a query plan (`EXPLAIN`) actually name the index.
+   * lets a query plan (`EXPLAIN`) actually name the index. The name
+   * expression must be spelled exactly as the index declares it: the
+   * semantically equal `lower(firstName || ' ' || lastName)` is a different
+   * expression to the planner and silently degrades name search to a
+   * sequential scan (perf finding, verified with EXPLAIN ANALYZE).
    *
    * No `deletedAt` filter: the directory is an admin surface and the
    * `status` filter (ACTIVE / INACTIVE / DELETED) is the one place that
@@ -135,7 +139,7 @@ export class UsersRepository {
     if (params.search) {
       const pattern = `%${params.search}%`;
       conditions.push(
-        Prisma.sql`(lower("email") LIKE lower(${pattern}) OR lower("firstName" || ' ' || "lastName") LIKE lower(${pattern}))`,
+        Prisma.sql`(lower("email") LIKE lower(${pattern}) OR (lower("firstName") || ' ' || lower("lastName")) LIKE lower(${pattern}))`,
       );
     }
     if (params.cursor) {

@@ -6,6 +6,7 @@ import {
   type ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 
@@ -82,6 +83,8 @@ function httpStatusPhrase(status: number): string {
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(GlobalExceptionFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
@@ -150,7 +153,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       return;
     }
 
-    // Unhandled exception -> 500, no details, never leak the raw stack trace.
+    // Unhandled exception -> 500, no details, never leak the raw stack trace
+    // to the client. It is logged server-side (correlated by requestId): a 500
+    // that leaves no trace anywhere cannot be diagnosed.
+    this.logger.error(
+      `Unhandled exception on ${request.method} ${request.url} (requestId ${requestId})`,
+      exception instanceof Error ? exception.stack : String(exception),
+    );
     const payload: ErrorResponseBody = {
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       message: 'Internal server error',
