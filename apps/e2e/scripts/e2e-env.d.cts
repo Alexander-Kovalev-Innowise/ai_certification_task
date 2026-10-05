@@ -1,0 +1,17 @@
+export const ROOT: string;
+export const E2E_DIR: string;
+export const SERVER_DIR: string;
+export const CLIENT_DIR: string;
+export const API_PORT: number;
+export const CLIENT_PORT: number;
+export const API_URL: string;
+export const CLIENT_URL: string;
+export const E2E_DB_NAME: string;
+export const UPLOADS_DIR: string;
+export const SERVER_OUT_DIR: string;
+export const CLIENT_SNAPSHOT_DIR: string;
+export const serverRequire: NodeRequire;
+export function loadRootEnv(): Record<string, string>;
+export function databaseUrls(): { e2eUrl: string; adminUrl: string; dbName: string };
+export function apiEnv(): Record<string, string>;
+export function seedCredentials(): { email: string | undefined; password: string | undefined };
