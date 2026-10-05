@@ -3,6 +3,7 @@
 import { useState } from 'react';
 
 import { apiRequest } from '../../lib/api/apiClient';
+import { Modal } from '../shared/Modal';
 
 import type { TrainerAssociationRow } from './TrainerAssociationList';
 
@@ -59,33 +60,36 @@ export function RemoveTrainerConfirmModal({ isOpen, profileId, trainer, onClose,
   }
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="remove-trainer-heading" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg">
-      <div className="w-full max-w-[24rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
-        <h2 id="remove-trainer-heading" className="text-block-title font-semibold text-text-primary">
-          Remove {trainer.businessName}?
-        </h2>
-        <p className="mt-sm text-body text-text-secondary">This will cancel all upcoming RSVPs with this trainer. This can&apos;t be undone.</p>
+    <Modal
+      labelledBy="remove-trainer-heading"
+      onClose={handleClose}
+      dismissible={!isSubmitting}
+      className="w-full max-w-[24rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong"
+    >
+      <h2 id="remove-trainer-heading" className="text-block-title font-semibold text-text-primary">
+        Remove {trainer.businessName}?
+      </h2>
+      <p className="mt-sm text-body text-text-secondary">This will cancel all upcoming RSVPs with this trainer. This can&apos;t be undone.</p>
 
-        {error && (
-          <p role="alert" className="mt-sm text-body text-danger">
-            {error}
-          </p>
-        )}
+      {error && (
+        <p role="alert" className="mt-sm text-body text-danger">
+          {error}
+        </p>
+      )}
 
-        <div className="mt-md flex justify-end gap-sm">
-          <button type="button" onClick={handleClose} disabled={isSubmitting} className="btn btn-ghost">
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={isSubmitting}
-            className="btn btn-danger"
-          >
-            {isSubmitting ? 'Removing…' : 'Yes, remove'}
-          </button>
-        </div>
+      <div className="mt-md flex justify-end gap-sm">
+        <button type="button" onClick={handleClose} disabled={isSubmitting} className="btn btn-ghost">
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleConfirm}
+          disabled={isSubmitting}
+          className="btn btn-danger"
+        >
+          {isSubmitting ? 'Removing…' : 'Yes, remove'}
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }

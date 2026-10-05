@@ -7,6 +7,7 @@ import { useForm } from 'react-hook-form';
 import { apiRequest } from '../../lib/api/apiClient';
 import { parseApiErrorBody } from '../../lib/api/apiError';
 import { createShareLinkSchema, type CreateShareLinkFormValues } from '../../lib/schemas/createShareLinkSchema';
+import { Modal } from '../shared/Modal';
 
 // api §4.4 POST /share-links — `201 ShareLinkCreatedResponseDto`.
 export interface GenerateShareLinkResult {
@@ -90,68 +91,71 @@ export function GenerateShareLinkModal({ isOpen, onClose, onGenerated }: Generat
   });
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="generate-share-link-heading" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg">
-      <div className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
-        <h2 id="generate-share-link-heading" className="text-block-title font-semibold text-text-primary">
-          Generate share link
-        </h2>
+    <Modal
+      labelledBy="generate-share-link-heading"
+      onClose={handleClose}
+      closeOnBackdrop={false}
+      className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong"
+    >
+      <h2 id="generate-share-link-heading" className="text-block-title font-semibold text-text-primary">
+        Generate share link
+      </h2>
 
-        <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
-          <fieldset className="flex flex-col gap-xxs">
-            <legend className="text-body text-text-secondary">Link type</legend>
-            <label className="flex items-center gap-sm text-body text-text-primary">
-              <input type="radio" value="PLAYER_STATIC" {...register('type')} />
-              Player (unlimited, no expiry)
+      <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
+        <fieldset className="flex flex-col gap-xxs">
+          <legend className="text-body text-text-secondary">Link type</legend>
+          <label className="flex items-center gap-sm text-body text-text-primary">
+            <input type="radio" value="PLAYER_STATIC" {...register('type')} />
+            Player (unlimited, no expiry)
+          </label>
+          <label className="flex items-center gap-sm text-body text-text-primary">
+            <input type="radio" value="COACH_UNIQUE" {...register('type')} />
+            Coach (single-use, expires in 7 days)
+          </label>
+        </fieldset>
+
+        {type === 'COACH_UNIQUE' && (
+          <div className="flex flex-col gap-xxs">
+            <label htmlFor="generate-share-link-email" className="field-label">
+              Coach email
             </label>
-            <label className="flex items-center gap-sm text-body text-text-primary">
-              <input type="radio" value="COACH_UNIQUE" {...register('type')} />
-              Coach (single-use, expires in 7 days)
-            </label>
-          </fieldset>
-
-          {type === 'COACH_UNIQUE' && (
-            <div className="flex flex-col gap-xxs">
-              <label htmlFor="generate-share-link-email" className="field-label">
-                Coach email
-              </label>
-              <input
-                id="generate-share-link-email"
-                type="email"
-                placeholder="coach@example.com"
-                autoComplete="off"
-                className={INPUT_CLASSNAME}
-                aria-invalid={!!errors.targetEmail}
-                aria-describedby={errors.targetEmail ? 'generate-share-link-email-error' : undefined}
-                {...register('targetEmail')}
-              />
-              {errors.targetEmail && (
-                <p id="generate-share-link-email-error" role="alert" className="text-caption text-danger">
-                  {errors.targetEmail.message}
-                </p>
-              )}
-            </div>
-          )}
-
-          {formError && (
-            <p role="alert" className="text-body text-danger">
-              {formError}
-            </p>
-          )}
-
-          <div className="mt-sm flex justify-end gap-sm">
-            <button type="button" onClick={handleClose} className="btn btn-ghost">
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="btn btn-primary"
-            >
-              {isSubmitting ? 'Generating…' : 'Generate'}
-            </button>
+            <input
+              id="generate-share-link-email"
+              type="email"
+              placeholder="coach@example.com"
+              autoComplete="off"
+              className={INPUT_CLASSNAME}
+              aria-invalid={!!errors.targetEmail}
+              aria-describedby={errors.targetEmail ? 'generate-share-link-email-error' : undefined}
+              {...register('targetEmail')}
+            />
+            {errors.targetEmail && (
+              <p id="generate-share-link-email-error" role="alert" className="text-caption text-danger">
+                {errors.targetEmail.message}
+              </p>
+            )}
           </div>
-        </form>
-      </div>
-    </div>
+        )}
+
+        {formError && (
+          <p role="alert" className="text-body text-danger">
+            {formError}
+          </p>
+        )}
+
+        <div className="mt-sm flex justify-end gap-sm">
+          <button type="button" onClick={handleClose} className="btn btn-ghost">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="btn btn-primary"
+          >
+            {isSubmitting ? 'Generating…' : 'Generate'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

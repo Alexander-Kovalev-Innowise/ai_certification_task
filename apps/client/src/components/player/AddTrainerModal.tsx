@@ -7,6 +7,7 @@ import { useForm } from 'react-hook-form';
 import { apiRequest } from '../../lib/api/apiClient';
 import { parseApiErrorBody } from '../../lib/api/apiError';
 import { addTrainerSchema, type AddTrainerFormValues } from '../../lib/schemas/addTrainerSchema';
+import { Modal } from '../shared/Modal';
 
 import type { AvailableTrainerOption } from './ChildProfileForm';
 
@@ -96,99 +97,102 @@ export function AddTrainerModal({ isOpen, profileId, availableTrainers, onClose,
   });
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="add-trainer-heading" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg">
-      <div className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
-        <h2 id="add-trainer-heading" className="text-block-title font-semibold text-text-primary">
-          Add a trainer
-        </h2>
+    <Modal
+      labelledBy="add-trainer-heading"
+      onClose={handleClose}
+      closeOnBackdrop={false}
+      className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong"
+    >
+      <h2 id="add-trainer-heading" className="text-block-title font-semibold text-text-primary">
+        Add a trainer
+      </h2>
 
-        <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
-          <fieldset className="flex flex-col gap-xxs">
-            <legend className="text-body text-text-secondary">How would you like to add a trainer?</legend>
+      <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
+        <fieldset className="flex flex-col gap-xxs">
+          <legend className="text-body text-text-secondary">How would you like to add a trainer?</legend>
+          <label className="flex items-center gap-sm text-body text-text-primary">
+            <input type="radio" value="code" {...register('mode')} />
+            Enter a share link code
+          </label>
+          {availableTrainers.length > 0 && (
             <label className="flex items-center gap-sm text-body text-text-primary">
-              <input type="radio" value="code" {...register('mode')} />
-              Enter a share link code
+              <input type="radio" value="pick" {...register('mode')} />
+              Pick from my trainers
             </label>
-            {availableTrainers.length > 0 && (
-              <label className="flex items-center gap-sm text-body text-text-primary">
-                <input type="radio" value="pick" {...register('mode')} />
-                Pick from my trainers
-              </label>
+          )}
+        </fieldset>
+
+        {mode === 'code' ? (
+          <div className="flex flex-col gap-xxs">
+            <label htmlFor="add-trainer-code" className="field-label">
+              Share link code
+            </label>
+            <input
+              id="add-trainer-code"
+              placeholder="e.g. aB3dE5fG7hJ9kL1m"
+              autoComplete="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              className={INPUT_CLASSNAME}
+              aria-invalid={!!errors.shareLinkCode}
+              aria-describedby={errors.shareLinkCode ? 'add-trainer-code-error' : undefined}
+              {...register('shareLinkCode')}
+            />
+            {errors.shareLinkCode && (
+              <p id="add-trainer-code-error" role="alert" className="text-caption text-danger">
+                {errors.shareLinkCode.message}
+              </p>
             )}
-          </fieldset>
-
-          {mode === 'code' ? (
-            <div className="flex flex-col gap-xxs">
-              <label htmlFor="add-trainer-code" className="field-label">
-                Share link code
-              </label>
-              <input
-                id="add-trainer-code"
-                placeholder="e.g. aB3dE5fG7hJ9kL1m"
-                autoComplete="off"
-                autoCapitalize="off"
-                spellCheck={false}
-                className={INPUT_CLASSNAME}
-                aria-invalid={!!errors.shareLinkCode}
-                aria-describedby={errors.shareLinkCode ? 'add-trainer-code-error' : undefined}
-                {...register('shareLinkCode')}
-              />
-              {errors.shareLinkCode && (
-                <p id="add-trainer-code-error" role="alert" className="text-caption text-danger">
-                  {errors.shareLinkCode.message}
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="flex flex-col gap-xxs">
-              <label htmlFor="add-trainer-picker" className="field-label">
-                Trainer
-              </label>
-              <select
-                id="add-trainer-picker"
-                className={INPUT_CLASSNAME}
-                defaultValue=""
-                aria-invalid={!!errors.trainerId}
-                aria-describedby={errors.trainerId ? 'add-trainer-picker-error' : undefined}
-                {...register('trainerId')}
-              >
-                <option value="" disabled>
-                  Select…
-                </option>
-                {availableTrainers.map((trainer) => (
-                  <option key={trainer.id} value={trainer.id}>
-                    {trainer.businessName}
-                  </option>
-                ))}
-              </select>
-              {errors.trainerId && (
-                <p id="add-trainer-picker-error" role="alert" className="text-caption text-danger">
-                  {errors.trainerId.message}
-                </p>
-              )}
-            </div>
-          )}
-
-          {formError && (
-            <p role="alert" className="text-body text-danger">
-              {formError}
-            </p>
-          )}
-
-          <div className="mt-sm flex justify-end gap-sm">
-            <button type="button" onClick={handleClose} className="btn btn-ghost">
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="btn btn-primary"
-            >
-              {isSubmitting ? 'Adding…' : 'Add'}
-            </button>
           </div>
-        </form>
-      </div>
-    </div>
+        ) : (
+          <div className="flex flex-col gap-xxs">
+            <label htmlFor="add-trainer-picker" className="field-label">
+              Trainer
+            </label>
+            <select
+              id="add-trainer-picker"
+              className={INPUT_CLASSNAME}
+              defaultValue=""
+              aria-invalid={!!errors.trainerId}
+              aria-describedby={errors.trainerId ? 'add-trainer-picker-error' : undefined}
+              {...register('trainerId')}
+            >
+              <option value="" disabled>
+                Select…
+              </option>
+              {availableTrainers.map((trainer) => (
+                <option key={trainer.id} value={trainer.id}>
+                  {trainer.businessName}
+                </option>
+              ))}
+            </select>
+            {errors.trainerId && (
+              <p id="add-trainer-picker-error" role="alert" className="text-caption text-danger">
+                {errors.trainerId.message}
+              </p>
+            )}
+          </div>
+        )}
+
+        {formError && (
+          <p role="alert" className="text-body text-danger">
+            {formError}
+          </p>
+        )}
+
+        <div className="mt-sm flex justify-end gap-sm">
+          <button type="button" onClick={handleClose} className="btn btn-ghost">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="btn btn-primary"
+          >
+            {isSubmitting ? 'Adding…' : 'Add'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { keepPreviousData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { PageHeader, PageLayout } from '../../../src/components/shared/PageLayout';
@@ -8,9 +8,11 @@ import { PlayerRosterTableSkeleton } from '../../../src/components/shared/RouteS
 import { AvailabilityFilterBar, type AvailabilityFilter } from '../../../src/components/trainer/AvailabilityFilterBar';
 import { ConfirmRemoveModal } from '../../../src/components/trainer/ConfirmRemoveModal';
 import { PlayerRosterTable, type RosterRow } from '../../../src/components/trainer/PlayerRosterTable';
+import { SuggestedTimes, type SuggestedTime } from '../../../src/components/trainer/SuggestedTimes';
 import { useBootstrap } from '../../../src/hooks/useBootstrap';
 import { useDebouncedValue } from '../../../src/hooks/useDebouncedValue';
 import { apiRequest } from '../../../src/lib/api/apiClient';
+import { skillLevelLabel, type SkillLevel } from '../../../src/lib/skillLevel';
 import { toast } from '../../../src/lib/toast/toast';
 
 const PAGE_LIMIT = 50;
@@ -24,6 +26,12 @@ interface PlayersPageResponse {
   nextCursor: string | null;
   hasMore: boolean;
   availableCount: number;
+  totalCount: number;
+}
+
+// GET /trainers/me/players/suggested-times (spec US-01.09) - top 3 windows.
+interface SuggestedTimesResponse {
+  items: SuggestedTime[];
   totalCount: number;
 }
 
@@ -60,6 +68,14 @@ async function fetchPlayers(trainerId: string, filter: AvailabilityFilter, curso
   return (await res.json()) as PlayersPageResponse;
 }
 
+async function fetchSuggestedTimes(): Promise<SuggestedTimesResponse> {
+  const res = await apiRequest('/trainers/me/players/suggested-times');
+  if (!res.ok) {
+    throw new Error(`GET /trainers/me/players/suggested-times failed with status ${res.status}`);
+  }
+  return (await res.json()) as SuggestedTimesResponse;
+}
+
 // fe §4.4 — `/players` (trainer-side): `GET /trainers/:id/players`
 // (`?dayOfWeek&startTime&endTime`, own trainerId read off `GET
 // /me/bootstrap`'s TRAINER shape) + `AvailabilityFilterBar` — explicitly the
@@ -92,6 +108,12 @@ export default function PlayersPage() {
     placeholderData: keepPreviousData,
   });
 
+  const suggestedQuery = useQuery({
+    queryKey: ['players', trainerId, 'suggested-times'],
+    queryFn: fetchSuggestedTimes,
+    enabled: !!trainerId,
+  });
+
   const isInitialLoading = isLoading && !data;
   const isRefreshing = (isFetching && !isFetchingNextPage && !isLoading) || filter !== debouncedFilter;
   const hasActiveFilters = filter.dayOfWeek !== undefined || filter.startTime !== undefined || filter.endTime !== undefined;
@@ -113,9 +135,26 @@ export default function PlayersPage() {
     return null;
   }
 
+  // Spec US-01.11: "trainer sets this" - the roster's skill-level select.
+  async function handleSkillLevelChange(row: RosterRow, skillLevel: SkillLevel) {
+    const res = await apiRequest(`/trainers/${trainerId}/players/${row.playerProfileId}/skill-level`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skillLevel }),
+    });
+    if (!res.ok) {
+      toast.error(res.status === 404 ? 'This player is no longer on your roster.' : 'Could not save the skill level. Please try again.');
+    } else {
+      toast.success(`${row.name} is now ${skillLevelLabel(skillLevel)}.`);
+    }
+    void queryClient.invalidateQueries({ queryKey: ['players', trainerId] });
+  }
+
   return (
     <PageLayout>
       <PageHeader title="Players" />
+
+      <SuggestedTimes items={suggestedQuery.data?.items ?? []} totalCount={suggestedQuery.data?.totalCount ?? 0} isError={suggestedQuery.isError} />
 
       <AvailabilityFilterBar value={filter} onChange={setFilter} />
 
@@ -143,6 +182,7 @@ export default function PlayersPage() {
           isRefreshing={isRefreshing}
           onClearFilters={hasActiveFilters ? () => setFilter(EMPTY_FILTER) : undefined}
           onRemove={setRemoveTarget}
+          onSkillLevelChange={(row, level) => void handleSkillLevelChange(row, level)}
         />
       )}
 

@@ -127,4 +127,21 @@ describe('CoachRosterTable', () => {
 
     expect(onLoadMore).toHaveBeenCalled();
   });
+
+  it('shows a "Change requested" badge with the coach message as its tooltip', () => {
+    const items = [
+      makeRow({
+        id: 'row-1',
+        changeRequest: { overrideId: 'o1', message: 'Please move it to Wednesday', requestedAt: '2026-10-05T10:00:00.000Z', sessionLabel: 'Tue drill' },
+      }),
+      makeRow({ id: 'row-2', name: 'No Request', email: 'none@example.com', changeRequest: null }),
+    ];
+
+    render(<CoachRosterTable items={items} hasMore={false} onLoadMore={jest.fn()} onStatusChange={jest.fn()} onResend={jest.fn()} />);
+
+    const badges = screen.getAllByText(/change requested/i);
+    expect(badges).toHaveLength(1);
+    expect(badges[0]!.closest('[title]')).toHaveAttribute('title', 'Tue drill: Please move it to Wednesday');
+    expect(badges[0]).toHaveTextContent('Please move it to Wednesday');
+  });
 });

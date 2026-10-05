@@ -10,6 +10,7 @@ import {
   toAmountCents,
   type PurchaseRequestFormValues,
 } from '../../lib/schemas/purchaseRequestSchema';
+import { Modal } from '../shared/Modal';
 
 import type { PurchaseRequestRow } from './PurchaseRequestList';
 
@@ -73,90 +74,88 @@ export function NewPurchaseRequestModal({ isOpen, onClose, onCreated }: NewPurch
   });
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="new-request-heading"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg"
+    <Modal
+      labelledBy="new-request-heading"
+      onClose={handleClose}
+      closeOnBackdrop={false}
+      className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong"
     >
-      <div className="max-h-full w-full max-w-[28rem] overflow-y-auto rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
-        <h2 id="new-request-heading" className="text-block-title font-semibold text-text-primary">
-          New request
-        </h2>
-        <p className="mt-xs text-caption text-ink-muted">
-          Stand-in for event checkout: ask your parent to approve a purchase. Your parent gets an email and has 48 hours to respond.
-        </p>
+      <h2 id="new-request-heading" className="text-block-title font-semibold text-text-primary">
+        New request
+      </h2>
+      <p className="mt-xs text-caption text-ink-muted">
+        Stand-in for event checkout: ask your parent to approve a purchase. Your parent gets an email and has 48 hours to respond.
+      </p>
 
-        <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
-          <div className="flex flex-col gap-xxs">
-            <label htmlFor="new-request-title" className="field-label">
-              What is it for?
+      <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
+        <div className="flex flex-col gap-xxs">
+          <label htmlFor="new-request-title" className="field-label">
+            What is it for?
+          </label>
+          <input
+            id="new-request-title"
+            placeholder="Saturday skills clinic"
+            autoComplete="off"
+            className="w-full min-w-0"
+            aria-invalid={!!errors.title}
+            aria-describedby={errors.title ? 'new-request-title-error' : undefined}
+            {...register('title')}
+          />
+          {errors.title && (
+            <p id="new-request-title-error" role="alert" className="text-caption text-danger">
+              {errors.title.message}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-md">
+          <div className="flex min-w-0 flex-[1_1_11rem] flex-col gap-xxs">
+            <label htmlFor="new-request-amount" className="field-label">
+              Amount
             </label>
             <input
-              id="new-request-title"
-              placeholder="Saturday skills clinic"
+              id="new-request-amount"
+              inputMode="decimal"
+              placeholder="25.00"
               autoComplete="off"
               className="w-full min-w-0"
-              aria-invalid={!!errors.title}
-              aria-describedby={errors.title ? 'new-request-title-error' : undefined}
-              {...register('title')}
+              aria-invalid={!!errors.amount}
+              aria-describedby={errors.amount ? 'new-request-amount-error' : undefined}
+              {...register('amount')}
             />
-            {errors.title && (
-              <p id="new-request-title-error" role="alert" className="text-caption text-danger">
-                {errors.title.message}
+            {errors.amount && (
+              <p id="new-request-amount-error" role="alert" className="text-caption text-danger">
+                {errors.amount.message}
               </p>
             )}
           </div>
 
-          <div className="flex flex-wrap gap-md">
-            <div className="flex min-w-0 flex-[1_1_11rem] flex-col gap-xxs">
-              <label htmlFor="new-request-amount" className="field-label">
-                Amount
-              </label>
-              <input
-                id="new-request-amount"
-                inputMode="decimal"
-                placeholder="25.00"
-                autoComplete="off"
-                className="w-full min-w-0"
-                aria-invalid={!!errors.amount}
-                aria-describedby={errors.amount ? 'new-request-amount-error' : undefined}
-                {...register('amount')}
-              />
-              {errors.amount && (
-                <p id="new-request-amount-error" role="alert" className="text-caption text-danger">
-                  {errors.amount.message}
-                </p>
-              )}
-            </div>
-
-            <div className="flex min-w-0 flex-[1_1_11rem] flex-col gap-xxs">
-              <label htmlFor="new-request-payment-type" className="field-label">
-                Pay with
-              </label>
-              <select id="new-request-payment-type" className="w-full min-w-0" {...register('paymentType')}>
-                <option value="USD">USD</option>
-                <option value="TOKENS">Tokens</option>
-              </select>
-            </div>
+          <div className="flex min-w-0 flex-[1_1_11rem] flex-col gap-xxs">
+            <label htmlFor="new-request-payment-type" className="field-label">
+              Pay with
+            </label>
+            <select id="new-request-payment-type" className="w-full min-w-0" {...register('paymentType')}>
+              <option value="USD">USD</option>
+              <option value="TOKENS">Tokens</option>
+            </select>
           </div>
+        </div>
 
-          {formError && (
-            <p role="alert" className="text-body text-danger">
-              {formError}
-            </p>
-          )}
+        {formError && (
+          <p role="alert" className="text-body text-danger">
+            {formError}
+          </p>
+        )}
 
-          <div className="mt-sm flex justify-end gap-sm">
-            <button type="button" onClick={handleClose} className="btn btn-ghost">
-              Cancel
-            </button>
-            <button type="submit" disabled={isSubmitting} className="btn btn-primary">
-              {isSubmitting ? 'Sending…' : 'Send request'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div className="mt-sm flex justify-end gap-sm">
+          <button type="button" onClick={handleClose} className="btn btn-ghost">
+            Cancel
+          </button>
+          <button type="submit" disabled={isSubmitting} className="btn btn-primary">
+            {isSubmitting ? 'Sending…' : 'Send request'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

@@ -2,18 +2,21 @@
 
 import { createColumnHelper } from '@tanstack/react-table';
 
+import { SKILL_LEVELS, skillLevelLabel, type SkillLevel } from '../../lib/skillLevel';
 import { ActionIconButton } from '../shared/ActionIcon';
 import { DataTable } from '../shared/DataTable';
 import { EmptyState } from '../shared/EmptyState';
 
 // api §4.3 GET /trainers/:id/players — `PaginatedResponseDto<RosterRowDto>`
 // row shape verbatim: `{playerProfileId, name, age, availabilitySummary}`
-// ONLY — deliberately no notes/tags/pipeline (architecture §18, FR-070's
-// "Best Times" scheduling aid, not a full CRM).
+// plus the trainer-set `skillLevel` (spec US-01.11) — deliberately no
+// notes/tags/pipeline (architecture §18, FR-070's "Best Times" scheduling
+// aid, not a full CRM).
 export interface RosterRow {
   playerProfileId: string;
   name: string;
   age: number;
+  skillLevel?: string;
   availabilitySummary: string;
 }
 
@@ -28,30 +31,57 @@ export interface PlayerRosterTableProps {
   onClearFilters?: () => void;
   /** When provided, each row gets a "Remove" icon action (Epic §3 "Manage own organization users"). */
   onRemove?: (row: RosterRow) => void;
+  /** When provided, the skill level is a select the trainer can change (spec US-01.11: "trainer sets this"). */
+  onSkillLevelChange?: (row: RosterRow, skillLevel: SkillLevel) => void;
 }
 
 const columnHelper = createColumnHelper<RosterRow>();
 
-const baseColumns = [
-  columnHelper.accessor('name', {
-    header: 'Player',
-    size: 240,
-    minSize: 140,
-    cell: (info) => <span className="truncate">{info.getValue()}</span>,
-  }),
-  columnHelper.accessor('age', {
-    header: 'Age',
-    size: 100,
-    minSize: 70,
-    cell: (info) => <span className="font-numeric text-text-secondary">{info.getValue()}</span>,
-  }),
-  columnHelper.accessor('availabilitySummary', {
-    header: 'Availability',
-    size: 440,
-    minSize: 200,
-    cell: (info) => <span className="truncate text-caption text-text-secondary">{info.getValue() || 'No availability set'}</span>,
-  }),
-];
+function buildBaseColumns(onSkillLevelChange: PlayerRosterTableProps['onSkillLevelChange']) {
+  return [
+    columnHelper.accessor('name', {
+      header: 'Player',
+      size: 220,
+      minSize: 140,
+      cell: (info) => <span className="truncate">{info.getValue()}</span>,
+    }),
+    columnHelper.accessor('age', {
+      header: 'Age',
+      size: 80,
+      minSize: 70,
+      cell: (info) => <span className="font-numeric text-text-secondary">{info.getValue()}</span>,
+    }),
+    columnHelper.accessor('skillLevel', {
+      header: 'Skill level',
+      size: 170,
+      minSize: 120,
+      cell: ({ row }) =>
+        onSkillLevelChange ? (
+          <select
+            aria-label={`Skill level for ${row.original.name}`}
+            className="min-w-0"
+            value={row.original.skillLevel ?? ''}
+            onChange={(event) => onSkillLevelChange(row.original, event.target.value as SkillLevel)}
+          >
+            {!row.original.skillLevel && <option value="">Not set</option>}
+            {SKILL_LEVELS.map((level) => (
+              <option key={level} value={level}>
+                {skillLevelLabel(level)}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="text-caption text-text-secondary">{skillLevelLabel(row.original.skillLevel) || 'Not set'}</span>
+        ),
+    }),
+    columnHelper.accessor('availabilitySummary', {
+      header: 'Availability',
+      size: 380,
+      minSize: 200,
+      cell: (info) => <span className="truncate text-caption text-text-secondary">{info.getValue() || 'No availability set'}</span>,
+    }),
+  ];
+}
 
 // fe §4.4 — PlayerRosterTable: the trainer roster's minimal slice, same
 // paginated-list shape as `CoachRosterTable` (Task 13.2). Task 14.9.
@@ -63,7 +93,9 @@ export function PlayerRosterTable({
   isRefreshing = false,
   onClearFilters,
   onRemove,
+  onSkillLevelChange,
 }: PlayerRosterTableProps) {
+  const baseColumns = buildBaseColumns(onSkillLevelChange);
   const columns = onRemove
     ? [
         ...baseColumns,

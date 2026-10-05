@@ -25,6 +25,7 @@ export function RevokeConfirmPopover({ onConfirm, disabled = false, variant = 'b
   const [isOpen, setIsOpen] = useState(false);
   const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   // Table wrappers scroll/clip (overflow-x-auto), so an absolutely positioned
   // popover would be cut off on the last rows. In the icon variant the
@@ -40,6 +41,25 @@ export function RevokeConfirmPopover({ onConfirm, disabled = false, variant = 'b
       window.removeEventListener('resize', close);
     };
   }, [isOpen, variant]);
+
+  // Keyboard users: Escape dismisses the popover, focus lands on its first
+  // action when it opens and returns to the trigger when it closes.
+  useEffect(() => {
+    if (!isOpen) return;
+    const trigger = triggerRef.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    popoverRef.current?.querySelector<HTMLElement>('button')?.focus();
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      if (trigger?.isConnected) trigger.focus();
+    };
+  }, [isOpen]);
 
   function handleOpen() {
     const rect = triggerRef.current?.getBoundingClientRect();
@@ -69,6 +89,7 @@ export function RevokeConfirmPopover({ onConfirm, disabled = false, variant = 'b
 
       {isOpen && (
         <div
+          ref={popoverRef}
           role="dialog"
           aria-modal="false"
           aria-label="Confirm revoke"

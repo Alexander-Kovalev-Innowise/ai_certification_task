@@ -14,6 +14,7 @@ import {
   type OverrideReasonFormValues,
 } from '../../lib/schemas/assignCoachSessionSchema';
 import { toast } from '../../lib/toast/toast';
+import { Modal } from '../shared/Modal';
 
 export interface AssignCoachTarget {
   /** `CoachProfile.id`. */
@@ -139,167 +140,170 @@ export function AssignCoachConflictModal({ isOpen, coach, onClose }: AssignCoach
   const { errors: reasonErrors, isSubmitting: isAssigning } = reasonForm.formState;
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="assign-coach-heading" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg">
-      <div className="max-h-full w-full max-w-[30rem] overflow-y-auto rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
-        <h2 id="assign-coach-heading" className="text-block-title font-semibold text-text-primary">
-          Assign {coach.name} to a session
-        </h2>
-        <p className="mt-xs text-caption text-text-secondary">Check the coach&apos;s saved schedule before you assign them.</p>
+    <Modal
+      labelledBy="assign-coach-heading"
+      onClose={handleClose}
+      closeOnBackdrop={false}
+      className="w-full max-w-[30rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong"
+    >
+      <h2 id="assign-coach-heading" className="text-block-title font-semibold text-text-primary">
+        Assign {coach.name} to a session
+      </h2>
+      <p className="mt-xs text-caption text-text-secondary">Check the coach&apos;s saved schedule before you assign them.</p>
 
-        {phase.step === 'form' && (
-          <form onSubmit={onCheck} noValidate className="mt-md flex flex-col gap-md">
-            <div className="flex flex-col gap-xxs">
-              <label htmlFor="assign-coach-label" className="field-label">
-                Session label (optional)
-              </label>
-              <input
-                id="assign-coach-label"
-                placeholder="U12 shooting drill"
-                autoComplete="off"
-                className={INPUT_CLASSNAME}
-                aria-invalid={!!sessionErrors.sessionLabel}
-                {...sessionForm.register('sessionLabel')}
-              />
-              {sessionErrors.sessionLabel && (
-                <p role="alert" className="text-caption text-danger">
-                  {sessionErrors.sessionLabel.message}
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-xxs">
-              <label htmlFor="assign-coach-date" className="field-label">
-                Session date
-              </label>
-              <input
-                id="assign-coach-date"
-                type="date"
-                className={INPUT_CLASSNAME}
-                aria-invalid={!!sessionErrors.sessionDate}
-                {...sessionForm.register('sessionDate')}
-              />
-              {sessionErrors.sessionDate && (
-                <p role="alert" className="text-caption text-danger">
-                  {sessionErrors.sessionDate.message}
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-wrap gap-md">
-              <div className="flex min-w-0 flex-[1_1_9rem] flex-col gap-xxs">
-                <label htmlFor="assign-coach-start" className="field-label">
-                  Start time
-                </label>
-                <input
-                  id="assign-coach-start"
-                  type="time"
-                  className={INPUT_CLASSNAME}
-                  aria-invalid={!!sessionErrors.startTime}
-                  {...sessionForm.register('startTime')}
-                />
-                {sessionErrors.startTime && (
-                  <p role="alert" className="text-caption text-danger">
-                    {sessionErrors.startTime.message}
-                  </p>
-                )}
-              </div>
-              <div className="flex min-w-0 flex-[1_1_9rem] flex-col gap-xxs">
-                <label htmlFor="assign-coach-end" className="field-label">
-                  End time
-                </label>
-                <input
-                  id="assign-coach-end"
-                  type="time"
-                  className={INPUT_CLASSNAME}
-                  aria-invalid={!!sessionErrors.endTime}
-                  {...sessionForm.register('endTime')}
-                />
-                {sessionErrors.endTime && (
-                  <p role="alert" className="text-caption text-danger">
-                    {sessionErrors.endTime.message}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {formError && (
-              <p role="alert" className="text-body text-danger">
-                {formError}
+      {phase.step === 'form' && (
+        <form onSubmit={onCheck} noValidate className="mt-md flex flex-col gap-md">
+          <div className="flex flex-col gap-xxs">
+            <label htmlFor="assign-coach-label" className="field-label">
+              Session label (optional)
+            </label>
+            <input
+              id="assign-coach-label"
+              placeholder="U12 shooting drill"
+              autoComplete="off"
+              className={INPUT_CLASSNAME}
+              aria-invalid={!!sessionErrors.sessionLabel}
+              {...sessionForm.register('sessionLabel')}
+            />
+            {sessionErrors.sessionLabel && (
+              <p role="alert" className="text-caption text-danger">
+                {sessionErrors.sessionLabel.message}
               </p>
             )}
+          </div>
 
-            <div className="mt-sm flex justify-end gap-sm">
-              <button type="button" onClick={handleClose} className="btn btn-ghost">
-                Cancel
-              </button>
-              <button type="submit" disabled={isChecking} className="btn btn-primary">
-                {isChecking ? 'Checking…' : 'Check availability'}
-              </button>
+          <div className="flex flex-col gap-xxs">
+            <label htmlFor="assign-coach-date" className="field-label">
+              Session date
+            </label>
+            <input
+              id="assign-coach-date"
+              type="date"
+              className={INPUT_CLASSNAME}
+              aria-invalid={!!sessionErrors.sessionDate}
+              {...sessionForm.register('sessionDate')}
+            />
+            {sessionErrors.sessionDate && (
+              <p role="alert" className="text-caption text-danger">
+                {sessionErrors.sessionDate.message}
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-md">
+            <div className="flex min-w-0 flex-[1_1_9rem] flex-col gap-xxs">
+              <label htmlFor="assign-coach-start" className="field-label">
+                Start time
+              </label>
+              <input
+                id="assign-coach-start"
+                type="time"
+                className={INPUT_CLASSNAME}
+                aria-invalid={!!sessionErrors.startTime}
+                {...sessionForm.register('startTime')}
+              />
+              {sessionErrors.startTime && (
+                <p role="alert" className="text-caption text-danger">
+                  {sessionErrors.startTime.message}
+                </p>
+              )}
             </div>
-          </form>
-        )}
-
-        {phase.step === 'available' && (
-          <div className="mt-md flex flex-col gap-md">
-            <p role="status" className="rounded-md bg-success/20 px-md py-sm text-body text-success">
-              {coach.name} is available at this time per their schedule. You can go ahead and assign them.
-            </p>
-            <div className="flex justify-end gap-sm">
-              <button type="button" onClick={() => setPhase({ step: 'form' })} className="btn btn-ghost">
-                Check another time
-              </button>
-              <button type="button" onClick={handleClose} className="btn btn-primary">
-                Done
-              </button>
+            <div className="flex min-w-0 flex-[1_1_9rem] flex-col gap-xxs">
+              <label htmlFor="assign-coach-end" className="field-label">
+                End time
+              </label>
+              <input
+                id="assign-coach-end"
+                type="time"
+                className={INPUT_CLASSNAME}
+                aria-invalid={!!sessionErrors.endTime}
+                {...sessionForm.register('endTime')}
+              />
+              {sessionErrors.endTime && (
+                <p role="alert" className="text-caption text-danger">
+                  {sessionErrors.endTime.message}
+                </p>
+              )}
             </div>
           </div>
-        )}
 
-        {phase.step === 'conflict' && (
-          <form onSubmit={onAssignAnyway} noValidate className="mt-md flex flex-col gap-md">
-            <p role="alert" className="rounded-md bg-warning/20 px-md py-sm text-body text-warning">
-              Coach {coach.name} is not available at this time per their schedule. Continue anyway?
+          {formError && (
+            <p role="alert" className="text-body text-danger">
+              {formError}
             </p>
+          )}
 
-            <div className="flex flex-col gap-xxs">
-              <label htmlFor="assign-coach-reason" className="field-label">
-                Reason for assigning anyway
-              </label>
-              <textarea
-                id="assign-coach-reason"
-                rows={3}
-                placeholder="Emergency cover - coach agreed by phone"
-                autoComplete="off"
-                className={INPUT_CLASSNAME}
-                aria-invalid={!!reasonErrors.reason}
-                aria-describedby={reasonErrors.reason ? 'assign-coach-reason-error' : undefined}
-                {...reasonForm.register('reason')}
-              />
-              {reasonErrors.reason && (
-                <p id="assign-coach-reason-error" role="alert" className="text-caption text-danger">
-                  {reasonErrors.reason.message}
-                </p>
-              )}
-              <p className="text-caption text-text-secondary">The reason is logged and emailed to the coach.</p>
-            </div>
+          <div className="mt-sm flex justify-end gap-sm">
+            <button type="button" onClick={handleClose} className="btn btn-ghost">
+              Cancel
+            </button>
+            <button type="submit" disabled={isChecking} className="btn btn-primary">
+              {isChecking ? 'Checking…' : 'Check availability'}
+            </button>
+          </div>
+        </form>
+      )}
 
-            {formError && (
-              <p role="alert" className="text-body text-danger">
-                {formError}
+      {phase.step === 'available' && (
+        <div className="mt-md flex flex-col gap-md">
+          <p role="status" className="rounded-md bg-success/20 px-md py-sm text-body text-success">
+            {coach.name} is available at this time per their schedule. You can go ahead and assign them.
+          </p>
+          <div className="flex justify-end gap-sm">
+            <button type="button" onClick={() => setPhase({ step: 'form' })} className="btn btn-ghost">
+              Check another time
+            </button>
+            <button type="button" onClick={handleClose} className="btn btn-primary">
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase.step === 'conflict' && (
+        <form onSubmit={onAssignAnyway} noValidate className="mt-md flex flex-col gap-md">
+          <p role="alert" className="rounded-md bg-warning/20 px-md py-sm text-body text-warning">
+            Coach {coach.name} is not available at this time per their schedule. Continue anyway?
+          </p>
+
+          <div className="flex flex-col gap-xxs">
+            <label htmlFor="assign-coach-reason" className="field-label">
+              Reason for assigning anyway
+            </label>
+            <textarea
+              id="assign-coach-reason"
+              rows={3}
+              placeholder="Emergency cover - coach agreed by phone"
+              autoComplete="off"
+              className={INPUT_CLASSNAME}
+              aria-invalid={!!reasonErrors.reason}
+              aria-describedby={reasonErrors.reason ? 'assign-coach-reason-error' : undefined}
+              {...reasonForm.register('reason')}
+            />
+            {reasonErrors.reason && (
+              <p id="assign-coach-reason-error" role="alert" className="text-caption text-danger">
+                {reasonErrors.reason.message}
               </p>
             )}
+            <p className="text-caption text-text-secondary">The reason is logged and emailed to the coach.</p>
+          </div>
 
-            <div className="mt-sm flex justify-end gap-sm">
-              <button type="button" onClick={() => setPhase({ step: 'form' })} className="btn btn-ghost">
-                Back
-              </button>
-              <button type="submit" disabled={isAssigning} className="btn btn-primary">
-                {isAssigning ? 'Assigning…' : 'Assign anyway'}
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
+          {formError && (
+            <p role="alert" className="text-body text-danger">
+              {formError}
+            </p>
+          )}
+
+          <div className="mt-sm flex justify-end gap-sm">
+            <button type="button" onClick={() => setPhase({ step: 'form' })} className="btn btn-ghost">
+              Back
+            </button>
+            <button type="submit" disabled={isAssigning} className="btn btn-primary">
+              {isAssigning ? 'Assigning…' : 'Assign anyway'}
+            </button>
+          </div>
+        </form>
+      )}
+    </Modal>
   );
 }

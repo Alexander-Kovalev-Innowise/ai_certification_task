@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 
+import { Modal } from '../shared/Modal';
+
 export interface ConfirmRemoveModalProps {
   isOpen: boolean;
   /** Dialog heading, e.g. "Remove coach". */
@@ -54,28 +56,31 @@ export function ConfirmRemoveModal({
   }
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="confirm-remove-heading" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg">
-      <div className="w-full max-w-[26rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
-        <h2 id="confirm-remove-heading" className="text-block-title font-semibold text-text-primary">
-          {title}
-        </h2>
-        <p className="mt-sm text-body text-text-secondary">{description}</p>
+    <Modal
+      labelledBy="confirm-remove-heading"
+      onClose={handleClose}
+      dismissible={!isSubmitting}
+      className="w-full max-w-[26rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong"
+    >
+      <h2 id="confirm-remove-heading" className="text-block-title font-semibold text-text-primary">
+        {title}
+      </h2>
+      <p className="mt-sm text-body text-text-secondary">{description}</p>
 
-        {error && (
-          <p role="alert" className="mt-sm text-body text-danger">
-            {error}
-          </p>
-        )}
+      {error && (
+        <p role="alert" className="mt-sm text-body text-danger">
+          {error}
+        </p>
+      )}
 
-        <div className="mt-md flex justify-end gap-sm">
-          <button type="button" onClick={handleClose} disabled={isSubmitting} className="btn btn-ghost">
-            Cancel
-          </button>
-          <button type="button" onClick={() => void handleConfirm()} disabled={isSubmitting} className="btn btn-danger">
-            {isSubmitting ? submittingLabel : confirmLabel}
-          </button>
-        </div>
+      <div className="mt-md flex justify-end gap-sm">
+        <button type="button" onClick={handleClose} disabled={isSubmitting} className="btn btn-ghost">
+          Cancel
+        </button>
+        <button type="button" onClick={() => void handleConfirm()} disabled={isSubmitting} className="btn btn-danger">
+          {isSubmitting ? submittingLabel : confirmLabel}
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }

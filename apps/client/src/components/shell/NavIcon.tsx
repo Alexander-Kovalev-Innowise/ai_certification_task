@@ -24,7 +24,8 @@ export type NavIconName =
   | 'trending-up'
   | 'bar-chart'
   | 'user-plus'
-  | 'user-x';
+  | 'user-x'
+  | 'bell';
 
 // 24x24 outline glyphs (stroke inherits currentColor), matching the thin
 // line-icon style of Task/designs/event_builder.svg's sidebar.
@@ -63,6 +64,7 @@ const PATHS: Record<NavIconName, string[]> = {
   'bar-chart': ['M12 20V10', 'M18 20V4', 'M6 20v-4'],
   'user-plus': ['M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2', 'M8.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M20 8v6M23 11h-6'],
   'user-x': ['M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2', 'M8.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M18 8l5 5M23 8l-5 5'],
+  bell: ['M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9', 'M13.73 21a2 2 0 0 1-3.46 0'],
   // Sidebar toggle: a panel with a left rail and an arrow pointing into it.
   'panel-left-close': ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z', 'M9 3v18', 'M16 15l-3-3 3-3'],
 };

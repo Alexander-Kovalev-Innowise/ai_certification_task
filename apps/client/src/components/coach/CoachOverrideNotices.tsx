@@ -1,13 +1,16 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 
 import { apiRequest } from '../../lib/api/apiClient';
 import { toast } from '../../lib/toast/toast';
 import { Card } from '../shared/Card';
 
+import { RequestOverrideChangeModal } from './RequestOverrideChangeModal';
+
 // `GET /coaches/:id/availability/overrides` (US-01.10 coach-side
-// acknowledgement) - `CoachOverrideNoticeDto`.
+// acknowledgement / change request) - `CoachOverrideNoticeDto`.
 export interface CoachOverrideNotice {
   id: string;
   eventId: string;
@@ -16,6 +19,8 @@ export interface CoachOverrideNotice {
   trainerBusinessName: string;
   createdAt: string;
   acknowledgedAt: string | null;
+  changeRequestedAt: string | null;
+  changeRequestMessage: string | null;
 }
 
 export interface CoachOverrideNoticesProps {
@@ -32,14 +37,16 @@ async function fetchOverrides(coachProfileId: string): Promise<CoachOverrideNoti
 
 // US-01.10 - shows the coach each time their trainer assigned them to a
 // session outside their saved availability (with the trainer's reason) and
-// lets them acknowledge it. ("Request change" is deliberately out of scope.)
-// Renders nothing while loading, on error, or when there are no overrides, so
-// it never gets in the way of the My Times grid.
+// lets them accept it (= acknowledge) or ask the trainer for a change (a
+// message that is emailed to the trainer). Renders nothing while loading, on
+// error, or when there are no overrides, so it never gets in the way of the My
+// Times grid.
 export function CoachOverrideNotices({ coachProfileId }: CoachOverrideNoticesProps) {
   const queryClient = useQueryClient();
   const queryKey = ['coaches', coachProfileId, 'overrides'];
 
   const { data } = useQuery({ queryKey, queryFn: () => fetchOverrides(coachProfileId) });
+  const [changeFor, setChangeFor] = useState<CoachOverrideNotice | null>(null);
 
   const acknowledge = useMutation({
     mutationFn: async (overrideId: string) => {
@@ -48,8 +55,11 @@ export function CoachOverrideNotices({ coachProfileId }: CoachOverrideNoticesPro
         throw new Error(`acknowledge failed with status ${res.status}`);
       }
     },
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey }),
-    onError: () => toast.error('Could not acknowledge the notice. Please try again.'),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey });
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+    onError: () => toast.error('Could not accept the assignment. Please try again.'),
   });
 
   if (!data || data.length === 0) {
@@ -71,22 +81,52 @@ export function CoachOverrideNotices({ coachProfileId }: CoachOverrideNoticesPro
                 {notice.trainerBusinessName}: {notice.reason}
               </p>
               <p className="text-caption text-text-secondary">{new Date(notice.createdAt).toLocaleString()}</p>
+              {notice.changeRequestedAt && !notice.acknowledgedAt && notice.changeRequestMessage && (
+                <p className="mt-xs break-words text-caption text-text-secondary">Your request: {notice.changeRequestMessage}</p>
+              )}
             </div>
-            {notice.acknowledgedAt ? (
-              <span className="text-caption font-semibold text-success">Acknowledged</span>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                disabled={acknowledge.isPending}
-                onClick={() => acknowledge.mutate(notice.id)}
+            <div className="flex flex-col items-end gap-xs">
+              <span
+                className={`text-caption font-semibold ${
+                  notice.acknowledgedAt ? 'text-success' : notice.changeRequestedAt ? 'text-warning' : 'text-text-secondary'
+                }`}
               >
-                Acknowledge
-              </button>
-            )}
+                {notice.acknowledgedAt ? 'Accepted' : notice.changeRequestedAt ? 'Change requested' : 'Awaiting your response'}
+              </span>
+              {!notice.acknowledgedAt && (
+                <span className="flex gap-xs">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={acknowledge.isPending}
+                    onClick={() => acknowledge.mutate(notice.id)}
+                  >
+                    Accept
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setChangeFor(notice)}>
+                    {notice.changeRequestedAt ? 'Edit request' : 'Request change'}
+                  </button>
+                </span>
+              )}
+            </div>
           </li>
         ))}
       </ul>
+
+      {changeFor && (
+        <RequestOverrideChangeModal
+          coachProfileId={coachProfileId}
+          overrideId={changeFor.id}
+          sessionLabel={changeFor.sessionLabel}
+          onClose={() => setChangeFor(null)}
+          onSent={() => {
+            setChangeFor(null);
+            toast.success('Your request was sent to your trainer.');
+            void queryClient.invalidateQueries({ queryKey });
+            void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+          }}
+        />
+      )}
     </Card>
   );
 }

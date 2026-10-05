@@ -95,7 +95,7 @@ describe('MyTimesPage (coach)', () => {
     expect(JSON.parse(init.body as string)).toEqual({ slots: [{ dayOfWeek: 2, startTime: 15 * 60, endTime: 18 * 60, isAvailable: true }] });
   });
 
-  it('lists trainer overrides and lets the coach acknowledge one (US-01.10)', async () => {
+  it('lists trainer overrides and lets the coach accept one (US-01.10)', async () => {
     const notice = {
       id: 'ov-1',
       eventId: 'e-1',
@@ -104,6 +104,8 @@ describe('MyTimesPage (coach)', () => {
       trainerBusinessName: 'Ace Tennis Academy',
       createdAt: '2026-10-01T10:00:00.000Z',
       acknowledgedAt: null,
+      changeRequestedAt: null,
+      changeRequestMessage: null,
     };
     routeFetch([
       { match: '/me/bootstrap', response: mockResponse(200, bootstrapBody()) },
@@ -116,7 +118,7 @@ describe('MyTimesPage (coach)', () => {
 
     expect(await screen.findByText('U12 drill')).toBeInTheDocument();
     expect(screen.getByText(/Emergency cover/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Acknowledge' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
 
     await waitFor(() =>
       expect(

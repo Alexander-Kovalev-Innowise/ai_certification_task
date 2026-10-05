@@ -2,17 +2,7 @@ import { z } from 'zod';
 
 import { personNameSchema } from './common';
 import { optionalPhoneSchema } from './phone';
-
-const INVALID_PHOTO_URL_MESSAGE = 'Enter a valid image link starting with http:// or https://.';
-
-function isHttpUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
+import { INVALID_PHOTO_URL_MESSAGE, isValidPhotoUrl } from './photoUrl';
 
 // api §3 UpdateMeDto: firstName/lastName (max 100), optional international
 // phone, optional photoUrl (@IsUrl). Built per account type: a CHILD account's
@@ -27,7 +17,7 @@ export function buildAccountProfileSchema(isChild: boolean) {
       .string()
       .trim()
       .max(2048, 'Photo URL must be 2048 characters or fewer.')
-      .refine((value) => !value || isHttpUrl(value), INVALID_PHOTO_URL_MESSAGE),
+      .refine((value) => !value || isValidPhotoUrl(value), INVALID_PHOTO_URL_MESSAGE),
     emailNotifications: z.boolean(),
     smsNotifications: z.boolean(),
   });

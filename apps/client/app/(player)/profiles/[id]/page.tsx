@@ -16,6 +16,7 @@ import { PageHeader, PageHeaderPlaceholder, PageLayout } from '../../../../src/c
 import { SkeletonCard } from '../../../../src/components/shared/Skeleton';
 import { useBootstrap } from '../../../../src/hooks/useBootstrap';
 import { apiRequest } from '../../../../src/lib/api/apiClient';
+import { toast } from '../../../../src/lib/toast/toast';
 import { useAuthStore } from '../../../../src/stores/useAuthStore';
 import type { AccountType } from '../../../../src/types/auth';
 
@@ -96,6 +97,8 @@ export default function ProfileDetailPage() {
   });
 
   function handleSaved(updated: PlayerProfileDetail) {
+    // US-01.11: "Save -> changes persisted, confirmation message".
+    toast.success('Profile saved.');
     queryClient.setQueryData(['player-profiles', id], updated);
     // `exact: true` — an inexact match would also invalidate this page's own
     // `['player-profiles', id]`/`['player-profiles', id, 'trainers']` query

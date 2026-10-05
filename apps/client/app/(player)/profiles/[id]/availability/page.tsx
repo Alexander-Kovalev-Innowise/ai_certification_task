@@ -1,9 +1,11 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 
+import { AvailabilityProfileSwitcher } from '../../../../../src/components/player/AvailabilityProfileSwitcher';
+import type { PlayerProfileSummary } from '../../../../../src/components/player/ProfileCardGrid';
 import { AvailabilityGrid, type AvailabilityGridSlot } from '../../../../../src/components/shared/AvailabilityGrid';
 import { PageHeader, PageLayout } from '../../../../../src/components/shared/PageLayout';
 import { AvailabilityGridSkeleton } from '../../../../../src/components/shared/RouteSkeletons';
@@ -20,6 +22,14 @@ async function fetchAvailability(id: string): Promise<AvailabilityGridResponse> 
     throw new Error(`GET /player-profiles/${id}/availability failed with status ${res.status}`);
   }
   return (await res.json()) as AvailabilityGridResponse;
+}
+
+async function fetchProfiles(): Promise<PlayerProfileSummary[]> {
+  const res = await apiRequest('/player-profiles');
+  if (!res.ok) {
+    throw new Error(`GET /player-profiles failed with status ${res.status}`);
+  }
+  return (await res.json()) as PlayerProfileSummary[];
 }
 
 async function putAvailability(id: string, slots: AvailabilityGridSlot[]): Promise<AvailabilityGridResponse> {
@@ -43,6 +53,7 @@ async function putAvailability(id: string, slots: AvailabilityGridSlot[]): Promi
 export default function AvailabilityPage() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [savedMessage, setSavedMessage] = useState(false);
 
   const { data, isLoading, isError } = useQuery({
@@ -59,6 +70,21 @@ export default function AvailabilityPage() {
     },
   });
 
+  // US-01.09 profile switcher: the parent's own profile ("Me") + children.
+  // Shares the `/profiles` page's query key, so it is usually already cached.
+  const { data: profiles } = useQuery({
+    queryKey: ['player-profiles'],
+    queryFn: fetchProfiles,
+  });
+
+  function handleSwitchProfile(profileId: string) {
+    setSavedMessage(false);
+    mutation.reset();
+    router.push(`/profiles/${profileId}/availability`);
+  }
+
+  const switcher = profiles ? <AvailabilityProfileSwitcher profiles={profiles} currentProfileId={id} onChange={handleSwitchProfile} /> : null;
+
   if (isLoading) {
     return (
       <PageLayout>
@@ -72,6 +98,7 @@ export default function AvailabilityPage() {
     return (
       <PageLayout>
         <PageHeader title="Best Times" />
+        {switcher}
         <p role="alert" className="text-body text-danger">
           Something went wrong loading availability. Please try again.
         </p>
@@ -82,6 +109,8 @@ export default function AvailabilityPage() {
   return (
     <PageLayout>
       <PageHeader title="Best Times" />
+
+      {switcher}
 
       {savedMessage && (
         <p role="status" className="text-body text-success">

@@ -97,4 +97,34 @@ describe('ProfileEditForm', () => {
     expect(url).toContain('/player-profiles/profile-2');
     expect(JSON.parse(init.body as string).photoUrl).toBeNull();
   });
+
+  it('shows the trainer-set skill level read-only and never sends it in the PATCH body (spec US-01.11)', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, profile({ skillLevel: 'ADVANCED' })));
+
+    render(<ProfileEditForm profile={profile({ skillLevel: 'ADVANCED' })} canEditGuardianFields onSaved={jest.fn()} />);
+
+    const skill = screen.getByLabelText('Skill level');
+    expect(skill).toHaveValue('Advanced');
+    expect(skill).toBeDisabled();
+    expect(screen.getByText(/set by your trainer/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).not.toHaveProperty('skillLevel');
+  });
+
+  it('saves a photo entered as an https image URL as-is', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, profile({ photoUrl: 'https://images.example.com/alex.jpg' })));
+
+    render(<ProfileEditForm profile={profile()} canEditGuardianFields onSaved={jest.fn()} />);
+    fireEvent.change(screen.getByLabelText('Or use an image URL'), { target: { value: 'https://images.example.com/alex.jpg' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Use image URL' }));
+    expect(screen.getByRole('img', { name: /photo preview/i })).toHaveAttribute('src', 'https://images.example.com/alex.jpg');
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string).photoUrl).toBe('https://images.example.com/alex.jpg');
+  });
 });

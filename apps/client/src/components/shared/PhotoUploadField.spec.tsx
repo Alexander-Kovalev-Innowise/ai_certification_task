@@ -105,4 +105,57 @@ describe('PhotoUploadField', () => {
     expect(screen.getByText('AK')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /remove photo/i })).not.toBeInTheDocument();
   });
+
+  describe('"Use image URL" (upload or URL)', () => {
+    it('reports a typed https image link as-is, without calling the API', () => {
+      const onChange = jest.fn();
+
+      render(<PhotoUploadField value="" onChange={onChange} />);
+      fireEvent.change(screen.getByLabelText('Or use an image URL'), { target: { value: '  https://images.example.com/me.jpg?w=256  ' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Use image URL' }));
+
+      expect(onChange).toHaveBeenCalledWith('https://images.example.com/me.jpg?w=256');
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('Or use an image URL')).toHaveValue('');
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it.each(['http://images.example.com/me.jpg', 'javascript:alert(1)', 'data:image/png;base64,AAAA', 'not a url', 'https://user:pw@example.com/a.png'])(
+      'rejects %s with an error and does not report it',
+      (bad) => {
+        const onChange = jest.fn();
+
+        render(<PhotoUploadField value="" onChange={onChange} />);
+        fireEvent.change(screen.getByLabelText('Or use an image URL'), { target: { value: bad } });
+        fireEvent.click(screen.getByRole('button', { name: 'Use image URL' }));
+
+        expect(screen.getByRole('alert')).toHaveTextContent(/valid image link starting with https/i);
+        expect(onChange).not.toHaveBeenCalled();
+      },
+    );
+
+    it('pressing Enter applies the URL and does not submit the surrounding form', () => {
+      const onChange = jest.fn();
+      const onSubmit = jest.fn((event: { preventDefault: () => void }) => event.preventDefault());
+
+      render(
+        <form onSubmit={onSubmit}>
+          <PhotoUploadField value="" onChange={onChange} />
+        </form>,
+      );
+      const input = screen.getByLabelText('Or use an image URL');
+      fireEvent.change(input, { target: { value: 'https://images.example.com/me.png' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      expect(onChange).toHaveBeenCalledWith('https://images.example.com/me.png');
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    it('disables the button until something is typed and previews an external image link as given', () => {
+      render(<PhotoUploadField value="https://images.example.com/me.jpg" onChange={jest.fn()} />);
+
+      expect(screen.getByRole('button', { name: 'Use image URL' })).toBeDisabled();
+      expect(screen.getByRole('img', { name: /photo preview/i })).toHaveAttribute('src', 'https://images.example.com/me.jpg');
+    });
+  });
 });

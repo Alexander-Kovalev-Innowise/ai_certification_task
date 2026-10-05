@@ -14,14 +14,14 @@ import { AppShell, type ShellLink } from './AppShell';
 import { NAV_BY_ROLE, PLAYER_NAV_LABEL, playerLinks } from './roleNav';
 
 // Routes that never get the in-app chrome: the landing redirect, the public
-// auth flows, the forced password change screen and the public join links.
+// auth flows, the forced password change screen, the public join links and the public camp sign-up.
 const NON_SHELL_EXACT = new Set(['/', '/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/change-password']);
-const NON_SHELL_PREFIXES = ['/join/'];
+const NON_SHELL_PREFIXES = ['/join/', '/camp/'];
 
 export function isShellRoute(pathname: string | null): pathname is string {
   if (!pathname) return false;
   if (NON_SHELL_EXACT.has(pathname)) return false;
-  if (pathname === '/join' || NON_SHELL_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return false;
+  if (pathname === '/join' || pathname === '/camp' || NON_SHELL_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return false;
   return true;
 }
 
@@ -106,6 +106,9 @@ function ShellFrame({ role, children }: { role: Role; children: ReactNode }) {
 
   return (
     <BrandingProvider branding={branding}>
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
       <AppShell navLabel={navLabel} links={links} headerStart={headerStart}>
         {children}
       </AppShell>

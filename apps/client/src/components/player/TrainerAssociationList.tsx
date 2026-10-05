@@ -53,17 +53,25 @@ export function TrainerAssociationList({ trainers, canManage, onAddTrainer, onRe
               aria-label={trainer.businessName}
               className="flex items-center gap-md border-b border-border-soft/40 p-md text-body text-text-primary last:border-b-0"
             >
-              <span className="flex-1 truncate">{trainer.businessName}</span>
-              <span className="text-caption text-text-secondary">Connected {new Date(trainer.connectedAt).toLocaleDateString()}</span>
-              <span className="text-caption text-text-secondary">{trainer.status}</span>
+              <span role="cell" className="flex-1 truncate">
+                {trainer.businessName}
+              </span>
+              <span role="cell" className="text-caption text-text-secondary">
+                Connected {new Date(trainer.connectedAt).toLocaleDateString()}
+              </span>
+              <span role="cell" className="text-caption text-text-secondary">
+                {trainer.status}
+              </span>
               {canManage && (
-                <button
-                  type="button"
-                  onClick={() => onRemoveTrainer(trainer)}
-                  className="btn btn-secondary btn-danger-outline btn-sm"
-                >
-                  Remove
-                </button>
+                <span role="cell">
+                  <button
+                    type="button"
+                    onClick={() => onRemoveTrainer(trainer)}
+                    className="btn btn-secondary btn-danger-outline btn-sm"
+                  >
+                    Remove
+                  </button>
+                </span>
               )}
             </div>
           ))}

@@ -3,13 +3,14 @@
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
-import { apiRequest } from '../../lib/api/apiClient';
+import { apiRequest, publicApiRequest } from '../../lib/api/apiClient';
 import { parseApiErrorBody } from '../../lib/api/apiError';
 import { toAuthSession } from '../../lib/api/authSession';
 import { useAuthStore } from '../../stores/useAuthStore';
 import type { AuthSessionResponseDto, UserSummaryDto } from '../../types/auth';
 
 import { AnonymousJoinForm, type AnonymousJoinRequestBody } from './AnonymousJoinForm';
+import type { CampPrefillResponse } from './campPrefill';
 import { ChildBlockedNotice } from './ChildBlockedNotice';
 import { CoachAcceptForm } from './CoachAcceptForm';
 import { FamilyPickerForm } from './FamilyPickerForm';
@@ -70,7 +71,22 @@ type Stage =
 
 export interface ShareLinkDispatcherProps {
   code: string;
+  /** `?camp=<token>` from a camp/evaluation sign-up (Camp-to-User Conversion): pre-fills the registration. */
+  campToken?: string | null;
 }
+
+// Camp conversion token state: 'none' (no token / not applicable), 'loading', 'ready' (prefill fetched) or
+// 'unavailable' (expired / already used / unknown / network) - the latter falls back to the ordinary empty form.
+type CampState =
+  | { kind: 'none' }
+  | { kind: 'loading' }
+  | { kind: 'ready'; data: CampPrefillResponse }
+  | { kind: 'unavailable'; message: string };
+
+const CAMP_UNAVAILABLE_MESSAGES = {
+  expired: 'Your camp sign-up link has expired, so we could not pre-fill the form. Please fill in your details below.',
+  used: 'This camp sign-up link was already used or is not valid, so we could not pre-fill the form. Please fill in your details below.',
+} as const;
 
 const DASHBOARD_PATH = '/dashboard';
 const RESOLVED_REDIRECT_DELAY_MS = 900;
@@ -83,11 +99,12 @@ const RESOLVED_REDIRECT_DELAY_MS = 900;
 // (render ShareLinkInvalidCard), not re-thrown. On submit (Task 11.10):
 // POST /share-links/:code/redeem with the branch-specific body, routing
 // every response per fe §4.2's table.
-export function ShareLinkDispatcher({ code }: ShareLinkDispatcherProps) {
+export function ShareLinkDispatcher({ code, campToken = null }: ShareLinkDispatcherProps) {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const setSession = useAuthStore((state) => state.setSession);
   const [stage, setStage] = useState<Stage>({ kind: 'pending' });
+  const [camp, setCamp] = useState<CampState>(campToken ? { kind: 'loading' } : { kind: 'none' });
 
   // Deliberately does NOT reset `stage` to 'pending' synchronously before
   // the fetch (react-hooks/set-state-in-effect flags a setState call that
@@ -116,6 +133,34 @@ export function ShareLinkDispatcher({ code }: ShareLinkDispatcherProps) {
   useEffect(() => {
     fetchPreview();
   }, [fetchPreview]);
+
+  // Camp-to-User Conversion: fetch the stored camp sign-up so the registration form arrives pre-filled.
+  // A bad token never blocks joining - it degrades to the normal empty form with an explanation.
+  useEffect(() => {
+    if (!campToken) {
+      return;
+    }
+    let cancelled = false;
+    publicApiRequest(`/camp-conversions/${encodeURIComponent(campToken)}`)
+      .then(async (res) => {
+        if (cancelled) {
+          return;
+        }
+        if (res.ok) {
+          setCamp({ kind: 'ready', data: (await res.json()) as CampPrefillResponse });
+          return;
+        }
+        setCamp({ kind: 'unavailable', message: res.status === 410 ? CAMP_UNAVAILABLE_MESSAGES.expired : CAMP_UNAVAILABLE_MESSAGES.used });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCamp({ kind: 'unavailable', message: CAMP_UNAVAILABLE_MESSAGES.used });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [campToken]);
 
   const submitRedeem = useCallback(
     async (preview: ShareLinkPreviewResponse, body: Record<string, unknown>) => {
@@ -180,6 +225,14 @@ export function ShareLinkDispatcher({ code }: ShareLinkDispatcherProps) {
         return;
       }
 
+      // The camp token was consumed/expired between the prefill and the submit: drop it, keep what the user typed
+      // out of the picture and let them retry with the ordinary form.
+      if ('conversionToken' in body && (res.status === 404 || res.status === 410)) {
+        setCamp({ kind: 'unavailable', message: res.status === 410 ? CAMP_UNAVAILABLE_MESSAGES.expired : CAMP_UNAVAILABLE_MESSAGES.used });
+        setStage({ kind: 'ready', preview, submitError: null });
+        return;
+      }
+
       setStage({
         kind: 'ready',
         preview,
@@ -197,7 +250,7 @@ export function ShareLinkDispatcher({ code }: ShareLinkDispatcherProps) {
     return () => clearTimeout(timer);
   }, [stage, router]);
 
-  if (stage.kind === 'pending') {
+  if (stage.kind === 'pending' || camp.kind === 'loading') {
     return (
       <div role="status" aria-live="polite" className="text-body text-text-secondary">
         Loading invitation…
@@ -222,8 +275,10 @@ export function ShareLinkDispatcher({ code }: ShareLinkDispatcherProps) {
   const isSubmitting = stage.kind === 'submitting';
   const branch = selectBranch(user, preview.type ?? 'PLAYER_STATIC');
 
+  const campPrefill = branch === 'anonymous' && preview.type !== 'COACH_UNIQUE' && camp.kind === 'ready' ? camp.data : null;
+
   function handleAnonymousSubmit(body: AnonymousJoinRequestBody) {
-    void submitRedeem(preview, body);
+    void submitRedeem(preview, campPrefill && campToken ? { ...body, conversionToken: campToken } : body);
   }
 
   function handleFamilyPickerSubmit(body: { subjectProfileIds: string[] }) {
@@ -240,6 +295,11 @@ export function ShareLinkDispatcher({ code }: ShareLinkDispatcherProps) {
       logoUrl={preview.logoUrl ?? null}
       primaryColorHex={preview.primaryColorHex ?? null}
     >
+      {branch === 'anonymous' && camp.kind === 'unavailable' && (
+        <p role="status" className="mb-md rounded-md border border-border-soft bg-surface-2 p-md text-left text-body text-text-primary">
+          {camp.message}
+        </p>
+      )}
       {branch === 'anonymous' && (
         <AnonymousJoinForm
           type={preview.type ?? 'PLAYER_STATIC'}
@@ -247,6 +307,7 @@ export function ShareLinkDispatcher({ code }: ShareLinkDispatcherProps) {
           isSubmitting={isSubmitting}
           submitError={submitError}
           signInHref={`/login?next=/join/${encodeURIComponent(code)}`}
+          prefill={campPrefill?.prefill ?? null}
         />
       )}
       {branch === 'family-picker' && (

@@ -7,6 +7,7 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import { apiRequest } from '../../lib/api/apiClient';
 import { parseApiErrorBody } from '../../lib/api/apiError';
 import { createChildProfileSchema, GENDERS, type CreateChildProfileFormValues } from '../../lib/schemas/createChildProfileSchema';
+import { Modal } from '../shared/Modal';
 import { PhotoUploadField } from '../shared/PhotoUploadField';
 
 // api §4.3 POST /player-profiles — `201 PlayerProfileResponseDto` (or `200`
@@ -51,6 +52,8 @@ const INPUT_CLASSNAME =
 // Task 14.3.
 export function ChildProfileForm({ isOpen, onClose, onCreated, availableTrainers }: ChildProfileFormProps) {
   const [formError, setFormError] = useState<string | null>(null);
+  // US-01.03: with exactly one trainer the checklist becomes a Yes/No prompt.
+  const [singleTrainerChoice, setSingleTrainerChoice] = useState<'yes' | 'no'>('no');
 
   const {
     register,
@@ -70,9 +73,12 @@ export function ChildProfileForm({ isOpen, onClose, onCreated, availableTrainers
     return null;
   }
 
+  const singleTrainer = availableTrainers.length === 1 ? availableTrainers[0] : null;
+
   function handleClose() {
     reset();
     setFormError(null);
+    setSingleTrainerChoice('no');
     onClose();
   }
 
@@ -86,8 +92,10 @@ export function ChildProfileForm({ isOpen, onClose, onCreated, availableTrainers
     if (values.photoUrl?.trim()) {
       body.photoUrl = values.photoUrl.trim();
     }
-    if (values.trainerIds && values.trainerIds.length > 0) {
-      body.trainerIds = values.trainerIds;
+    // One trainer: the Yes/No answer decides; several: the checklist does.
+    const trainerIds = singleTrainer ? (singleTrainerChoice === 'yes' ? [singleTrainer.id] : []) : values.trainerIds;
+    if (trainerIds && trainerIds.length > 0) {
+      body.trainerIds = trainerIds;
     }
 
     const res = await apiRequest('/player-profiles', {
@@ -105,159 +113,191 @@ export function ChildProfileForm({ isOpen, onClose, onCreated, availableTrainers
     const result = (await res.json()) as CreateChildProfileResult;
     reset();
     setFormError(null);
+    setSingleTrainerChoice('no');
     onCreated(result);
     onClose();
   });
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="child-profile-heading" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg">
-      <div className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
-        <h2 id="child-profile-heading" className="text-block-title font-semibold text-text-primary">
-          Add a child profile
-        </h2>
+    <Modal
+      labelledBy="child-profile-heading"
+      onClose={handleClose}
+      closeOnBackdrop={false}
+      className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong"
+    >
+      <h2 id="child-profile-heading" className="text-block-title font-semibold text-text-primary">
+        Add a child profile
+      </h2>
 
-        <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
-          <div className="flex flex-col gap-xxs">
-            <label htmlFor="child-profile-name" className="field-label">
-              Name
-            </label>
-            <input
-              id="child-profile-name"
-              placeholder="Alex Johnson"
-              autoComplete="off"
-              className={INPUT_CLASSNAME}
-              aria-invalid={!!errors.name}
-              aria-describedby={errors.name ? 'child-profile-name-error' : undefined}
-              {...register('name')}
-            />
-            {errors.name && (
-              <p id="child-profile-name-error" role="alert" className="text-caption text-danger">
-                {errors.name.message}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-xxs">
-            <label htmlFor="child-profile-dob" className="field-label">
-              Date of birth
-            </label>
-            <input
-              id="child-profile-dob"
-              type="date"
-              max={new Date().toISOString().slice(0, 10)}
-              autoComplete="off"
-              className={INPUT_CLASSNAME}
-              aria-invalid={!!errors.dateOfBirth}
-              aria-describedby={errors.dateOfBirth ? 'child-profile-dob-error' : undefined}
-              {...register('dateOfBirth')}
-            />
-            {errors.dateOfBirth && (
-              <p id="child-profile-dob-error" role="alert" className="text-caption text-danger">
-                {errors.dateOfBirth.message}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-xxs">
-            <label htmlFor="child-profile-gender" className="field-label">
-              Gender
-            </label>
-            <select
-              id="child-profile-gender"
-              className={INPUT_CLASSNAME}
-              aria-invalid={!!errors.gender}
-              aria-describedby={errors.gender ? 'child-profile-gender-error' : undefined}
-              defaultValue=""
-              {...register('gender')}
-            >
-              <option value="" disabled>
-                Select…
-              </option>
-              {GENDERS.map((gender) => (
-                <option key={gender} value={gender}>
-                  {gender.replace(/_/g, ' ')}
-                </option>
-              ))}
-            </select>
-            {errors.gender && (
-              <p id="child-profile-gender-error" role="alert" className="text-caption text-danger">
-                {errors.gender.message}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-xxs">
-            <label htmlFor="child-profile-school" className="field-label">
-              School (optional)
-            </label>
-            <input
-              id="child-profile-school"
-              placeholder="Lincoln Elementary School"
-              autoComplete="off"
-              className={INPUT_CLASSNAME}
-              aria-invalid={!!errors.school}
-              aria-describedby={errors.school ? 'child-profile-school-error' : undefined}
-              {...register('school')}
-            />
-            {errors.school && (
-              <p id="child-profile-school-error" role="alert" className="text-caption text-danger">
-                {errors.school.message}
-              </p>
-            )}
-          </div>
-
-          <Controller
-            control={control}
-            name="photoUrl"
-            render={({ field }) => (
-              <PhotoUploadField
-                id="child-profile-photo"
-                label="Photo (optional)"
-                value={field.value ?? ''}
-                onChange={(url) => field.onChange(url)}
-                initials={(childName ?? '').trim().charAt(0).toUpperCase()}
-                disabled={isSubmitting}
-              />
-            )}
+      <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
+        <div className="flex flex-col gap-xxs">
+          <label htmlFor="child-profile-name" className="field-label">
+            Name
+          </label>
+          <input
+            id="child-profile-name"
+            placeholder="Alex Johnson"
+            autoComplete="off"
+            className={INPUT_CLASSNAME}
+            aria-invalid={!!errors.name}
+            aria-describedby={errors.name ? 'child-profile-name-error' : undefined}
+            {...register('name')}
           />
-          {errors.photoUrl && (
-            <p id="child-profile-photo-error" role="alert" className="text-caption text-danger">
-              {errors.photoUrl.message}
+          {errors.name && (
+            <p id="child-profile-name-error" role="alert" className="text-caption text-danger">
+              {errors.name.message}
             </p>
           )}
+        </div>
 
-          {availableTrainers.length > 0 && (
-            <fieldset className="flex flex-col gap-xxs">
-              <legend className="text-body text-text-secondary">Connect with trainers (optional)</legend>
-              {availableTrainers.map((trainer) => (
-                <label key={trainer.id} className="flex items-center gap-sm text-body text-text-primary">
-                  <input type="checkbox" value={trainer.id} {...register('trainerIds')} />
-                  {trainer.businessName}
-                </label>
-              ))}
-            </fieldset>
-          )}
-
-          {formError && (
-            <p role="alert" className="text-body text-danger">
-              {formError}
+        <div className="flex flex-col gap-xxs">
+          <label htmlFor="child-profile-dob" className="field-label">
+            Date of birth
+          </label>
+          <input
+            id="child-profile-dob"
+            type="date"
+            max={new Date().toISOString().slice(0, 10)}
+            autoComplete="off"
+            className={INPUT_CLASSNAME}
+            aria-invalid={!!errors.dateOfBirth}
+            aria-describedby={errors.dateOfBirth ? 'child-profile-dob-error' : undefined}
+            {...register('dateOfBirth')}
+          />
+          {errors.dateOfBirth && (
+            <p id="child-profile-dob-error" role="alert" className="text-caption text-danger">
+              {errors.dateOfBirth.message}
             </p>
           )}
+        </div>
 
-          <div className="mt-sm flex justify-end gap-sm">
-            <button type="button" onClick={handleClose} className="btn btn-ghost">
-              Cancel
-            </button>
-            <button
-              type="submit"
+        <div className="flex flex-col gap-xxs">
+          <label htmlFor="child-profile-gender" className="field-label">
+            Gender
+          </label>
+          <select
+            id="child-profile-gender"
+            className={INPUT_CLASSNAME}
+            aria-invalid={!!errors.gender}
+            aria-describedby={errors.gender ? 'child-profile-gender-error' : undefined}
+            defaultValue=""
+            {...register('gender')}
+          >
+            <option value="" disabled>
+              Select…
+            </option>
+            {GENDERS.map((gender) => (
+              <option key={gender} value={gender}>
+                {gender.replace(/_/g, ' ')}
+              </option>
+            ))}
+          </select>
+          {errors.gender && (
+            <p id="child-profile-gender-error" role="alert" className="text-caption text-danger">
+              {errors.gender.message}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-xxs">
+          <label htmlFor="child-profile-school" className="field-label">
+            School (optional)
+          </label>
+          <input
+            id="child-profile-school"
+            placeholder="Lincoln Elementary School"
+            autoComplete="off"
+            className={INPUT_CLASSNAME}
+            aria-invalid={!!errors.school}
+            aria-describedby={errors.school ? 'child-profile-school-error' : undefined}
+            {...register('school')}
+          />
+          {errors.school && (
+            <p id="child-profile-school-error" role="alert" className="text-caption text-danger">
+              {errors.school.message}
+            </p>
+          )}
+        </div>
+
+        <Controller
+          control={control}
+          name="photoUrl"
+          render={({ field }) => (
+            <PhotoUploadField
+              id="child-profile-photo"
+              label="Photo (optional)"
+              value={field.value ?? ''}
+              onChange={(url) => field.onChange(url)}
+              initials={(childName ?? '').trim().charAt(0).toUpperCase()}
               disabled={isSubmitting}
-              className="btn btn-primary"
-            >
-              {isSubmitting ? 'Adding…' : 'Add child'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+            />
+          )}
+        />
+        {errors.photoUrl && (
+          <p id="child-profile-photo-error" role="alert" className="text-caption text-danger">
+            {errors.photoUrl.message}
+          </p>
+        )}
+
+        {singleTrainer && (
+          <fieldset className="flex flex-col gap-xxs">
+            <legend className="text-body text-text-secondary">
+              Will {childName?.trim() || 'your child'} also train with {singleTrainer.businessName}?
+            </legend>
+            <label className="flex items-center gap-sm text-body text-text-primary">
+              <input
+                type="radio"
+                name="child-profile-single-trainer"
+                value="yes"
+                checked={singleTrainerChoice === 'yes'}
+                onChange={() => setSingleTrainerChoice('yes')}
+              />
+              Yes
+            </label>
+            <label className="flex items-center gap-sm text-body text-text-primary">
+              <input
+                type="radio"
+                name="child-profile-single-trainer"
+                value="no"
+                checked={singleTrainerChoice === 'no'}
+                onChange={() => setSingleTrainerChoice('no')}
+              />
+              No
+            </label>
+          </fieldset>
+        )}
+
+        {availableTrainers.length > 1 && (
+          <fieldset className="flex flex-col gap-xxs">
+            <legend className="text-body text-text-secondary">Connect with trainers (optional)</legend>
+            {availableTrainers.map((trainer) => (
+              <label key={trainer.id} className="flex items-center gap-sm text-body text-text-primary">
+                <input type="checkbox" value={trainer.id} {...register('trainerIds')} />
+                {trainer.businessName}
+              </label>
+            ))}
+          </fieldset>
+        )}
+
+        {formError && (
+          <p role="alert" className="text-body text-danger">
+            {formError}
+          </p>
+        )}
+
+        <div className="mt-sm flex justify-end gap-sm">
+          <button type="button" onClick={handleClose} className="btn btn-ghost">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="btn btn-primary"
+          >
+            {isSubmitting ? 'Adding…' : 'Add child'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

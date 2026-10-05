@@ -13,6 +13,7 @@ import { DEFAULT_LOGO_URL, PortalLogo } from '../shared/PortalLogo';
 import { Wordmark } from '../shared/Wordmark';
 
 import { NavIcon, type NavIconName } from './NavIcon';
+import { NotificationBell } from './NotificationBell';
 import { ThemeToggle } from './ThemeToggle';
 import { useSidebarCollapsed } from './useSidebarCollapsed';
 
@@ -220,10 +221,11 @@ export function AppShell({ navLabel, links, headerStart, children }: AppShellPro
           <div className="min-w-0">{headerStart}</div>
           <div className="flex items-center gap-sm">
             <ThemeToggle />
+            <NotificationBell />
             <UserMenu />
           </div>
         </header>
-        <main className="flex flex-1 flex-col">{children}</main>
+        <main id="main-content" tabIndex={-1} className="flex flex-1 flex-col">{children}</main>
       </div>
     </div>
   );

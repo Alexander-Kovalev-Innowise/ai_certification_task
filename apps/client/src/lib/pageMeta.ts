@@ -19,6 +19,7 @@ const ROUTE_META: ReadonlyArray<readonly [pattern: string, meta: PageMeta]> = [
   ['/verify-email', { title: 'Verify email', icon: 'mail' }],
   ['/change-password', { title: 'Change password', icon: 'key' }],
   ['/join/[code]', { title: 'Join a trainer', icon: 'link' }],
+  ['/camp/[code]', { title: 'Camp sign-up', icon: 'calendar' }],
   ['/dashboard', { title: 'Dashboard', icon: 'home' }],
   ['/users/[id]', { title: 'Edit user', icon: 'user' }],
   ['/users', { title: 'Users', icon: 'users' }],

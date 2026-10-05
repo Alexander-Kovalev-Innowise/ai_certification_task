@@ -7,6 +7,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { apiRequest } from '../../lib/api/apiClient';
 import { parseApiErrorBody } from '../../lib/api/apiError';
 import { updatePlayerProfileSchema, type UpdatePlayerProfileFormValues } from '../../lib/schemas/updatePlayerProfileSchema';
+import { skillLevelLabel } from '../../lib/skillLevel';
 import { PhoneInput } from '../shared/PhoneInput';
 import { PhotoUploadField } from '../shared/PhotoUploadField';
 
@@ -17,6 +18,8 @@ export interface PlayerProfileDetail {
   school: string | null;
   jerseyNumber: string | null;
   photoUrl: string | null;
+  /** Trainer-set (spec US-01.11) - shown read-only, never part of the PATCH body. */
+  skillLevel?: string;
   emergencyContact: Record<string, unknown> | null;
   allowChildTokenSpendWithoutApproval: boolean;
   isSelf: boolean;
@@ -76,13 +79,17 @@ export function ProfileEditForm({ profile, canEditGuardianFields, onSaved }: Pro
 
     const body: Record<string, unknown> = {
       name: values.name.trim(),
-      school: values.school.trim() || undefined,
-      jerseyNumber: values.jerseyNumber.trim() || undefined,
+      // '' (not undefined) so clearing the field actually clears it on the server.
+      school: values.school.trim(),
+      jerseyNumber: values.jerseyNumber.trim(),
       // null clears a removed photo.
       photoUrl: values.photoUrl.trim() || null,
     };
     if (values.emergencyContactName.trim() || values.emergencyContactPhone) {
       body.emergencyContact = { name: values.emergencyContactName.trim(), phone: values.emergencyContactPhone };
+    } else if (profile.emergencyContact) {
+      // Both fields emptied: clear the stored contact.
+      body.emergencyContact = {};
     }
     if (canEditGuardianFields) {
       body.allowChildTokenSpendWithoutApproval = values.allowChildTokenSpendWithoutApproval;
@@ -166,6 +173,25 @@ export function ProfileEditForm({ profile, canEditGuardianFields, onSaved }: Pro
           </p>
         )}
       </div>
+
+      {profile.skillLevel && (
+        <div className="flex flex-col gap-xxs">
+          <label htmlFor="profile-edit-skill" className="field-label">
+            Skill level
+          </label>
+          <input
+            id="profile-edit-skill"
+            value={skillLevelLabel(profile.skillLevel)}
+            readOnly
+            disabled
+            aria-describedby="profile-edit-skill-hint"
+            className={INPUT_CLASSNAME}
+          />
+          <p id="profile-edit-skill-hint" className="text-caption text-text-secondary">
+            Set by your trainer.
+          </p>
+        </div>
+      )}
 
       <Controller
         control={control}

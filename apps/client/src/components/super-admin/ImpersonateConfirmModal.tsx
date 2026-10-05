@@ -8,6 +8,7 @@ import { parseApiErrorBody } from '../../lib/api/apiError';
 import { toAuthSession } from '../../lib/api/authSession';
 import { useAuthStore } from '../../stores/useAuthStore';
 import type { AuthSessionResponseDto, Role } from '../../types/auth';
+import { Modal } from '../shared/Modal';
 
 // api §2 POST /impersonation/start — `ImpersonationStartResponseDto`.
 interface ImpersonationStartResponseDto {
@@ -106,44 +107,47 @@ export function ImpersonateConfirmModal({ isOpen, target, onClose, onStarted }: 
   }
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="impersonate-confirm-heading" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg">
-      <div className="w-full max-w-[24rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
-        <h2 id="impersonate-confirm-heading" className="text-block-title font-semibold text-text-primary">
-          Impersonate {target.firstName} {target.lastName}?
-        </h2>
+    <Modal
+      labelledBy="impersonate-confirm-heading"
+      onClose={onClose}
+      dismissible={!isSubmitting}
+      className="w-full max-w-[24rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong"
+    >
+      <h2 id="impersonate-confirm-heading" className="text-block-title font-semibold text-text-primary">
+        Impersonate {target.firstName} {target.lastName}?
+      </h2>
 
-        {targetIsSuperAdmin ? (
-          <p role="alert" className="mt-sm text-body text-danger">
-            {TARGET_INVALID_MESSAGE}
-          </p>
-        ) : (
-          <p className="mt-sm text-body text-text-secondary">
-            You&apos;ll act as this {target.role.toLowerCase()} for up to 60 minutes. Every action is still audited under your own account.
-          </p>
-        )}
+      {targetIsSuperAdmin ? (
+        <p role="alert" className="mt-sm text-body text-danger">
+          {TARGET_INVALID_MESSAGE}
+        </p>
+      ) : (
+        <p className="mt-sm text-body text-text-secondary">
+          You&apos;ll act as this {target.role.toLowerCase()} for up to 60 minutes. Every action is still audited under your own account.
+        </p>
+      )}
 
-        {error && (
-          <p role="alert" className="mt-sm text-body text-danger">
-            {error}
-          </p>
-        )}
+      {error && (
+        <p role="alert" className="mt-sm text-body text-danger">
+          {error}
+        </p>
+      )}
 
-        <div className="mt-md flex justify-end gap-sm">
-          <button type="button" onClick={onClose} disabled={isSubmitting} className="btn btn-ghost">
-            Cancel
+      <div className="mt-md flex justify-end gap-sm">
+        <button type="button" onClick={onClose} disabled={isSubmitting} className="btn btn-ghost">
+          Cancel
+        </button>
+        {!targetIsSuperAdmin && (
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={isSubmitting}
+            className="btn btn-primary"
+          >
+            {isSubmitting ? 'Starting…' : 'Impersonate'}
           </button>
-          {!targetIsSuperAdmin && (
-            <button
-              type="button"
-              onClick={handleConfirm}
-              disabled={isSubmitting}
-              className="btn btn-primary"
-            >
-              {isSubmitting ? 'Starting…' : 'Impersonate'}
-            </button>
-          )}
-        </div>
+        )}
       </div>
-    </div>
+    </Modal>
   );
 }

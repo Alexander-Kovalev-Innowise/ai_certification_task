@@ -78,7 +78,7 @@ export function VerifyEmailStatus() {
         <p role="status" className="text-body text-text-primary">
           Your email has been verified.
         </p>
-        <Link href="/dashboard" className="text-body text-brand-primary underline">
+        <Link href="/dashboard" className="text-body text-brand-link underline">
           Continue
         </Link>
       </div>

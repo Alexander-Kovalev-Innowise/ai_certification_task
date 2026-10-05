@@ -7,6 +7,7 @@ import { useForm } from 'react-hook-form';
 import { apiRequest } from '../../lib/api/apiClient';
 import { requestInfoSchema } from '../../lib/schemas/requestInfoSchema';
 import { resolveApprovalSchema, type ResolveApprovalFormValues } from '../../lib/schemas/resolveApprovalSchema';
+import { Modal } from '../shared/Modal';
 
 import type { ApprovalRow } from './ApprovalCard';
 
@@ -108,60 +109,64 @@ export function ApprovalDecisionModal({ isOpen, approval, decision, onClose, onR
   });
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="approval-decision-heading" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg">
-      <div className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
-        <h2 id="approval-decision-heading" className="text-block-title font-semibold text-text-primary">
-          {copy.heading}
-        </h2>
-        <p className="mt-sm text-body text-text-secondary">
-          {approval.playerName} — {approval.amount} {approval.paymentType}
-        </p>
+    <Modal
+      labelledBy="approval-decision-heading"
+      onClose={handleClose}
+      dismissible={!isSubmitting}
+      closeOnBackdrop={false}
+      className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong"
+    >
+      <h2 id="approval-decision-heading" className="text-block-title font-semibold text-text-primary">
+        {copy.heading}
+      </h2>
+      <p className="mt-sm text-body text-text-secondary">
+        {approval.playerName} — {approval.amount} {approval.paymentType}
+      </p>
 
-        <div className="mt-md flex flex-col gap-xxs">
-          <label htmlFor="approval-decision-notes" className="field-label">
-            {decision === 'request-info' ? 'Your question' : 'Notes (optional)'}
-          </label>
-          <textarea
-            id="approval-decision-notes"
-            rows={3}
-            placeholder={
-              decision === 'request-info'
-                ? 'What would you like to know? e.g. “Which clinic is this for?”'
-                : 'Add a note for the player or trainer, e.g. “Sounds good — have fun!”'
-            }
-            autoComplete="off"
-            aria-invalid={!!errors.notes}
-            aria-describedby={errors.notes ? 'approval-decision-notes-error' : undefined}
-            className="w-full min-w-0"
-            {...register('notes')}
-          />
-          {errors.notes && (
-            <p id="approval-decision-notes-error" role="alert" className="text-caption text-danger">
-              {errors.notes.message}
-            </p>
-          )}
-        </div>
-
-        {error && (
-          <p role="alert" className="mt-sm text-body text-danger">
-            {error}
+      <div className="mt-md flex flex-col gap-xxs">
+        <label htmlFor="approval-decision-notes" className="field-label">
+          {decision === 'request-info' ? 'Your question' : 'Notes (optional)'}
+        </label>
+        <textarea
+          id="approval-decision-notes"
+          rows={3}
+          placeholder={
+            decision === 'request-info'
+              ? 'What would you like to know? e.g. “Which clinic is this for?”'
+              : 'Add a note for the player or trainer, e.g. “Sounds good — have fun!”'
+          }
+          autoComplete="off"
+          aria-invalid={!!errors.notes}
+          aria-describedby={errors.notes ? 'approval-decision-notes-error' : undefined}
+          className="w-full min-w-0"
+          {...register('notes')}
+        />
+        {errors.notes && (
+          <p id="approval-decision-notes-error" role="alert" className="text-caption text-danger">
+            {errors.notes.message}
           </p>
         )}
-
-        <div className="mt-md flex justify-end gap-sm">
-          <button type="button" onClick={handleClose} disabled={isSubmitting} className="btn btn-ghost">
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={isSubmitting}
-            className={`btn ${copy.confirmClass}`}
-          >
-            {isSubmitting ? 'Submitting…' : copy.confirmLabel}
-          </button>
-        </div>
       </div>
-    </div>
+
+      {error && (
+        <p role="alert" className="mt-sm text-body text-danger">
+          {error}
+        </p>
+      )}
+
+      <div className="mt-md flex justify-end gap-sm">
+        <button type="button" onClick={handleClose} disabled={isSubmitting} className="btn btn-ghost">
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleConfirm}
+          disabled={isSubmitting}
+          className={`btn ${copy.confirmClass}`}
+        >
+          {isSubmitting ? 'Submitting…' : copy.confirmLabel}
+        </button>
+      </div>
+    </Modal>
   );
 }

@@ -11,6 +11,7 @@ describe('resolvePageMeta', () => {
     expect(resolvePageMeta('/profiles/p1/availability').title).toBe('Availability');
     expect(resolvePageMeta('/profiles/p1').title).toBe('Player profile');
     expect(resolvePageMeta('/join/XYZ').title).toBe('Join a trainer');
+    expect(resolvePageMeta('/camp/XYZ').title).toBe('Camp sign-up');
   });
 
   it('ignores a trailing slash and falls back to the app name for unknown routes', () => {

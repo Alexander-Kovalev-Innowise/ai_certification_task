@@ -343,4 +343,82 @@ describe('ShareLinkDispatcher', () => {
       expect(pushMock).not.toHaveBeenCalled();
     });
   });
+
+  describe('camp sign-up conversion (?camp=<token>)', () => {
+    const campPayload = {
+      shareLinkCode: 'abc123',
+      source: 'CAMP',
+      expiresAt: '2030-01-01T00:00:00.000Z',
+      trainer: { displayName: 'Coach Lisa', logoUrl: null, primaryColorHex: null },
+      prefill: {
+        parentFirstName: 'Pat',
+        parentLastName: 'Camper',
+        email: 'pat@example.com',
+        phone: '+14155552671',
+        playerName: 'Kid Camper',
+        playerAge: 10,
+        dateOfBirth: '2016-04-05',
+        gender: 'FEMALE',
+        isSelf: false,
+      },
+    };
+
+    it('fetches the prefill, pre-fills the form and redeems with the conversionToken (only a password typed)', async () => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')))
+        .mockResolvedValueOnce(mockResponse(200, campPayload))
+        .mockResolvedValueOnce(
+          mockResponse(201, { accessToken: 'camp-token', expiresIn: 900, user: userWith({ role: 'PLAYER_PARENT', firstName: 'Pat' }) }),
+        );
+
+      render(<ShareLinkDispatcher code="abc123" campToken="tok123" />);
+
+      expect(await screen.findByText(/pre-filled this from your camp sign-up/i)).toBeInTheDocument();
+      expect((global.fetch as jest.Mock).mock.calls.some(([url]) => (url as string).includes('/camp-conversions/tok123'))).toBe(true);
+      expect(screen.getByLabelText('Email')).toHaveValue('pat@example.com');
+
+      fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'Password1' } });
+      fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+      expect(await screen.findByText('Welcome, Pat!')).toBeInTheDocument();
+      const redeemCall = (global.fetch as jest.Mock).mock.calls.find(([url]) => (url as string).includes('/redeem'));
+      expect(JSON.parse(redeemCall[1].body)).toEqual({
+        parentFirstName: 'Pat',
+        parentLastName: 'Camper',
+        email: 'pat@example.com',
+        password: 'Password1',
+        phone: '+14155552671',
+        playerName: 'Kid Camper',
+        dateOfBirth: '2016-04-05',
+        gender: 'FEMALE',
+        isSelf: false,
+        conversionToken: 'tok123',
+      });
+      await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/dashboard'), { timeout: 2000 });
+    });
+
+    it.each([
+      [410, /has expired/i],
+      [404, /already used or is not valid/i],
+    ])('a %s token explains why and falls back to the empty form', async (status, copy) => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')))
+        .mockResolvedValueOnce(mockResponse(status, { errorCode: 'NOT_FOUND' }));
+
+      render(<ShareLinkDispatcher code="abc123" campToken="stale" />);
+
+      expect(await screen.findByText(copy)).toBeInTheDocument();
+      expect(screen.getByLabelText('Email')).toHaveValue('');
+      expect(screen.queryByText(/pre-filled this from your camp sign-up/i)).not.toBeInTheDocument();
+    });
+
+    it('does not fetch any camp data without a token', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')));
+
+      render(<ShareLinkDispatcher code="abc123" />);
+      await screen.findByLabelText('Email');
+
+      expect((global.fetch as jest.Mock).mock.calls.some(([url]) => (url as string).includes('/camp-conversions'))).toBe(false);
+    });
+  });
 });

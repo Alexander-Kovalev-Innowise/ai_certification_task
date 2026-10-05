@@ -140,4 +140,59 @@ describe('AnonymousJoinForm', () => {
       expect(screen.getByText('Something went wrong.')).toBeInTheDocument();
     });
   });
+
+  describe('camp sign-up prefill (Camp-to-User Conversion)', () => {
+    const prefill = {
+      parentFirstName: 'Pat',
+      parentLastName: 'Camper',
+      email: 'pat@example.com',
+      phone: '+14155552671',
+      playerName: 'Kid Camper',
+      playerAge: 10,
+      dateOfBirth: '2016-04-05',
+      gender: 'FEMALE' as const,
+      isSelf: false,
+    };
+
+    it('shows the "pre-filled from your camp sign-up" notice and fills every known field', () => {
+      render(<AnonymousJoinForm type="PLAYER_STATIC" onSubmit={jest.fn()} prefill={prefill} />);
+
+      expect(screen.getByRole('status')).toHaveTextContent(/pre-filled this from your camp sign-up/i);
+      expect(screen.getByLabelText('Your first name')).toHaveValue('Pat');
+      expect(screen.getByLabelText('Your last name')).toHaveValue('Camper');
+      expect(screen.getByLabelText('Email')).toHaveValue('pat@example.com');
+      expect(screen.getByLabelText("Player's name")).toHaveValue('Kid Camper');
+      expect(screen.getByLabelText('Date of birth')).toHaveValue('2016-04-05');
+      expect(screen.getByLabelText('Gender')).toHaveValue('FEMALE');
+      expect(screen.getByLabelText('Who is this registration for?')).toHaveValue('false');
+      expect(screen.getByLabelText('Password')).toHaveValue('');
+    });
+
+    it('submits with only a password typed', async () => {
+      const onSubmit = jest.fn();
+      render(<AnonymousJoinForm type="PLAYER_STATIC" onSubmit={onSubmit} prefill={prefill} />);
+
+      fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'Password1' } });
+      fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+      await waitFor(() =>
+        expect(onSubmit).toHaveBeenCalledWith({
+          parentFirstName: 'Pat',
+          parentLastName: 'Camper',
+          email: 'pat@example.com',
+          password: 'Password1',
+          phone: '+14155552671',
+          playerName: 'Kid Camper',
+          dateOfBirth: '2016-04-05',
+          gender: 'FEMALE',
+          isSelf: false,
+        }),
+      );
+    });
+
+    it('shows no notice without a prefill', () => {
+      render(<AnonymousJoinForm type="PLAYER_STATIC" onSubmit={jest.fn()} />);
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+  });
 });

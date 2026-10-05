@@ -25,6 +25,8 @@ export interface CoachRosterRow {
   /** Invite-only rows: when the link expires (Pending) / expired (Expired). */
   expiresAt?: string | null;
   invitationStatus: CoachInvitationStatus;
+  /** US-01.10: the coach's open "request change" on an availability override, if any. */
+  changeRequest?: { overrideId: string; message: string; requestedAt: string; sessionLabel: string | null } | null;
 }
 
 export interface CoachRosterTableProps {
@@ -84,7 +86,7 @@ export function CoachRosterTable({
       size: 180,
       minSize: 120,
       cell: ({ row }) => {
-        const { invitationStatus, expiresAt } = row.original;
+        const { invitationStatus, expiresAt, changeRequest } = row.original;
         const caption =
           invitationStatus === 'Pending' && expiresAt
             ? `Expires ${new Date(expiresAt).toLocaleDateString()}`
@@ -95,6 +97,15 @@ export function CoachRosterTable({
           <span className="flex flex-col items-start gap-xxs">
             <CoachStatusBadge status={invitationStatus} />
             {caption && <span className="text-caption text-text-secondary">{caption}</span>}
+            {changeRequest && (
+              <span
+                title={`${changeRequest.sessionLabel ? `${changeRequest.sessionLabel}: ` : ''}${changeRequest.message}`}
+                className="rounded-full bg-warning/20 px-sm py-xxs text-caption font-semibold text-warning"
+              >
+                Change requested
+                <span className="sr-only">: {changeRequest.message}</span>
+              </span>
+            )}
           </span>
         );
       },

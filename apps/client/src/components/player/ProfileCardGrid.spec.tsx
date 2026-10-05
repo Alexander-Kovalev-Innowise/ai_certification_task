@@ -44,4 +44,11 @@ describe('ProfileCardGrid', () => {
 
     expect(screen.queryByRole('button', { name: /add child/i })).not.toBeInTheDocument();
   });
+
+  it('shows the trainer-set skill level on the card, read-only', () => {
+    render(<ProfileCardGrid profiles={[{ ...PROFILES[0]!, skillLevel: 'ELITE' }, PROFILES[1]!]} canAddChild onAddChild={jest.fn()} />);
+
+    expect(screen.getByText('Skill: Elite')).toBeInTheDocument();
+    expect(screen.queryByText(/^Skill: .*Beginner/)).not.toBeInTheDocument();
+  });
 });

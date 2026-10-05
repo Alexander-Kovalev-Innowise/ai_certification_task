@@ -25,7 +25,7 @@ function InvalidOrExpiredLink() {
       <p role="alert" className="text-body text-text-primary">
         This link is invalid or has expired.
       </p>
-      <Link href="/forgot-password" className="text-body text-brand-primary underline">
+      <Link href="/forgot-password" className="text-body text-brand-link underline">
         Request a new link
       </Link>
     </div>
@@ -87,7 +87,7 @@ export function ResetPasswordForm() {
         <p role="status" className="text-body text-text-primary">
           Your password has been reset. You can now sign in.
         </p>
-        <Link href="/login" className="text-body text-brand-primary underline">
+        <Link href="/login" className="text-body text-brand-link underline">
           Go to sign in
         </Link>
       </div>

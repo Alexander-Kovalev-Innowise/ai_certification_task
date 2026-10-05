@@ -40,6 +40,8 @@ export function LoginForm({ next = null }: LoginFormProps = {}) {
   const router = useRouter();
   const setSession = useAuthStore((state) => state.setSession);
   const [formError, setFormError] = useState<string | null>(null);
+  // `rateLimited` is separate from the seconds: a 429 whose Retry-After header the browser cannot read still has to show the notice.
+  const [rateLimited, setRateLimited] = useState(false);
   const [retryAfterSeconds, setRetryAfterSeconds] = useState<number | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -55,6 +57,7 @@ export function LoginForm({ next = null }: LoginFormProps = {}) {
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
+    setRateLimited(false);
     setRetryAfterSeconds(null);
 
     const res = await publicApiRequest('/auth/login', {
@@ -65,6 +68,7 @@ export function LoginForm({ next = null }: LoginFormProps = {}) {
 
     if (!res.ok) {
       if (res.status === 429) {
+        setRateLimited(true);
         setRetryAfterSeconds(readRetryAfterSeconds(res));
         return;
       }
@@ -154,7 +158,7 @@ export function LoginForm({ next = null }: LoginFormProps = {}) {
         </p>
       )}
 
-      {retryAfterSeconds !== null && <RateLimitNotice retryAfterSeconds={retryAfterSeconds} />}
+      {rateLimited && <RateLimitNotice retryAfterSeconds={retryAfterSeconds} />}
 
       <button
         type="submit"

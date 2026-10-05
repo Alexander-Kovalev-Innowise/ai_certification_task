@@ -32,4 +32,18 @@ describe('JoinPage', () => {
     const [url] = (global.fetch as jest.Mock).mock.calls[0];
     expect(url).toContain('/share-links/my-code-1');
   });
+
+  it('reads ?camp=<token> and fetches the camp prefill', async () => {
+    (global.fetch as jest.Mock).mockImplementation(async (url: string) =>
+      url.includes('/camp-conversions/')
+        ? mockResponse(404, { errorCode: 'NOT_FOUND' })
+        : mockResponse(200, { valid: true, type: 'PLAYER_STATIC', trainerDisplayName: 'Coach Lisa', logoUrl: null, primaryColorHex: null }),
+    );
+
+    const element = await JoinPage({ params: Promise.resolve({ code: 'my-code-1' }), searchParams: Promise.resolve({ camp: 'tok-9' }) });
+    render(element);
+
+    expect(await screen.findByText(/camp sign-up link/i)).toBeInTheDocument();
+    expect((global.fetch as jest.Mock).mock.calls.some(([url]) => (url as string).includes('/camp-conversions/tok-9'))).toBe(true);
+  });
 });

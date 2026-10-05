@@ -111,4 +111,66 @@ describe('ChildProfileForm', () => {
 
     expect(onClose).toHaveBeenCalled();
   });
+
+  // US-01.03 — a parent with exactly one trainer is asked a Yes/No question
+  // instead of seeing a checklist.
+  describe('trainer association prompt', () => {
+    const ONE_TRAINER = [{ id: 'trainer-1', businessName: 'Ace Tennis Academy' }];
+
+    async function fillAndSubmit() {
+      fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Alex' } });
+      fireEvent.change(screen.getByLabelText(/date of birth/i), { target: { value: futureYearsAgo(10) } });
+      fireEvent.change(screen.getByLabelText(/gender/i), { target: { value: 'MALE' } });
+      fireEvent.click(screen.getByRole('button', { name: /add child/i }));
+      await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+      return JSON.parse(((global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit])[1].body as string);
+    }
+
+    it('asks "Will <Child> also train with <Trainer>?" with Yes/No radios for a single trainer', () => {
+      render(<ChildProfileForm isOpen onClose={jest.fn()} onCreated={jest.fn()} availableTrainers={ONE_TRAINER} />);
+
+      fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Alex' } });
+
+      expect(screen.getByRole('group', { name: 'Will Alex also train with Ace Tennis Academy?' })).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: 'Yes' })).not.toBeChecked();
+      expect(screen.getByRole('radio', { name: 'No' })).toBeChecked();
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    });
+
+    it('associates the trainer when the answer is Yes', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(201, { id: 'p', name: 'Alex', dateOfBirth: '2016-01-01', gender: 'MALE', isSelf: false }));
+      render(<ChildProfileForm isOpen onClose={jest.fn()} onCreated={jest.fn()} availableTrainers={ONE_TRAINER} />);
+
+      fireEvent.click(screen.getByRole('radio', { name: 'Yes' }));
+      const body = await fillAndSubmit();
+
+      expect(body.trainerIds).toEqual(['trainer-1']);
+    });
+
+    it('creates the profile without any association when the answer is No', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(201, { id: 'p', name: 'Alex', dateOfBirth: '2016-01-01', gender: 'MALE', isSelf: false }));
+      render(<ChildProfileForm isOpen onClose={jest.fn()} onCreated={jest.fn()} availableTrainers={ONE_TRAINER} />);
+
+      fireEvent.click(screen.getByRole('radio', { name: 'Yes' }));
+      fireEvent.click(screen.getByRole('radio', { name: 'No' }));
+      const body = await fillAndSubmit();
+
+      expect(body).not.toHaveProperty('trainerIds');
+    });
+
+    it('keeps the checklist for several trainers', () => {
+      render(<ChildProfileForm isOpen onClose={jest.fn()} onCreated={jest.fn()} availableTrainers={TRAINERS} />);
+
+      expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+      expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    });
+
+    it('shows nothing about trainers when the parent has none', () => {
+      render(<ChildProfileForm isOpen onClose={jest.fn()} onCreated={jest.fn()} availableTrainers={[]} />);
+
+      expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+      expect(screen.queryByText(/also train with/i)).not.toBeInTheDocument();
+    });
+  });
 });

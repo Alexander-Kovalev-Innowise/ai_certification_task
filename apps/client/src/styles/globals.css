@@ -141,9 +141,9 @@
   --ink: #f3f3f3;
   --text-subtle: #aaaaaa;
   --brand-primary: #00b300; /* platform default green, overridden per-tenant by BrandingProvider (Task 10.10) */
-  --success: #00b300;
+  --success: #2ad42a; /* AA (>=4.5:1) on every dark surface incl. surface-2/3/green */
   --warning: #fbbf24;
-  --danger: #ff5e58;
+  --danger: #ff7a74; /* AA on surface-2/3/green; the old #ff5e58 stayed ~4.0:1 */
   --info: #60a5fa;
 
   /* RGB mirror of --brand-primary for rgba()-based glow shadows (fe §1.2/1.3).
@@ -163,6 +163,14 @@
      (--ink/--ink-muted) fixes every call site without a 76-file rename. */
   --text-primary: var(--ink);
   --text-secondary: var(--ink-muted);
+
+  /* Accessible brand-coloured TEXT/focus ring (WCAG 1.4.3 / 1.4.11). The raw
+     accent is a fill colour; as text it needs lightening on the dark theme and
+     darkening on the light one. Consumers read it through the `text-brand-link`
+     class / the global :focus-visible ring below, which evaluate the mix at the
+     element so tenant branding (--brand-primary on [data-branding]) still wins. */
+  --brand-link-mix: 65%;
+  --brand-link-base: #fff;
 }
 
 /* Light theme: same green accent, paper-white surfaces. Toggled by
@@ -182,11 +190,13 @@
   --field-border: #c4d5c4;
   --ink: #0f1a0f;
   --ink-muted: #46584a;
-  --text-subtle: #66796a;
-  --success: #007a00;
-  --warning: #a16207;
-  --danger: #d1332d;
-  --info: #2563eb;
+  --text-subtle: #4d5f52;
+  --success: #006b00;
+  --warning: #855000;
+  --danger: #b3261f;
+  --info: #1d4ed8;
+  --brand-link-mix: 55%;
+  --brand-link-base: #000;
   --glow-alpha: 0.22;
   --btn-secondary-ink: #0f1a0f;
   --btn-edge: #c4d5c4;
@@ -313,6 +323,21 @@ textarea:disabled,
    them overridable by Tailwind utilities (e.g. `btn self-start`).
    --------------------------------------------------------------------------- */
 @layer base {
+  /* Visible keyboard focus on every interactive control (WCAG 2.4.7). :where()
+     keeps specificity at zero so component rules (.btn, inputs' own
+     border+glow focus style, `outline-none` utilities on purpose-built
+     controls) still override it. */
+  :where(a[href], button, summary, select, textarea, input, [role='button'], [role='tab'], [role='menuitem'], [role='option'], [tabindex]):focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--brand-primary) var(--brand-link-mix), var(--brand-link-base));
+    outline-offset: 2px;
+  }
+
+  /* Programmatic focus targets (skip-link destination, dialog panel) are not
+     keyboard stops and should not draw a ring. */
+  [tabindex='-1']:focus {
+    outline: none;
+  }
+
   /* Inputs: #111D11 fill, #001900 edge, accent border + soft ring on focus,
      #FF5E58 when aria-invalid, near-black when disabled. */
   input:where(:not([type='checkbox'], [type='radio'], [type='color'], [type='file'], [type='range'], [type='submit'], [type='button'])),
@@ -427,12 +452,6 @@ textarea:disabled,
     background-image: radial-gradient(circle, var(--brand-primary) 0 5px, transparent 5.5px);
   }
 
-  input[type='checkbox']:focus-visible,
-  input[type='radio']:focus-visible {
-    outline: 2px solid var(--brand-primary);
-    outline-offset: 2px;
-  }
-
   input[type='checkbox']:disabled,
   input[type='radio']:disabled {
     opacity: 0.5;
@@ -477,8 +496,37 @@ textarea:disabled,
   }
 
   .btn:focus-visible {
-    outline: 2px solid var(--brand-primary);
+    outline: 2px solid color-mix(in srgb, var(--brand-primary) var(--brand-link-mix), var(--brand-link-base));
     outline-offset: 2px;
+  }
+
+  /* Brand-coloured text that stays AA on both themes (see --brand-link-mix). */
+  .text-brand-link {
+    color: color-mix(in srgb, var(--brand-primary) var(--brand-link-mix), var(--brand-link-base));
+  }
+
+  /* "Skip to main content" (WCAG 2.4.1): first stop in the signed-in shell,
+     parked off-screen until it receives keyboard focus. */
+  .skip-link {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 100;
+    padding: 10px 16px;
+    border: 2px solid color-mix(in srgb, var(--brand-primary) var(--brand-link-mix), var(--brand-link-base));
+    border-radius: 12px;
+    background-color: var(--surface-1);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 22px;
+    font-weight: 600;
+    text-decoration: none;
+    transform: translateY(-200%);
+  }
+
+  .skip-link:focus,
+  .skip-link:focus-visible {
+    transform: none;
   }
 
   .btn-sm {
@@ -487,6 +535,14 @@ textarea:disabled,
     border-radius: 12px;
     font-size: 12px;
     line-height: 18px;
+  }
+
+  /* Touch-friendly controls (spec "Mobile Requirements"): on phones and any coarse
+     pointer the compact button still gets a 40px touch target; desktop is unchanged. */
+  @media (pointer: coarse), (max-width: 767px) {
+    .btn-sm {
+      min-height: 40px;
+    }
   }
 
   .btn-lg {

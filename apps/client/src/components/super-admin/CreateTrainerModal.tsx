@@ -7,6 +7,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { apiRequest } from '../../lib/api/apiClient';
 import { parseApiErrorBody } from '../../lib/api/apiError';
 import { createTrainerSchema, type CreateTrainerFormValues } from '../../lib/schemas/createTrainerSchema';
+import { Modal } from '../shared/Modal';
 import { PhoneInput } from '../shared/PhoneInput';
 
 // api §4.1 POST /trainers — `201 TrainerResponseDto`.
@@ -88,147 +89,145 @@ export function CreateTrainerModal({ isOpen, onClose, onCreated }: CreateTrainer
   });
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="create-trainer-heading"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg"
+    <Modal
+      labelledBy="create-trainer-heading"
+      onClose={handleClose}
+      closeOnBackdrop={false}
+      className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong"
     >
-      <div className="max-h-full w-full max-w-[28rem] overflow-y-auto rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
-        <h2 id="create-trainer-heading" className="text-block-title font-semibold text-text-primary">
-          Create Trainer
-        </h2>
+      <h2 id="create-trainer-heading" className="text-block-title font-semibold text-text-primary">
+        Create Trainer
+      </h2>
 
-        <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
-          <div className="flex flex-col gap-xxs">
-            <label htmlFor="create-trainer-business-name" className="field-label">
-              Business name
-            </label>
-            <input
-              id="create-trainer-business-name"
-              placeholder="Elite Basketball Academy"
-              autoComplete="organization"
-              className={INPUT_CLASSNAME}
-              aria-invalid={!!errors.businessName}
-              aria-describedby={errors.businessName ? 'create-trainer-business-name-error' : undefined}
-              {...register('businessName')}
-            />
-            {errors.businessName && (
-              <p id="create-trainer-business-name-error" role="alert" className="text-caption text-danger">
-                {errors.businessName.message}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-md">
-            <div className="flex min-w-0 flex-[1_1_11rem] flex-col gap-xxs">
-              <label htmlFor="create-trainer-first-name" className="field-label">
-                First name
-              </label>
-              <input
-                id="create-trainer-first-name"
-                placeholder="John"
-                autoComplete="given-name"
-                className={INPUT_CLASSNAME}
-                aria-invalid={!!errors.firstName}
-                aria-describedby={errors.firstName ? 'create-trainer-first-name-error' : undefined}
-                {...register('firstName')}
-              />
-              {errors.firstName && (
-                <p id="create-trainer-first-name-error" role="alert" className="text-caption text-danger">
-                  {errors.firstName.message}
-                </p>
-              )}
-            </div>
-
-            <div className="flex min-w-0 flex-[1_1_11rem] flex-col gap-xxs">
-              <label htmlFor="create-trainer-last-name" className="field-label">
-                Last name
-              </label>
-              <input
-                id="create-trainer-last-name"
-                placeholder="Smith"
-                autoComplete="family-name"
-                className={INPUT_CLASSNAME}
-                aria-invalid={!!errors.lastName}
-                aria-describedby={errors.lastName ? 'create-trainer-last-name-error' : undefined}
-                {...register('lastName')}
-              />
-              {errors.lastName && (
-                <p id="create-trainer-last-name-error" role="alert" className="text-caption text-danger">
-                  {errors.lastName.message}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-xxs">
-            <label htmlFor="create-trainer-email" className="field-label">
-              Email
-            </label>
-            <input
-              id="create-trainer-email"
-              type="email"
-              placeholder="trainer@example.com"
-              autoComplete="email"
-              className={INPUT_CLASSNAME}
-              aria-invalid={!!errors.email}
-              aria-describedby={errors.email ? 'create-trainer-email-error' : undefined}
-              {...register('email')}
-            />
-            {errors.email && (
-              <p id="create-trainer-email-error" role="alert" className="text-caption text-danger">
-                {errors.email.message}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-xxs">
-            <label htmlFor="create-trainer-phone" className="field-label">
-              Phone
-            </label>
-            <Controller
-              control={control}
-              name="phone"
-              render={({ field }) => (
-                <PhoneInput
-                  id="create-trainer-phone"
-                  value={field.value}
-                  onChange={field.onChange}
-                  onBlur={field.onBlur}
-                  className={INPUT_CLASSNAME}
-                  aria-invalid={!!errors.phone}
-                  aria-describedby={errors.phone ? 'create-trainer-phone-error' : undefined}
-                />
-              )}
-            />
-            {errors.phone && (
-              <p id="create-trainer-phone-error" role="alert" className="text-caption text-danger">
-                {errors.phone.message}
-              </p>
-            )}
-          </div>
-
-          {formError && (
-            <p role="alert" className="text-body text-danger">
-              {formError}
+      <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
+        <div className="flex flex-col gap-xxs">
+          <label htmlFor="create-trainer-business-name" className="field-label">
+            Business name
+          </label>
+          <input
+            id="create-trainer-business-name"
+            placeholder="Elite Basketball Academy"
+            autoComplete="organization"
+            className={INPUT_CLASSNAME}
+            aria-invalid={!!errors.businessName}
+            aria-describedby={errors.businessName ? 'create-trainer-business-name-error' : undefined}
+            {...register('businessName')}
+          />
+          {errors.businessName && (
+            <p id="create-trainer-business-name-error" role="alert" className="text-caption text-danger">
+              {errors.businessName.message}
             </p>
           )}
+        </div>
 
-          <div className="mt-sm flex justify-end gap-sm">
-            <button type="button" onClick={handleClose} className="btn btn-ghost">
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="btn btn-primary"
-            >
-              {isSubmitting ? 'Creating…' : 'Create trainer'}
-            </button>
+        <div className="flex flex-wrap gap-md">
+          <div className="flex min-w-0 flex-[1_1_11rem] flex-col gap-xxs">
+            <label htmlFor="create-trainer-first-name" className="field-label">
+              First name
+            </label>
+            <input
+              id="create-trainer-first-name"
+              placeholder="John"
+              autoComplete="given-name"
+              className={INPUT_CLASSNAME}
+              aria-invalid={!!errors.firstName}
+              aria-describedby={errors.firstName ? 'create-trainer-first-name-error' : undefined}
+              {...register('firstName')}
+            />
+            {errors.firstName && (
+              <p id="create-trainer-first-name-error" role="alert" className="text-caption text-danger">
+                {errors.firstName.message}
+              </p>
+            )}
           </div>
-        </form>
-      </div>
-    </div>
+
+          <div className="flex min-w-0 flex-[1_1_11rem] flex-col gap-xxs">
+            <label htmlFor="create-trainer-last-name" className="field-label">
+              Last name
+            </label>
+            <input
+              id="create-trainer-last-name"
+              placeholder="Smith"
+              autoComplete="family-name"
+              className={INPUT_CLASSNAME}
+              aria-invalid={!!errors.lastName}
+              aria-describedby={errors.lastName ? 'create-trainer-last-name-error' : undefined}
+              {...register('lastName')}
+            />
+            {errors.lastName && (
+              <p id="create-trainer-last-name-error" role="alert" className="text-caption text-danger">
+                {errors.lastName.message}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-xxs">
+          <label htmlFor="create-trainer-email" className="field-label">
+            Email
+          </label>
+          <input
+            id="create-trainer-email"
+            type="email"
+            placeholder="trainer@example.com"
+            autoComplete="email"
+            className={INPUT_CLASSNAME}
+            aria-invalid={!!errors.email}
+            aria-describedby={errors.email ? 'create-trainer-email-error' : undefined}
+            {...register('email')}
+          />
+          {errors.email && (
+            <p id="create-trainer-email-error" role="alert" className="text-caption text-danger">
+              {errors.email.message}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-xxs">
+          <label htmlFor="create-trainer-phone" className="field-label">
+            Phone
+          </label>
+          <Controller
+            control={control}
+            name="phone"
+            render={({ field }) => (
+              <PhoneInput
+                id="create-trainer-phone"
+                value={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                className={INPUT_CLASSNAME}
+                aria-invalid={!!errors.phone}
+                aria-describedby={errors.phone ? 'create-trainer-phone-error' : undefined}
+              />
+            )}
+          />
+          {errors.phone && (
+            <p id="create-trainer-phone-error" role="alert" className="text-caption text-danger">
+              {errors.phone.message}
+            </p>
+          )}
+        </div>
+
+        {formError && (
+          <p role="alert" className="text-body text-danger">
+            {formError}
+          </p>
+        )}
+
+        <div className="mt-sm flex justify-end gap-sm">
+          <button type="button" onClick={handleClose} className="btn btn-ghost">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="btn btn-primary"
+          >
+            {isSubmitting ? 'Creating…' : 'Create trainer'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

@@ -90,22 +90,25 @@ interface ApiRequestOptions extends Omit<RequestInit, 'headers'> {
 }
 
 /**
- * fe §6.2 — narrow helper for the two calls that need X-CSRF-Token per the
- * double-submit design (arch §6.4): refreshSession() and logout(). Kept
- * separate from apiRequest's generic header set deliberately: attaching this
- * header to routes that don't check it is harmless, but attaching it
- * *inconsistently* would itself be a signal something's wrong, so it stays
- * scoped to the two routes that actually require it.
+ * fe §6.2 / spec §13 CSRF — the two cookie-authenticated, state-changing
+ * calls (POST /auth/refresh, POST /auth/logout) are protected server-side by
+ * two layers:
+ *   1. Origin verification: the browser attaches `Origin` itself on every
+ *      cross-origin fetch (page script cannot set or forge it), and the
+ *      server requires it to equal CLIENT_URL — nothing to send from here.
+ *   2. Double-submit token (logout only): `X-CSRF-Token` must equal the
+ *      `csrf` cookie, which `credentials: 'include'` makes the browser send.
+ *      /auth/refresh does NOT require it — after a page reload there is no
+ *      in-memory token yet and refresh is what returns one — so on refresh
+ *      this header is only sent when a (possibly stale) token happens to be
+ *      in memory, and the server ignores it.
  *
- * Reads the token from useAuthStore, NOT document.cookie (deviation — see
- * auth-session-response.dto.ts server-side and useAuthStore.ts's AuthSession
- * comment). The `csrf` cookie is set on apps/server's own origin; apps/client
- * runs on a different origin, and document.cookie can only ever see cookies
- * belonging to the page's own origin, so the original "read it client-side
- * from the cookie" design could never actually work here — every refresh/
- * logout call failed CSRF validation unconditionally. The server now also
- * returns the same token value in the response body specifically so it can
- * be stored in memory instead.
+ * The token comes from useAuthStore, NOT document.cookie (see
+ * auth-session-response.dto.ts server-side and useAuthStore.ts): the `csrf`
+ * cookie belongs to apps/server's origin and is unreadable from this page, so
+ * the server returns the same value in the login/refresh response body and it
+ * is kept in memory. Kept separate from apiRequest's generic header set
+ * deliberately, scoped to the routes that actually consume it.
  */
 function csrfHeaders(): Record<string, string> {
   const csrf = useAuthStore.getState().csrfToken;
@@ -173,17 +176,69 @@ async function performRefresh(): Promise<boolean> {
   return true;
 }
 
-/** POST /auth/logout — needs X-CSRF-Token (arch §6.4), same as refreshSession. */
+/**
+ * Exit impersonation: drop the impersonation token, then refresh the admin's own, untouched cookie session.
+ * The token goes first (`refreshSession` refuses to run while `isImpersonating`), but `user` is deliberately
+ * KEPT until the admin session lands in one `setSession`: a render with no user would make RoleGuard
+ * `router.replace('/login')`, and on a route whose guard admits the admin again (e.g. /dashboard) nothing
+ * navigates back, stranding a signed-in admin on the login page. If the admin session cannot be restored the
+ * store is cleared completely.
+ */
+export async function restoreAdminSession(): Promise<boolean> {
+  useAuthStore.setState({ accessToken: null, expiresAt: null, isImpersonating: false, csrfToken: null });
+  const restored = await refreshSession();
+  if (!restored) {
+    useAuthStore.getState().clear();
+  }
+  return restored;
+}
+
+/**
+ * POST /auth/logout — the server requires a matching Origin (sent by the
+ * browser) AND X-CSRF-Token (arch §6.4, spec §13): the in-memory token is
+ * always present here because BootSequence refreshes before any signed-in UI
+ * renders, so sign-out works immediately after a page reload.
+ *
+ * An impersonation session has no refresh token / csrf pair of its own (the
+ * browser's cookies are the admin's), and the server refuses logout on an
+ * impersonation token. So signing out while impersonating first runs the
+ * normal exit (POST /impersonation/end, drop the token, refresh the admin's
+ * untouched cookie session — which also restores the admin's csrf token),
+ * then logs the admin out. If the admin session cannot be restored there is
+ * nothing left to revoke server-side and local state is simply cleared.
+ */
 export async function logout(everywhere = false): Promise<void> {
-  const { accessToken } = useAuthStore.getState();
-  await fetch(`${API_BASE_URL}/auth/logout${everywhere ? '?everywhere=true' : ''}`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
-      ...csrfHeaders(),
-    },
-  });
+  if (useAuthStore.getState().isImpersonating) {
+    try {
+      await publicApiRequest('/impersonation/end', { method: 'POST' });
+    } catch {
+      // Best-effort (api §2): ending may itself 401 past the 60-minute cap.
+    }
+    if (!(await restoreAdminSession())) {
+      return;
+    }
+  }
+
+  const sendLogout = (): Promise<Response> => {
+    const { accessToken } = useAuthStore.getState();
+    return fetch(`${API_BASE_URL}/auth/logout${everywhere ? '?everywhere=true' : ''}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
+        ...csrfHeaders(),
+      },
+    });
+  };
+
+  const res = await sendLogout();
+  // A 403 here means the in-memory csrf token no longer equals the csrf
+  // cookie — typically another tab rotated the session (refresh re-issues
+  // both). Re-sync once via a refresh, then retry, so the server-side session
+  // is still revoked rather than silently left alive behind a cleared UI.
+  if (res.status === 403 && (await refreshSession())) {
+    await sendLogout();
+  }
   useAuthStore.getState().clear();
 }
 

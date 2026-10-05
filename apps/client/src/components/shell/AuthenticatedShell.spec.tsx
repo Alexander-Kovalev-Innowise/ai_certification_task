@@ -14,6 +14,11 @@ jest.mock('next/navigation', () => ({
   usePathname: () => mockPathname,
 }));
 
+// The header bell polls /me/notifications; keep that out of the sequential fetch mocks below.
+jest.mock('../../hooks/useNotifications', () => ({
+  useNotifications: () => ({ data: { unreadCount: 0, items: [] }, markRead: jest.fn(), markAllRead: jest.fn() }),
+}));
+
 function userWithRole(role: UserSummaryDto['role'], accountType: UserSummaryDto['accountType'] = 'ADULT'): UserSummaryDto {
   return {
     id: 'user-1',
@@ -78,7 +83,7 @@ describe('AuthenticatedShell', () => {
   });
 
   describe('when the shell does not apply', () => {
-    it.each(['/', '/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/change-password', '/join/ABC123'])(
+    it.each(['/', '/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/change-password', '/join/ABC123', '/camp/ABC123'])(
       'renders only the children on %s, with no nav and no bootstrap fetch, even when signed in',
       (path) => {
         mockPathname = path;
@@ -304,6 +309,45 @@ describe('AuthenticatedShell', () => {
       await waitFor(() => expect(container.querySelector('[data-branding]')).toHaveStyle({ '--brand-primary': '#112233' }));
 
       expect(container.querySelector('aside')).toBe(sidebarBefore);
+    });
+  });
+
+  // Spec §13 (WCAG 2.4.1 / 1.3.1): bypass block + landmarks.
+  describe('accessibility landmarks', () => {
+    it('renders a "Skip to main content" link as the first focusable element, targeting <main id="main-content">', () => {
+      signIn(userWithRole('TRAINER'));
+      (global.fetch as jest.Mock).mockResolvedValue(mockResponse(200, {}));
+
+      const { container } = renderShell();
+
+      const skipLink = screen.getByRole('link', { name: 'Skip to main content' });
+      expect(skipLink).toHaveAttribute('href', '#main-content');
+      const firstFocusable = container.querySelector<HTMLElement>('a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      expect(firstFocusable).toBe(skipLink);
+
+      const mains = screen.getAllByRole('main');
+      expect(mains).toHaveLength(1);
+      expect(mains[0]).toHaveAttribute('id', 'main-content');
+      expect(mains[0]).toHaveAttribute('tabindex', '-1');
+    });
+
+    it('exposes a labelled <nav> and one <header> landmark', () => {
+      signIn(userWithRole('TRAINER'));
+      (global.fetch as jest.Mock).mockResolvedValue(mockResponse(200, {}));
+
+      renderShell();
+
+      expect(screen.getByRole('navigation', { name: /main|trainer/i })).toBeInTheDocument();
+      expect(screen.getAllByRole('banner')).toHaveLength(1);
+    });
+
+    it('has no skip link on public pages', () => {
+      mockPathname = '/login';
+      signIn(userWithRole('TRAINER'));
+
+      renderShell();
+
+      expect(screen.queryByRole('link', { name: 'Skip to main content' })).not.toBeInTheDocument();
     });
   });
 });

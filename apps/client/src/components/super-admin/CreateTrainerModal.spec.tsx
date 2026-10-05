@@ -88,4 +88,16 @@ describe('CreateTrainerModal', () => {
 
     expect(onClose).toHaveBeenCalled();
   });
+
+  // Spec §13: shared <Modal> behaviour — focus on open, Escape closes.
+  it('moves focus into the dialog and closes (resetting) on Escape', () => {
+    const onClose = jest.fn();
+    render(<CreateTrainerModal isOpen onClose={onClose} />);
+
+    expect(screen.getByRole('dialog', { name: 'Create Trainer' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/business name/i)).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

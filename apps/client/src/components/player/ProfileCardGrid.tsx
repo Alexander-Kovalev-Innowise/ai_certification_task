@@ -1,5 +1,7 @@
 'use client';
 
+import { skillLevelLabel } from '../../lib/skillLevel';
+
 // api §4.3 GET /player-profiles — `PlayerProfileResponseDto[]` (each entry
 // includes a `trainerCount` summary, not full trainer objects, api §4.3).
 export interface PlayerProfileSummary {
@@ -8,6 +10,8 @@ export interface PlayerProfileSummary {
   isSelf: boolean;
   trainerCount?: number;
   photoUrl?: string | null;
+  /** Trainer-set, read-only here (spec US-01.11). */
+  skillLevel?: string;
 }
 
 export interface ProfileCardGridProps {
@@ -41,7 +45,8 @@ export function ProfileCardGrid({ profiles, canAddChild, onAddChild }: ProfileCa
               className="h-12 w-12 rounded-full object-cover"
             />
             <span className="text-body-lg font-semibold text-text-primary">{profile.name}</span>
-            {profile.isSelf && <span className="text-caption text-brand-primary">Me</span>}
+            {profile.isSelf && <span className="text-caption text-brand-link">Me</span>}
+            {profile.skillLevel && <span className="text-caption text-text-secondary">Skill: {skillLevelLabel(profile.skillLevel)}</span>}
             {profile.trainerCount !== undefined && (
               <span className="text-caption text-text-secondary">
                 {profile.trainerCount} {profile.trainerCount === 1 ? 'trainer' : 'trainers'}

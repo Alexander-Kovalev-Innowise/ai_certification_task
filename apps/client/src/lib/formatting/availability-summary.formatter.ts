@@ -20,6 +20,8 @@ export interface AvailabilitySlot {
   isAvailable: boolean;
 }
 
+const SUMMARY_PREFIX = 'Best Times:';
+
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
 function hourLabel(minutesFromMidnight: number): string {
@@ -45,16 +47,18 @@ function formatRange(startTime: number, endTime: number): string {
 }
 
 /**
- * One comma-joined `"<Day> <range>"` entry per available slot, ordered by
+ * US-01.09: `"Best Times: Mon 5-8pm, Wed 6-9pm"` — the `Best Times:` prefix
+ * followed by one comma-joined `"<Day> <range>"` entry per available slot, ordered by
  * day then start time. Only `isAvailable: true` slots are included — an
  * explicit "not available" row carries no summary value for a trainer
- * scanning for open players.
+ * scanning for open players. No available slots yields `''` (callers show
+ * their own "No availability set" placeholder).
  */
 export function formatAvailabilitySummary(slots: readonly AvailabilitySlot[]): string {
-  return slots
+  const entries = slots
     .filter((slot) => slot.isAvailable)
     .slice()
     .sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.startTime - b.startTime)
-    .map((slot) => `${DAY_LABELS[slot.dayOfWeek]} ${formatRange(slot.startTime, slot.endTime)}`)
-    .join(', ');
+    .map((slot) => `${DAY_LABELS[slot.dayOfWeek]} ${formatRange(slot.startTime, slot.endTime)}`);
+  return entries.length === 0 ? '' : `${SUMMARY_PREFIX} ${entries.join(', ')}`;
 }

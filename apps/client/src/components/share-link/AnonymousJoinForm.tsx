@@ -14,6 +14,7 @@ import {
 } from '../../lib/schemas/anonymousJoinSchema';
 import { PhoneInput } from '../shared/PhoneInput';
 
+import type { CampPrefill } from './campPrefill';
 import type { ShareLinkType } from './ShareLinkDispatcher';
 
 // api §4.4 — the two anonymous-branch request bodies this form can build.
@@ -43,6 +44,8 @@ export interface AnonymousJoinFormProps {
   submitError?: string | null;
   /** Where "Already have an account? Sign in" points (login with a `next` back to this join link). */
   signInHref?: string;
+  /** Camp/evaluation sign-up data (PLAYER_STATIC only): pre-fills every known field so the user only adds a password. */
+  prefill?: CampPrefill | null;
 }
 
 const inputClassName =
@@ -170,7 +173,7 @@ function AnonymousCoachAcceptFields({ onSubmit, isSubmitting, submitError, signI
   );
 }
 
-function AnonymousPlayerRegistrationFields({ onSubmit, isSubmitting, submitError, signInHref }: Omit<AnonymousJoinFormProps, 'type'>) {
+function AnonymousPlayerRegistrationFields({ onSubmit, isSubmitting, submitError, signInHref, prefill }: Omit<AnonymousJoinFormProps, 'type'>) {
   const {
     register,
     handleSubmit,
@@ -180,16 +183,16 @@ function AnonymousPlayerRegistrationFields({ onSubmit, isSubmitting, submitError
     resolver: zodResolver(anonymousPlayerRegistrationSchema),
     mode: 'onTouched',
     defaultValues: {
-      isSelf: 'true',
-      parentFirstName: '',
-      parentLastName: '',
-      email: '',
+      isSelf: prefill ? (prefill.isSelf ? 'true' : 'false') : 'true',
+      parentFirstName: prefill?.parentFirstName ?? '',
+      parentLastName: prefill?.parentLastName ?? '',
+      email: prefill?.email ?? '',
       password: '',
-      phone: '',
-      playerName: '',
-      dateOfBirth: '',
+      phone: prefill?.phone ?? '',
+      playerName: prefill?.playerName ?? '',
+      dateOfBirth: prefill?.dateOfBirth ?? '',
       // '' is the disabled "Select…" option; the enum schema rejects it with "Select a gender."
-      gender: '' as AnonymousPlayerRegistrationFormValues['gender'],
+      gender: (prefill?.gender ?? '') as AnonymousPlayerRegistrationFormValues['gender'],
     },
   });
 
@@ -209,6 +212,12 @@ function AnonymousPlayerRegistrationFields({ onSubmit, isSubmitting, submitError
 
   return (
     <form onSubmit={submit} noValidate className="flex w-full flex-col gap-md">
+      {prefill && (
+        <p role="status" className="rounded-md border border-border-soft bg-surface-2 p-md text-left text-body text-text-primary">
+          We pre-filled this from your camp sign-up. Check the details and choose a password - that is all that is left.
+        </p>
+      )}
+
       <div className="flex flex-col gap-xxs">
         <label htmlFor="anon-player-is-self" className="field-label">
           Who is this registration for?
@@ -422,9 +431,17 @@ function AnonymousPlayerRegistrationFields({ onSubmit, isSubmitting, submitError
 // coach accepting a unique invite already has a known target email and
 // needs no player-profile fields at all), so this dispatches to one of two
 // field sets rather than rendering one form with half its inputs hidden.
-export function AnonymousJoinForm({ type, onSubmit, isSubmitting = false, submitError = null, signInHref }: AnonymousJoinFormProps) {
+export function AnonymousJoinForm({ type, onSubmit, isSubmitting = false, submitError = null, signInHref, prefill = null }: AnonymousJoinFormProps) {
   if (type === 'COACH_UNIQUE') {
     return <AnonymousCoachAcceptFields onSubmit={onSubmit} isSubmitting={isSubmitting} submitError={submitError} signInHref={signInHref} />;
   }
-  return <AnonymousPlayerRegistrationFields onSubmit={onSubmit} isSubmitting={isSubmitting} submitError={submitError} signInHref={signInHref} />;
+  return (
+    <AnonymousPlayerRegistrationFields
+      onSubmit={onSubmit}
+      isSubmitting={isSubmitting}
+      submitError={submitError}
+      signInHref={signInHref}
+      prefill={prefill}
+    />
+  );
 }

@@ -1,13 +1,14 @@
 'use client';
 
-import { useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import { useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent } from 'react';
 
+import { INVALID_PHOTO_URL_MESSAGE, isHttpsImageUrl } from '../../lib/schemas/photoUrl';
 import { ACCEPT_ATTRIBUTE, thumbnailUrlFor, uploadPhoto, validateImageFile } from '../../lib/upload/imageUpload';
 
 export interface PhotoUploadFieldProps {
   /** Current photo URL, or '' when there is none. */
   value: string;
-  /** Called with the uploaded URL, or '' when the photo is removed. */
+  /** Called with the uploaded (or typed-in https) URL, or '' when the photo is removed. */
   onChange: (url: string) => void;
   id?: string;
   label?: string;
@@ -22,12 +23,15 @@ const UPLOAD_ERROR_MESSAGE = 'Something went wrong uploading your photo. Please 
 // type/size validation (the server re-validates), avatar preview and remove.
 // The upload happens immediately (`POST /storage/photo`) and the resulting
 // URL is handed to the surrounding form via `onChange`, so the form's own
-// submit payload stays a plain `photoUrl` string.
+// submit payload stays a plain `photoUrl` string. "Upload or URL" (spec
+// US-01.11): an external https image link can be entered instead - it is
+// stored as typed, never downloaded.
 export function PhotoUploadField({ value, onChange, id = 'photo-upload', label = 'Photo', initials = '', disabled = false }: PhotoUploadFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [urlDraft, setUrlDraft] = useState('');
 
   async function handleFile(file: File | undefined) {
     if (!file) {
@@ -48,6 +52,28 @@ export function PhotoUploadField({ value, onChange, id = 'photo-upload', label =
       setError(UPLOAD_ERROR_MESSAGE);
     } finally {
       setIsUploading(false);
+    }
+  }
+
+  function applyUrl() {
+    const url = urlDraft.trim();
+    if (!url) {
+      return;
+    }
+    if (!isHttpsImageUrl(url)) {
+      setError(INVALID_PHOTO_URL_MESSAGE);
+      return;
+    }
+    setError(null);
+    onChange(url);
+    setUrlDraft('');
+  }
+
+  // Enter inside the URL box applies the URL; it must never submit the surrounding form.
+  function handleUrlKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      applyUrl();
     }
   }
 
@@ -121,6 +147,29 @@ export function PhotoUploadField({ value, onChange, id = 'photo-upload', label =
           disabled={busy}
           className="sr-only"
         />
+      </div>
+
+      <div className="flex flex-col gap-xxs">
+        <label htmlFor={`${id}-url`} className="field-label">
+          Or use an image URL
+        </label>
+        <div className="flex flex-wrap gap-sm">
+          <input
+            id={`${id}-url`}
+            type="url"
+            inputMode="url"
+            placeholder="https://example.com/photo.jpg"
+            autoComplete="off"
+            value={urlDraft}
+            onChange={(event) => setUrlDraft(event.target.value)}
+            onKeyDown={handleUrlKeyDown}
+            disabled={busy}
+            className="min-w-0 flex-1"
+          />
+          <button type="button" onClick={applyUrl} disabled={busy || !urlDraft.trim()} className="btn btn-secondary btn-sm">
+            Use image URL
+          </button>
+        </div>
       </div>
 
       {error && (

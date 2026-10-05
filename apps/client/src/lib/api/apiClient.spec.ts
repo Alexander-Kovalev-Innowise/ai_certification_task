@@ -3,7 +3,7 @@ import { useToastStore } from '../../stores/useToastStore';
 import { useTrainerContextStore } from '../../stores/useTrainerContextStore';
 import type { UserSummaryDto } from '../../types/auth';
 
-import { apiRequest, FatalApiError, publicApiRequest, refreshSession } from './apiClient';
+import { apiRequest, FatalApiError, logout, publicApiRequest, refreshSession, restoreAdminSession } from './apiClient';
 
 const testUser: UserSummaryDto = {
   id: 'user-1',
@@ -190,5 +190,114 @@ describe('refreshSession — single-flight', () => {
     await refreshSession();
 
     expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Spec §13 CSRF — what the client must send for the server's Origin check
+// (the browser adds `Origin` itself) and the logout double-submit token.
+describe('refreshSession / logout — CSRF inputs', () => {
+  const session = { accessToken: 'new-token', expiresIn: 900, csrfToken: 'fresh-csrf', user: testUser };
+
+  beforeEach(() => {
+    useAuthStore.getState().clear();
+    global.fetch = jest.fn();
+  });
+
+  it('refresh after a page reload (no in-memory token yet) sends credentials but no X-CSRF-Token, and stores the returned csrfToken', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, session));
+
+    await refreshSession();
+
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit & { headers: Record<string, string> }];
+    expect(init.credentials).toBe('include');
+    expect(init.headers['X-CSRF-Token']).toBeUndefined();
+    expect(useAuthStore.getState().csrfToken).toBe('fresh-csrf');
+  });
+
+  it('logout right after that refresh sends the in-memory token as X-CSRF-Token, with the bearer token and credentials', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, session)).mockResolvedValueOnce(mockResponse(204));
+    await refreshSession();
+
+    await logout();
+
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[1] as [string, RequestInit & { headers: Record<string, string> }];
+    expect(url).toContain('/auth/logout');
+    expect(init.method).toBe('POST');
+    expect(init.credentials).toBe('include');
+    expect(init.headers['X-CSRF-Token']).toBe('fresh-csrf');
+    expect(init.headers.Authorization).toBe('Bearer new-token');
+    expect(useAuthStore.getState().accessToken).toBeNull();
+  });
+
+  it('logout that gets a 403 (csrf token stale after another tab rotated the session) re-syncs via refresh and retries once', async () => {
+    useAuthStore.getState().setSession({ csrfToken: 'stale-csrf', accessToken: 'old-token', user: testUser, expiresAt: Date.now() + 60_000 });
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(mockResponse(403, { errorCode: 'CSRF_MISMATCH' }))
+      .mockResolvedValueOnce(mockResponse(200, session))
+      .mockResolvedValueOnce(mockResponse(204));
+
+    await logout();
+
+    const calls = (global.fetch as jest.Mock).mock.calls as [string, RequestInit & { headers: Record<string, string> }][];
+    expect(calls.map(([url]) => url.replace(/^.*(?=\/auth)/, ''))).toEqual(['/auth/logout', '/auth/refresh', '/auth/logout']);
+    expect(calls[2]![1].headers['X-CSRF-Token']).toBe('fresh-csrf');
+    expect(useAuthStore.getState().accessToken).toBeNull();
+  });
+
+  it('logout while impersonating exits impersonation and refreshes the admin session first, then logs the admin out with the admin csrf token', async () => {
+    useAuthStore.getState().setSession({ csrfToken: '', accessToken: 'imp-token', user: testUser, expiresAt: Date.now() + 60_000, isImpersonating: true });
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(mockResponse(204)) // POST /impersonation/end
+      .mockResolvedValueOnce(mockResponse(200, session)) // POST /auth/refresh (admin cookie)
+      .mockResolvedValueOnce(mockResponse(204)); // POST /auth/logout
+
+    await logout();
+
+    const calls = (global.fetch as jest.Mock).mock.calls as [string, RequestInit & { headers: Record<string, string> }][];
+    expect(calls.map(([url]) => url.replace(/^.*(?=\/(auth|impersonation))/, ''))).toEqual([
+      '/impersonation/end',
+      '/auth/refresh',
+      '/auth/logout',
+    ]);
+    expect(calls[2]![1].headers['X-CSRF-Token']).toBe('fresh-csrf');
+    expect(calls[2]![1].headers.Authorization).toBe('Bearer new-token');
+    expect(useAuthStore.getState().accessToken).toBeNull();
+  });
+
+  it('logout while impersonating, when the admin session cannot be restored, just clears local state without calling /auth/logout', async () => {
+    useAuthStore.getState().setSession({ csrfToken: '', accessToken: 'imp-token', user: testUser, expiresAt: Date.now() + 60_000, isImpersonating: true });
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(401)).mockResolvedValueOnce(mockResponse(401));
+
+    await logout();
+
+    const urls = (global.fetch as jest.Mock).mock.calls.map(([url]: [string]) => url);
+    expect(urls.some((u) => u.includes('/auth/logout'))).toBe(false);
+    expect(useAuthStore.getState().accessToken).toBeNull();
+  });
+
+  // Regression: clearing the whole store before the refresh made every RoleGuard see "no user" and
+  // router.replace('/login'); on /dashboard nothing navigated back, stranding the signed-in admin on /login.
+  it('restoreAdminSession never lets the store go user-less while the admin session is refreshed', async () => {
+    useAuthStore.getState().setSession({ csrfToken: '', accessToken: 'imp-token', user: testUser, expiresAt: Date.now() + 60_000, isImpersonating: true });
+    const users: Array<string | null> = [];
+    const unsubscribe = useAuthStore.subscribe((state) => users.push(state.user?.id ?? null));
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, session)); // POST /auth/refresh (admin cookie)
+
+    const restored = await restoreAdminSession();
+    unsubscribe();
+
+    expect(restored).toBe(true);
+    expect(users).not.toContain(null);
+    expect(useAuthStore.getState().isImpersonating).toBe(false);
+    expect(useAuthStore.getState().accessToken).toBe('new-token');
+  });
+
+  it('restoreAdminSession clears the whole store when the admin session cannot be restored', async () => {
+    useAuthStore.getState().setSession({ csrfToken: '', accessToken: 'imp-token', user: testUser, expiresAt: Date.now() + 60_000, isImpersonating: true });
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(401));
+
+    expect(await restoreAdminSession()).toBe(false);
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(useAuthStore.getState().accessToken).toBeNull();
   });
 });

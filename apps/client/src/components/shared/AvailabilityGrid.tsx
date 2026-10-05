@@ -74,7 +74,7 @@ export function AvailabilityGrid({ subject, mode, slots, onSave, isSaving = fals
           })}
         </div>
         <p data-testid="availability-summary" className="text-caption text-text-secondary">
-          Best Times: {formatAvailabilitySummary(slots) || 'None set'}
+          {formatAvailabilitySummary(slots) || 'Best Times: None set'}
         </p>
       </div>
     );

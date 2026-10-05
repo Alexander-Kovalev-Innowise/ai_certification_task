@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import { publicApiRequest, refreshSession } from '../../lib/api/apiClient';
+import { publicApiRequest, restoreAdminSession } from '../../lib/api/apiClient';
 import { decodeAccessTokenPayload } from '../../lib/api/decodeAccessToken';
 import { useAuthStore } from '../../stores/useAuthStore';
 
@@ -53,11 +53,10 @@ function formatCountdown(remainingMs: number): string {
  * 401-retry/clear/redirect-to-/login handling would otherwise hijack the
  * exact "recover the admin's own session" flow this function exists to run.
  *
- * Step 2 (`clear()`) must run BEFORE step 3 (`refreshSession()`):
- * `refreshSession()` itself short-circuits to `false` while
- * `useAuthStore.getState().isImpersonating` is still `true` (fe §6.2, since
- * an impersonation session has no refresh token behind it to rotate) —
- * clearing first is what makes step 3 a real network call again.
+ * `restoreAdminSession()` runs steps 2-3 and deliberately keeps `user` in the
+ * store until the admin's session replaces it (see its doc comment) — clearing
+ * everything first made RoleGuard redirect to /login, which stranded the admin
+ * there when the exit was triggered from /dashboard.
  */
 async function runExitSequence(): Promise<void> {
   try {
@@ -66,8 +65,7 @@ async function runExitSequence(): Promise<void> {
     // Best-effort (api §2) — a network failure here must not block
     // recovering the admin's own session in steps 2-3.
   }
-  useAuthStore.getState().clear();
-  await refreshSession();
+  await restoreAdminSession();
 }
 
 // fe §5.1 — fixed top bar mounted at the ROOT boundary (BootSequence.tsx,

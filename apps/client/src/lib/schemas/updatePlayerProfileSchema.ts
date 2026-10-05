@@ -1,8 +1,9 @@
 import { z } from 'zod';
 
 import { personNameSchema } from './common';
-import { optionalHttpUrlSchema, optionalPersonNameSchema, optionalTextSchema } from './optionalFields';
+import { optionalPersonNameSchema, optionalTextSchema } from './optionalFields';
 import { optionalPhoneSchema } from './phone';
+import { optionalPhotoUrlSchema } from './photoUrl';
 
 // api §4.3 `UpdatePlayerProfileDto`: name max100, school max200,
 // jerseyNumber max20, photoUrl URL, emergencyContact free-form object (the UI
@@ -15,7 +16,7 @@ export const updatePlayerProfileSchema = z
     name: personNameSchema('Name'),
     school: optionalTextSchema('School', 200),
     jerseyNumber: optionalTextSchema('Jersey number', 20).regex(JERSEY_NUMBER_PATTERN, 'Jersey number can only contain letters, numbers and hyphens.'),
-    photoUrl: optionalHttpUrlSchema('Photo URL'),
+    photoUrl: optionalPhotoUrlSchema(),
     emergencyContactName: optionalPersonNameSchema('Contact name'),
     emergencyContactPhone: optionalPhoneSchema,
     allowChildTokenSpendWithoutApproval: z.boolean(),

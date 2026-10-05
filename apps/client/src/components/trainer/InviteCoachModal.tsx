@@ -7,6 +7,7 @@ import { useForm } from 'react-hook-form';
 import { apiRequest } from '../../lib/api/apiClient';
 import { parseApiErrorBody } from '../../lib/api/apiError';
 import { inviteCoachSchema, type InviteCoachFormValues } from '../../lib/schemas/inviteCoachSchema';
+import { Modal } from '../shared/Modal';
 
 // api §4.2 POST /coaches/invite — `201 InviteCoachResponseDto`.
 export interface InviteCoachResult {
@@ -92,95 +93,98 @@ export function InviteCoachModal({ isOpen, onClose, onInvited }: InviteCoachModa
   });
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="invite-coach-heading" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-lg">
-      <div className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong">
-        <h2 id="invite-coach-heading" className="text-block-title font-semibold text-text-primary">
-          Invite a coach
-        </h2>
+    <Modal
+      labelledBy="invite-coach-heading"
+      onClose={handleClose}
+      closeOnBackdrop={false}
+      className="w-full max-w-[28rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong"
+    >
+      <h2 id="invite-coach-heading" className="text-block-title font-semibold text-text-primary">
+        Invite a coach
+      </h2>
 
-        <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
-          <div className="flex flex-col gap-xxs">
-            <label htmlFor="invite-coach-email" className="field-label">
-              Email
-            </label>
-            <input
-              id="invite-coach-email"
-              type="email"
-              placeholder="coach@example.com"
-              autoComplete="off"
-              className={INPUT_CLASSNAME}
-              aria-invalid={!!errors.email}
-              aria-describedby={errors.email ? 'invite-coach-email-error' : undefined}
-              {...register('email')}
-            />
-            {errors.email && (
-              <p id="invite-coach-email-error" role="alert" className="text-caption text-danger">
-                {errors.email.message}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-xxs">
-            <label htmlFor="invite-coach-name" className="field-label">
-              Name (optional)
-            </label>
-            <input
-              id="invite-coach-name"
-              placeholder="Cam Coach"
-              autoComplete="off"
-              className={INPUT_CLASSNAME}
-              aria-invalid={!!errors.name}
-              aria-describedby={errors.name ? 'invite-coach-name-error' : undefined}
-              {...register('name')}
-            />
-            {errors.name && (
-              <p id="invite-coach-name-error" role="alert" className="text-caption text-danger">
-                {errors.name.message}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-xxs">
-            <label htmlFor="invite-coach-message" className="field-label">
-              Message (optional)
-            </label>
-            <textarea
-              id="invite-coach-message"
-              rows={3}
-              placeholder="Hi Cam, I'd love for you to join our team as a coach."
-              autoComplete="off"
-              className={INPUT_CLASSNAME}
-              aria-invalid={!!errors.message}
-              aria-describedby={errors.message ? 'invite-coach-message-error' : undefined}
-              {...register('message')}
-            />
-            {errors.message && (
-              <p id="invite-coach-message-error" role="alert" className="text-caption text-danger">
-                {errors.message.message}
-              </p>
-            )}
-          </div>
-
-          {formError && (
-            <p role="alert" className="text-body text-danger">
-              {formError}
+      <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
+        <div className="flex flex-col gap-xxs">
+          <label htmlFor="invite-coach-email" className="field-label">
+            Email
+          </label>
+          <input
+            id="invite-coach-email"
+            type="email"
+            placeholder="coach@example.com"
+            autoComplete="off"
+            className={INPUT_CLASSNAME}
+            aria-invalid={!!errors.email}
+            aria-describedby={errors.email ? 'invite-coach-email-error' : undefined}
+            {...register('email')}
+          />
+          {errors.email && (
+            <p id="invite-coach-email-error" role="alert" className="text-caption text-danger">
+              {errors.email.message}
             </p>
           )}
+        </div>
 
-          <div className="mt-sm flex justify-end gap-sm">
-            <button type="button" onClick={handleClose} className="btn btn-ghost">
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="btn btn-primary"
-            >
-              {isSubmitting ? 'Sending…' : 'Send invite'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div className="flex flex-col gap-xxs">
+          <label htmlFor="invite-coach-name" className="field-label">
+            Name (optional)
+          </label>
+          <input
+            id="invite-coach-name"
+            placeholder="Cam Coach"
+            autoComplete="off"
+            className={INPUT_CLASSNAME}
+            aria-invalid={!!errors.name}
+            aria-describedby={errors.name ? 'invite-coach-name-error' : undefined}
+            {...register('name')}
+          />
+          {errors.name && (
+            <p id="invite-coach-name-error" role="alert" className="text-caption text-danger">
+              {errors.name.message}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-xxs">
+          <label htmlFor="invite-coach-message" className="field-label">
+            Message (optional)
+          </label>
+          <textarea
+            id="invite-coach-message"
+            rows={3}
+            placeholder="Hi Cam, I'd love for you to join our team as a coach."
+            autoComplete="off"
+            className={INPUT_CLASSNAME}
+            aria-invalid={!!errors.message}
+            aria-describedby={errors.message ? 'invite-coach-message-error' : undefined}
+            {...register('message')}
+          />
+          {errors.message && (
+            <p id="invite-coach-message-error" role="alert" className="text-caption text-danger">
+              {errors.message.message}
+            </p>
+          )}
+        </div>
+
+        {formError && (
+          <p role="alert" className="text-body text-danger">
+            {formError}
+          </p>
+        )}
+
+        <div className="mt-sm flex justify-end gap-sm">
+          <button type="button" onClick={handleClose} className="btn btn-ghost">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="btn btn-primary"
+          >
+            {isSubmitting ? 'Sending…' : 'Send invite'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

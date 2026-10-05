@@ -114,6 +114,15 @@ describe('LoginForm', () => {
 
     expect(await screen.findByText(/Please try again in 45 seconds/)).toBeInTheDocument();
   });
+
+  it('still shows the rate-limit notice when the browser cannot read Retry-After (cross-origin 429)', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(429, {}));
+
+    render(<LoginForm />);
+    await fillAndSubmit();
+
+    expect(await screen.findByText(/Too many attempts\. Please try again shortly\./)).toBeInTheDocument();
+  });
   describe('?next= redirect', () => {
     function sessionResponse(mustChangePassword: boolean) {
       return mockResponse(200, {
