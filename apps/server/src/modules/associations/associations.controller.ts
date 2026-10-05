@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import type { Response } from 'express';
@@ -14,6 +14,8 @@ import { AddTrainerAssociationDto } from './dto/add-trainer-association.dto';
 import { ContextListResponseDto } from './dto/context-list-response.dto';
 import { ListRosterQueryDto } from './dto/list-roster-query.dto';
 import { RosterPageDto } from './dto/roster-row.dto';
+import { SetSkillLevelDto, SkillLevelResponseDto } from './dto/skill-level.dto';
+import { SuggestedTimesResponseDto } from './dto/suggested-times.dto';
 
 // Task 5.7, first endpoint — extended in Tasks 5.8-5.10 (api §4.3's
 // `AssociationsController`, the second owning module mounted under
@@ -90,6 +92,34 @@ export class AssociationsController {
     @Query() query: ListRosterQueryDto,
   ): Promise<RosterPageDto> {
     return this.associationsService.listRosterForTrainer(ctx, id, query);
+  }
+
+  // US-01.09 "Suggest session times matching most players' availability".
+  // `trainers/me/...` - always the caller's own tenant (no :id to spoof).
+  @Roles(Role.TRAINER)
+  @RequiresCapability(Capability.VIEW_PLAYER_AVAILABILITY)
+  @Get('trainers/me/players/suggested-times')
+  @ApiOperation({ summary: "Top 3 day/time windows in which the most of the trainer's active players are available" })
+  @ApiResponse({ status: 200, type: SuggestedTimesResponseDto })
+  async suggestedTimes(@CurrentUser() ctx: AuthContext): Promise<SuggestedTimesResponseDto> {
+    return this.associationsService.suggestTimesForTrainer(ctx);
+  }
+
+  // Spec US-01.11: skill level is trainer-set (read-only for the player/parent).
+  @Roles(Role.TRAINER)
+  @RequiresCapability(Capability.MANAGE_TRAINER_ASSOCIATIONS)
+  @Patch('trainers/:id/players/:playerProfileId/skill-level')
+  @ApiOperation({ summary: "Set a rostered player's skill level (BEGINNER | INTERMEDIATE | ADVANCED | ELITE)" })
+  @ApiResponse({ status: 200, type: SkillLevelResponseDto })
+  @ApiResponse({ status: 400, description: 'Unknown skill level' })
+  @ApiResponse({ status: 404, description: 'Cross-tenant or not on the roster (never 403)' })
+  async setPlayerSkillLevel(
+    @CurrentUser() ctx: AuthContext,
+    @Param('id') id: string,
+    @Param('playerProfileId') playerProfileId: string,
+    @Body() dto: SetSkillLevelDto,
+  ): Promise<SkillLevelResponseDto> {
+    return this.associationsService.setPlayerSkillLevel(ctx, id, playerProfileId, dto);
   }
 
   // Epic §3 "Manage own organization users": the trainer removes a player from

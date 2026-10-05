@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Availability, PlayerProfile, PlayerTrainerAssociation, Prisma } from '@prisma/client';
+import type { Availability, PlayerProfile, PlayerTrainerAssociation, Prisma, SkillLevel } from '@prisma/client';
 
 import type { KeysetCursor } from '../../shared/http/pagination.dto';
 import { PrismaService } from '../../shared/prisma/prisma.service';
@@ -37,6 +37,8 @@ export interface CreateAssociationInput {
   trainerId: string;
   playerProfileId: string;
   shareLinkId?: string;
+  /** How the connection came about beyond a plain ShareLink, e.g. 'CAMP' / 'EVALUATION' (camp-to-user conversion). */
+  source?: string;
 }
 
 // Task 5.7 (api §4.3 "GET /me/contexts"). One row per active
@@ -86,6 +88,7 @@ export class AssociationsRepository {
         trainer: { connect: { id: input.trainerId } },
         playerProfile: { connect: { id: input.playerProfileId } },
         ...(input.shareLinkId ? { shareLink: { connect: { id: input.shareLinkId } } } : {}),
+        ...(input.source ? { source: input.source } : {}),
       },
     });
   }
@@ -137,12 +140,14 @@ export class AssociationsRepository {
         trainer: { connect: { id: input.trainerId } },
         playerProfile: { connect: { id: input.playerProfileId } },
         ...(input.shareLinkId ? { shareLink: { connect: { id: input.shareLinkId } } } : {}),
+        ...(input.source ? { source: input.source } : {}),
       },
       update: {
         status: 'ACTIVE',
         connectedAt: new Date(),
         disconnectedAt: null,
         ...(input.shareLinkId ? { shareLink: { connect: { id: input.shareLinkId } } } : {}),
+        ...(input.source ? { source: input.source } : {}),
       },
     });
   }
@@ -190,6 +195,41 @@ export class AssociationsRepository {
       orderBy: [{ connectedAt: 'desc' }, { id: 'desc' }],
       take: params.limit + 1,
     });
+  }
+
+  /**
+   * US-01.09 "Suggest session times": every ACTIVE player on the trainer's roster
+   * with their available player slots - the input for `computeSuggestedWindows`.
+   * Scoped through the trainer's own associations (`.extended`, tenant-guard).
+   */
+  async listActivePlayersAvailableSlots(
+    trainerId: string,
+  ): Promise<Array<{ playerProfileId: string; availability: Array<Pick<Availability, 'dayOfWeek' | 'startTime' | 'endTime' | 'isAvailable'>> }>> {
+    const rows = await this.prisma.extended.playerTrainerAssociation.findMany({
+      where: { trainerId, status: 'ACTIVE', playerProfile: { deletedAt: null } },
+      select: {
+        playerProfileId: true,
+        playerProfile: {
+          select: {
+            availability: {
+              where: { subjectType: 'PLAYER', isAvailable: true },
+              select: { dayOfWeek: true, startTime: true, endTime: true, isAvailable: true },
+            },
+          },
+        },
+      },
+    });
+    return rows.map((row) => ({ playerProfileId: row.playerProfileId, availability: row.playerProfile.availability }));
+  }
+
+  async findPlayerSkillLevel(playerProfileId: string): Promise<SkillLevel | null> {
+    const profile = await this.prisma.extended.playerProfile.findFirst({ where: { id: playerProfileId }, select: { skillLevel: true } });
+    return profile?.skillLevel ?? null;
+  }
+
+  /** Spec US-01.11: the trainer-set skill level (callers verify the ACTIVE association first). */
+  async updateSkillLevel(playerProfileId: string, skillLevel: SkillLevel): Promise<PlayerProfile> {
+    return this.prisma.playerProfile.update({ where: { id: playerProfileId }, data: { skillLevel } });
   }
 
   /** US-01.09 — "X out of Y": players on the roster, optionally only those available for the filter. */

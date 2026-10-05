@@ -17,7 +17,7 @@ import {
   ConflictCheckResponseDto,
   SetAvailabilityDto,
 } from './dto/availability-grid.dto';
-import { CoachOverrideNoticeDto, CoachOverrideResponseDto, CreateOverrideDto } from './dto/create-override.dto';
+import { CoachOverrideNoticeDto, CoachOverrideResponseDto, CreateOverrideDto, RequestOverrideChangeDto } from './dto/create-override.dto';
 
 // Task 5.11 (api §4.5 "Player availability", the player-profile half of
 // `AvailabilityController` — the coach "My Times" pair is Phase 6). No
@@ -140,7 +140,7 @@ export class CoachAvailabilityController {
     return this.availabilityService.createOverride(ctx, id, dto);
   }
 
-  // US-01.10 coach-side acknowledgement ("request change" is out of scope).
+  // US-01.10 coach-side acknowledgement and "request change".
   // The coach themself only — ownership is a row-data check in AvailabilityService (404 otherwise).
   @Roles(Role.COACH)
   @RequiresCapability(Capability.SET_OWN_AVAILABILITY)
@@ -165,5 +165,23 @@ export class CoachAvailabilityController {
     @Param('overrideId') overrideId: string,
   ): Promise<void> {
     await this.availabilityService.acknowledgeOverride(ctx, id, overrideId);
+  }
+
+  @Roles(Role.COACH)
+  @RequiresCapability(Capability.SET_OWN_AVAILABILITY)
+  @Post('overrides/:overrideId/request-change')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Coach asks the trainer to change an override assignment (emails the trainer)' })
+  @ApiResponse({ status: 204 })
+  @ApiResponse({ status: 400, description: 'Message must be 5-500 characters' })
+  @ApiResponse({ status: 404 })
+  @ApiResponse({ status: 409, description: 'Override already accepted' })
+  async requestOverrideChange(
+    @CurrentUser() ctx: AuthContext,
+    @Param('id') id: string,
+    @Param('overrideId') overrideId: string,
+    @Body() dto: RequestOverrideChangeDto,
+  ): Promise<void> {
+    await this.availabilityService.requestOverrideChange(ctx, id, overrideId, dto);
   }
 }

@@ -1,16 +1,15 @@
 import { randomUUID } from 'node:crypto';
 
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { Role } from '@prisma/client';
 
+import { DEFAULT_IMPERSONATION_TTL_SECONDS } from '../../shared/config/env.schema';
 import type { AccessTokenClaims } from '../../shared/security/access-token-claims.interface';
 
+import { IMPERSONATION_TTL_SECONDS } from './impersonation-ttl.token';
+
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
-// Task 7.1 (arch §10, api §2). Hard cap, independent of the admin's own
-// token exp — this is what makes the 60-minute window structurally
-// unextendable (no refresh token is ever issued alongside it, ADR-03).
-const IMPERSONATION_TOKEN_TTL_SECONDS = 60 * 60;
 
 export interface IssueAccessTokenInput {
   userId: string;
@@ -51,7 +50,15 @@ export interface IssuedAccessToken {
 // JwtAuthGuard uses.
 @Injectable()
 export class TokenService {
-  constructor(private readonly jwtService: JwtService) {}
+  // Task 7.1 (arch §10, api §2). The impersonation TTL is a hard cap,
+  // independent of the admin's own token exp — this is what makes the
+  // 60-minute window (US-01.07) structurally unextendable (no refresh token is
+  // ever issued alongside it, ADR-03). 3600s unless a non-production
+  // IMPERSONATION_TTL_SECONDS override is provided (AuthModule).
+  constructor(
+    private readonly jwtService: JwtService,
+    @Optional() @Inject(IMPERSONATION_TTL_SECONDS) private readonly impersonationTtlSeconds: number = DEFAULT_IMPERSONATION_TTL_SECONDS,
+  ) {}
 
   async issueAccessToken(input: IssueAccessTokenInput): Promise<IssuedAccessToken> {
     const claims: Omit<AccessTokenClaims, 'iat' | 'exp'> = {
@@ -95,8 +102,8 @@ export class TokenService {
       jti: randomUUID(),
     };
 
-    const accessToken = await this.jwtService.signAsync(claims, { expiresIn: IMPERSONATION_TOKEN_TTL_SECONDS });
-    return { accessToken, expiresIn: IMPERSONATION_TOKEN_TTL_SECONDS };
+    const accessToken = await this.jwtService.signAsync(claims, { expiresIn: this.impersonationTtlSeconds });
+    return { accessToken, expiresIn: this.impersonationTtlSeconds };
   }
 
   async decode(token: string): Promise<AccessTokenClaims> {

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { ExecutionContext, Injectable } from '@nestjs/common';
-import { ThrottlerGuard, ThrottlerOptions } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerLimitDetail, ThrottlerOptions } from '@nestjs/throttler';
 
 import { env } from '../../config/config.module';
 import { areRateLimitsDisabled } from '../../config/env.schema';
@@ -157,5 +157,14 @@ export class AuthThrottlerGuard extends ThrottlerGuard {
   // stray env var can never switch rate limiting off there.
   protected override shouldSkip(_context: ExecutionContext): Promise<boolean> {
     return Promise.resolve(areRateLimitsDisabled(env));
+  }
+
+  // @nestjs/throttler only sets `Retry-After-<throttler name>` for named throttlers (plain `Retry-After` is reserved
+  // for `default`). api §0.6 promises a plain `Retry-After` (seconds) on every 429 - that is what the login form reads
+  // to say "try again in N seconds" - so set it here, from the throttler that actually blocked the request.
+  protected override throwThrottlingException(context: ExecutionContext, throttlerLimitDetail: ThrottlerLimitDetail): Promise<void> {
+    const { res } = this.getRequestResponse(context);
+    res.header('Retry-After', throttlerLimitDetail.timeToBlockExpire);
+    return super.throwThrottlingException(context, throttlerLimitDetail);
   }
 }

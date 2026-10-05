@@ -1,12 +1,14 @@
 import { Module } from '@nestjs/common';
 
 import { env } from '../../shared/config/config.module';
+import { impersonationTtlSeconds } from '../../shared/config/env.schema';
 import { JobsModule } from '../../shared/jobs/jobs.module';
 import { UsersModule } from '../users/users.module';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { EmailVerificationTokenRepository } from './email-verification-token.repository';
+import { IMPERSONATION_TTL_SECONDS } from './impersonation-ttl.token';
 import { PasswordResetTokenRepository } from './password-reset-token.repository';
 import { PasswordService } from './password.service';
 import { RefreshTokenRepository } from './refresh-token.repository';
@@ -34,8 +36,9 @@ import { TokenService } from './token.service';
     PasswordResetTokenRepository,
     EmailVerificationTokenRepository,
     TenantClaimsResolver,
+    { provide: IMPERSONATION_TTL_SECONDS, useValue: impersonationTtlSeconds(env) },
     ...(env.SCHEDULER_ENABLED ? [TokenMaintenanceJob] : []),
   ],
-  exports: [AuthService, PasswordService, TokenService, TokenRotationService, TenantClaimsResolver],
+  exports: [AuthService, PasswordService, TokenService, TokenRotationService, TenantClaimsResolver, IMPERSONATION_TTL_SECONDS],
 })
 export class AuthModule {}

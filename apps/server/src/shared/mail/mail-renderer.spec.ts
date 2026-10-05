@@ -16,11 +16,14 @@ describe('renderMail', () => {
     [JOB_TYPES.EMAIL_PASSWORD_RESET, { firstName: 'T', resetToken: 'rt' }, 'https://app.example.com/reset-password?token=rt'],
     [JOB_TYPES.EMAIL_VERIFICATION, { firstName: 'T', verificationToken: 'vt' }, 'https://app.example.com/verify-email?token=vt'],
     [JOB_TYPES.EMAIL_SHARELINK_CONFIRMATION, { firstName: 'T', trainerBusinessName: 'Biz' }, 'https://app.example.com/login'],
+    [JOB_TYPES.EMAIL_WELCOME, { firstName: 'T' }, 'https://app.example.com/login'],
     [JOB_TYPES.EMAIL_COACH_INVITE, { trainerBusinessName: 'Biz', shareLinkCode: 'CODE1' }, 'https://app.example.com/join/CODE1'],
     [JOB_TYPES.EMAIL_CHILD_BLOCKED_SHARELINK, { guardianFirstName: 'G', childFirstName: 'C', shareLinkCode: 'CODE2' }, 'https://app.example.com/join/CODE2'],
     [JOB_TYPES.EMAIL_CHILD_APPROVAL_REQUEST, { playerName: 'Kid', amount: '10', paymentType: 'USD' }, 'https://app.example.com/approvals'],
     [JOB_TYPES.EMAIL_CHILD_APPROVAL_DECISION, { playerName: 'Kid', amount: '10', paymentType: 'TOKEN', decision: 'DENIED' }, 'https://app.example.com/'],
     [JOB_TYPES.EMAIL_COACH_OVERRIDE_NOTIFY, { coachFirstName: 'C', trainerBusinessName: 'Biz', reason: 'r' }, 'https://app.example.com/my-times'],
+    [JOB_TYPES.EMAIL_CAMP_CONVERSION_LINK, { firstName: 'P', trainerBusinessName: 'Biz', shareLinkCode: 'CODE3', conversionToken: 'tok en' }, 'https://app.example.com/join/CODE3?camp=tok%20en'],
+    [JOB_TYPES.EMAIL_COACH_CHANGE_REQUEST, { trainerFirstName: 'T', coachName: 'Cara Coach', message: 'Please move it' }, 'https://app.example.com/coaches'],
   ])('%s renders subject + html + text with an absolute link', (templateId, data, expectedLink) => {
     const mail = renderMail(templateId, data, CLIENT);
 
@@ -28,6 +31,16 @@ describe('renderMail', () => {
     expect(mail.links).toEqual([expectedLink]);
     expect(mail.text).toContain(expectedLink);
     expect(mail.html).toContain(`href="${expectedLink}"`);
+  });
+
+  it('welcome mail greets by first name, describes the platform and links to sign in', () => {
+    const mail = renderMail(JOB_TYPES.EMAIL_WELCOME, { firstName: 'Nina' }, CLIENT);
+
+    expect(mail.subject).toBe('Welcome to PracticePerfect');
+    expect(mail.text).toContain('Hi Nina,');
+    expect(mail.text).toContain('trainers, coaches, players and parents');
+    expect(mail.html).toContain('>Sign in</a>');
+    expect(mail.links).toEqual(['https://app.example.com/login']);
   });
 
   it('guardian notice uses the "Review Registration" CTA', () => {

@@ -99,6 +99,20 @@ describe('ImpersonationMaintenanceJob (Task 7.4)', () => {
     expect(row.endedAt.getTime()).toBe(explicitEndedAt.getTime());
   });
 
+  it('honours a shortened TTL: closes a log older than the TTL with endedAt = startedAt + ttl', async () => {
+    const { ImpersonationMaintenanceJob } = require('./impersonation-maintenance.job') as typeof import('./impersonation-maintenance.job'); // eslint-disable-line @typescript-eslint/no-require-imports
+    const { ImpersonationRepository } = require('./impersonation.repository') as typeof import('./impersonation.repository'); // eslint-disable-line @typescript-eslint/no-require-imports
+    const shortJob = new ImpersonationMaintenanceJob(new ImpersonationRepository(prismaService), 30);
+    const startedAt = new Date(Date.now() - 2 * 60_000);
+    const id = await insertLog(startedAt);
+
+    await shortJob.sweep();
+
+    const row = await prismaService.impersonationLog.findUniqueOrThrow({ where: { id } });
+    expect(row.endedAt.getTime()).toBe(startedAt.getTime() + 30_000);
+    expect(row.durationSeconds).toBe(30);
+  });
+
   it('is a no-op (does not throw) when there is nothing stale', async () => {
     await expect(job.sweep()).resolves.toBeUndefined();
   });

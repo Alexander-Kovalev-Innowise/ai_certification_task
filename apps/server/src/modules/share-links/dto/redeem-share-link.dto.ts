@@ -74,6 +74,13 @@ export class RedeemShareLinkDto {
   @IsBoolean()
   isSelf?: boolean;
 
+  // ANONYMOUS_REGISTRATION from a camp/evaluation sign-up (POST /camp-conversions): the opaque token whose payload
+  // fills any field above that is omitted, is marked used in the registration transaction and tags the association.
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  conversionToken?: string;
+
   // ASSOCIATE_EXISTING (Task 4.7, FR-021 checklist)
   @IsOptional()
   @IsArray()

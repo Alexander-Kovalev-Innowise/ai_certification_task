@@ -49,6 +49,36 @@ export class CoachesRepository {
     });
   }
 
+  /**
+   * US-01.10: per coach, the newest override the coach asked to change that they
+   * have not since accepted. Base client — the caller already proved tenant
+   * ownership of `coachIds` (they came from `listByTrainer`), and `trainerId` is re-checked here.
+   */
+  async findOpenChangeRequests(
+    trainerId: string,
+    coachIds: string[],
+  ): Promise<Map<string, { id: string; message: string; requestedAt: Date; sessionLabel: string | null }>> {
+    const result = new Map<string, { id: string; message: string; requestedAt: Date; sessionLabel: string | null }>();
+    if (coachIds.length === 0) {
+      return result;
+    }
+    const rows = await this.prisma.coachAvailabilityOverride.findMany({
+      where: { trainerId, coachId: { in: coachIds }, changeRequestedAt: { not: null }, acknowledgedAt: null },
+      orderBy: [{ changeRequestedAt: 'desc' }, { id: 'desc' }],
+    });
+    for (const row of rows) {
+      if (!result.has(row.coachId) && row.changeRequestedAt) {
+        result.set(row.coachId, {
+          id: row.id,
+          message: row.changeRequestMessage ?? '',
+          requestedAt: row.changeRequestedAt,
+          sessionLabel: row.sessionLabel,
+        });
+      }
+    }
+    return result;
+  }
+
   /** Emails of this trainer's live (non-INACTIVE) coaches — used to keep an accepted invite from also showing as a Pending/Expired row. */
   async listLiveEmailsByTrainer(trainerId: string): Promise<string[]> {
     const rows = await this.prisma.extended.coachProfile.findMany({

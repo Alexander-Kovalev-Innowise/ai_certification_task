@@ -1,10 +1,11 @@
 import { IsBoolean, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 
-import { IsAssetUrl } from '../../../shared/http/asset-url.decorator';
+import { IsPhotoUrl } from '../../../shared/http/asset-url.decorator';
 
 // Task 5.4 (api §4.3 "PATCH /player-profiles/:id"). Basics only — no
-// `skillLevel` (trainer-set, per-association concept, Gap G-02, still
-// open). `allowChildTokenSpendWithoutApproval` (FR-041) is on this DTO but
+// `skillLevel` (read-only here; the trainer sets it via
+// PATCH /trainers/:id/players/:playerProfileId/skill-level).
+// `allowChildTokenSpendWithoutApproval` (FR-041) is on this DTO but
 // is owning-adult-only even though it lives on "the child's" profile — the
 // service rejects it for `typ: CHILD` (`403 CHILD_FIELD_NOT_EDITABLE`),
 // same pattern as UpdateMeDto's CHILD_NOT_EDITABLE_FIELDS (Task 2.22).
@@ -25,7 +26,7 @@ export class UpdatePlayerProfileDto {
   jerseyNumber?: string;
 
   @IsOptional()
-  @IsAssetUrl()
+  @IsPhotoUrl()
   photoUrl?: string | null; // null clears the photo
 
   @IsOptional()

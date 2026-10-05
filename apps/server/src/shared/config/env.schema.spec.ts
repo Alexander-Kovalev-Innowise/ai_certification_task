@@ -1,4 +1,4 @@
-import { areRateLimitsDisabled, isDevMailboxEnabled, validateEnv } from './env.schema';
+import { areRateLimitsDisabled, impersonationTtlSeconds, isDevMailboxEnabled, validateEnv } from './env.schema';
 
 describe('validateEnv', () => {
   const validEnv = {
@@ -77,6 +77,29 @@ describe('validateEnv', () => {
       const parsed = validateEnv({ ...validEnv, RATE_LIMITS_DISABLED: 'true', NODE_ENV: 'production' });
       expect(parsed.RATE_LIMITS_DISABLED).toBe(true);
       expect(areRateLimitsDisabled(parsed)).toBe(false);
+    });
+  });
+
+  describe('IMPERSONATION_TTL_SECONDS', () => {
+    it('defaults to the specified 3600 seconds (1 hour)', () => {
+      expect(validateEnv(validEnv).IMPERSONATION_TTL_SECONDS).toBe(3600);
+      expect(impersonationTtlSeconds(validateEnv(validEnv))).toBe(3600);
+    });
+
+    it('is honoured outside production', () => {
+      const parsed = validateEnv({ ...validEnv, IMPERSONATION_TTL_SECONDS: '20', NODE_ENV: 'development' });
+      expect(impersonationTtlSeconds(parsed)).toBe(20);
+    });
+
+    it('is inert in production', () => {
+      const parsed = validateEnv({ ...validEnv, IMPERSONATION_TTL_SECONDS: '20', NODE_ENV: 'production' });
+      expect(parsed.IMPERSONATION_TTL_SECONDS).toBe(20);
+      expect(impersonationTtlSeconds(parsed)).toBe(3600);
+    });
+
+    it('rejects non-positive or non-integer values', () => {
+      expect(() => validateEnv({ ...validEnv, IMPERSONATION_TTL_SECONDS: '0' })).toThrow();
+      expect(() => validateEnv({ ...validEnv, IMPERSONATION_TTL_SECONDS: 'abc' })).toThrow();
     });
   });
 

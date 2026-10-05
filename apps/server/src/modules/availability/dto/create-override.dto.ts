@@ -1,4 +1,5 @@
-import { IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 
 // Task 6.3 (api §4.5 "POST /coaches/:id/availability/override", verbatim
 // from api-designer-spec.md §4.5). `eventId` is an opaque FK with no DB
@@ -42,4 +43,16 @@ export class CoachOverrideNoticeDto {
   trainerBusinessName!: string;
   createdAt!: Date;
   acknowledgedAt!: Date | null;
+  /** Latest "request change" the coach sent the trainer; `null` if none. */
+  changeRequestedAt!: Date | null;
+  changeRequestMessage!: string | null;
+}
+
+// US-01.10 "request change": the coach's message to the employing trainer.
+export class RequestOverrideChangeDto {
+  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(5)
+  @MaxLength(500)
+  message!: string;
 }

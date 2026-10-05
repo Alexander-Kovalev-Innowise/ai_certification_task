@@ -1,6 +1,7 @@
 import { JwtModule } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 
+import { IMPERSONATION_TTL_SECONDS } from './impersonation-ttl.token';
 import { TokenService } from './token.service';
 
 // Task 2.11 — pure JWT round-trip, no DB needed. A local JwtModule.register
@@ -111,6 +112,28 @@ describe('TokenService (Task 2.11)', () => {
         act: { sub: 'admin-42', role: 'SUPER_ADMIN', imp: 'implog-99' },
       });
       expect(claims.exp - claims.iat).toBe(3600);
+    });
+
+    it('honours a configured (non-production) TTL override', async () => {
+      const moduleRef = await Test.createTestingModule({
+        imports: [JwtModule.register({ secret: 'test-secret', signOptions: { algorithm: 'HS256' } })],
+        providers: [TokenService, { provide: IMPERSONATION_TTL_SECONDS, useValue: 25 }],
+      }).compile();
+      const shortLived = moduleRef.get(TokenService);
+
+      const { accessToken, expiresIn } = await shortLived.issueImpersonationToken({
+        userId: 'trainer-7',
+        role: 'TRAINER',
+        accountType: 'ADULT',
+        tokenVersion: 4,
+        actorUserId: 'admin-42',
+        actorRole: 'SUPER_ADMIN',
+        logId: 'implog-99',
+      });
+
+      expect(expiresIn).toBe(25);
+      const claims = await shortLived.decode(accessToken);
+      expect(claims.exp - claims.iat).toBe(25);
     });
   });
 });

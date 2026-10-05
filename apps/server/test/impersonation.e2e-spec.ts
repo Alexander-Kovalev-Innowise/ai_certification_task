@@ -452,6 +452,9 @@ describe('ImpersonationController (e2e, Phase 7)', () => {
         },
       });
       const target = await insertTrainer();
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- deferred until DATABASE_URL is set, like the other app imports here
+      const { env } = require('../src/shared/config/config.module') as typeof import('../src/shared/config/config.module');
+      const clientOrigin = new URL(env.CLIENT_URL).origin;
 
       // 1. Real login — the admin's actual refresh cookie/CSRF pair.
       const loginRes = await request(app.getHttpServer()).post('/auth/login').send({ email: adminEmail, password: KNOWN_PASSWORD });
@@ -501,6 +504,22 @@ describe('ImpersonationController (e2e, Phase 7)', () => {
       const adminRowUnaffected = await db.prisma.user.findUniqueOrThrow({ where: { id: adminId } });
       expect(adminRowUnaffected.firstName).toBe('Admin');
 
+      // 3b. Logout is NOT available on an impersonation session (it has no
+      // refresh token / csrf pair of its own, and the browser's cookies belong
+      // to the ADMIN): even with the admin's valid cookie + matching
+      // X-CSRF-Token it is refused, so neither the admin's session nor (with
+      // ?everywhere=true) the target's tokenVersion can be touched this way.
+      const logoutWhileImpersonating = await request(app.getHttpServer())
+        .post('/auth/logout?everywhere=true')
+        .set('Origin', clientOrigin)
+        .set('Authorization', `Bearer ${impersonationToken}`)
+        .set('Cookie', [refreshCookie, csrfCookie])
+        .set('X-CSRF-Token', csrfToken);
+      expect(logoutWhileImpersonating.status).toBe(403);
+      expect(logoutWhileImpersonating.body.errorCode).toBe('IMPERSONATION_NOT_ALLOWED');
+      const targetAfterRefusedLogout = await db.prisma.user.findUniqueOrThrow({ where: { id: target.userId } });
+      expect(targetAfterRefusedLogout.tokenVersion).toBe(0);
+
       // 4. End — discard the impersonation token client-side afterward.
       const endRes = await request(app.getHttpServer()).post('/impersonation/end').set('Authorization', `Bearer ${impersonationToken}`);
       expect(endRes.status).toBe(204);
@@ -515,8 +534,8 @@ describe('ImpersonationController (e2e, Phase 7)', () => {
       // zero re-login, sub/role/tv exactly what they were before.
       const refreshRes = await request(app.getHttpServer())
         .post('/auth/refresh')
-        .set('Cookie', [refreshCookie, csrfCookie])
-        .set('X-CSRF-Token', csrfToken);
+        .set('Origin', clientOrigin)
+        .set('Cookie', [refreshCookie, csrfCookie]);
 
       expect(refreshRes.status).toBe(200);
       const claimsAfter = await jwtService.decode(refreshRes.body.accessToken);

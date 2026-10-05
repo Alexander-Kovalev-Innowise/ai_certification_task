@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import type { Request, Response } from 'express';
 
 import { env } from '../../shared/config/config.module';
@@ -15,6 +15,9 @@ import { AssociationsRepository } from '../associations/associations.repository'
 import { AuthService } from '../auth/auth.service';
 import type { AuthSessionResponseDto } from '../auth/dto/auth-session-response.dto';
 import { PasswordService } from '../auth/password.service';
+import type { CampConversionPayload } from '../camp-conversions/camp-conversion.payload';
+import { approximateDateOfBirth } from '../camp-conversions/camp-conversion.payload';
+import { CampConversionsService } from '../camp-conversions/camp-conversions.service';
 import { ADULT_AGE, calculateAge } from '../player-profiles/age.util';
 import { AccountProvisioningService } from '../users/account-provisioning.service';
 import { UsersRepository } from '../users/users.repository';
@@ -90,6 +93,33 @@ function splitName(fullName: string): { firstName: string; lastName: string } {
   return { firstName: trimmed.slice(0, spaceIndex), lastName: trimmed.slice(spaceIndex + 1) };
 }
 
+/**
+ * A camp sign-up already told us who the person and the player are: whatever the registration form did not send
+ * is taken from the stored payload (the form normally sends everything, the user only adds a password).
+ * An age < 18 means the player is a child managed by the parent account (`isSelf: false`).
+ */
+function withConversionDefaults(dto: RedeemShareLinkDto, payload: CampConversionPayload): RedeemShareLinkDto {
+  return {
+    ...dto,
+    email: dto.email ?? payload.email,
+    phone: dto.phone ?? payload.phone,
+    parentFirstName: dto.parentFirstName ?? payload.parentFirstName,
+    parentLastName: dto.parentLastName ?? payload.parentLastName,
+    playerName: dto.playerName ?? payload.playerName,
+    gender: dto.gender ?? payload.playerGender,
+    dateOfBirth: dto.dateOfBirth ?? approximateDateOfBirth(payload.playerAge),
+    isSelf: dto.isSelf ?? payload.playerAge >= ADULT_AGE,
+  };
+}
+
+/** Concurrent registrations with the same email: the loser hits the unique index inside the transaction. */
+function rethrowEmailTaken(error: unknown): never {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+    throw new ConflictException({ message: 'A user with this email already exists', errorCode: 'CONFLICT' });
+  }
+  throw error;
+}
+
 function missingFieldError(fields: string[]): BadRequestException {
   return new BadRequestException({
     message: `Missing required field(s): ${fields.join(', ')}`,
@@ -117,6 +147,7 @@ export class ShareLinkRedemptionService {
     private readonly authSnapshotRepository: AuthSnapshotRepository,
     private readonly usersRepository: UsersRepository,
     private readonly prisma: PrismaService,
+    private readonly campConversionsService: CampConversionsService,
   ) {}
 
   /**
@@ -189,13 +220,20 @@ export class ShareLinkRedemptionService {
    */
   private async redeemAnonymousRegistration(
     link: ShareLinkWithTrainer,
-    dto: RedeemShareLinkDto,
+    submitted: RedeemShareLinkDto,
     res: Response,
   ): Promise<AuthSessionResponseDto> {
     const invalidReason = resolveShareLinkInvalidReason(link);
     if (invalidReason !== null) {
       throw new ShareLinkUnavailableError();
     }
+
+    // Camp/evaluation conversion: validated up front (404 unknown/used/wrong link, 410 expired - before any
+    // password hashing), claimed later inside the registration transaction.
+    const conversion = submitted.conversionToken
+      ? await this.campConversionsService.resolveForRedemption(submitted.conversionToken, link.id)
+      : undefined;
+    const dto = conversion ? withConversionDefaults(submitted, conversion.payload) : submitted;
 
     const missing: string[] = (['email', 'password', 'phone', 'playerName', 'dateOfBirth', 'gender'] as const).filter(
       (field) => dto[field] === undefined,
@@ -220,6 +258,11 @@ export class ShareLinkRedemptionService {
     }
 
     const parentNames = this.resolveParentNames(dto);
+
+    // An email that already has an account is a clean 409 (sign in instead), never a 500 from the unique index.
+    if (await this.usersRepository.findByEmail(dto.email!)) {
+      throw new ConflictException({ message: 'A user with this email already exists', errorCode: 'CONFLICT' });
+    }
 
     const passwordHash = await this.passwordService.hash(dto.password!);
 
@@ -252,8 +295,16 @@ export class ShareLinkRedemptionService {
         createdPlayerProfileId = playerProfile.id;
       },
       afterCreate: async (tx, createdUser) => {
+        if (conversion) {
+          await this.campConversionsService.markUsed(conversion.id, tx);
+        }
         await this.associationsRepository.create(
-          { trainerId: link.trainerId, playerProfileId: createdPlayerProfileId, shareLinkId: link.id },
+          {
+            trainerId: link.trainerId,
+            playerProfileId: createdPlayerProfileId,
+            shareLinkId: link.id,
+            ...(conversion ? { source: conversion.payload.source } : {}),
+          },
           tx,
         );
         await this.shareLinksRepository.incrementUseCount(link.id, tx);
@@ -268,7 +319,7 @@ export class ShareLinkRedemptionService {
         );
         await this.authService.enqueueEmailVerification(tx, createdUser);
       },
-    });
+    }).catch(rethrowEmailTaken);
     this.outboxService.nudge();
 
     return this.authService.issueSession(user, res);
@@ -442,6 +493,7 @@ export class ShareLinkRedemptionService {
           throw new ShareLinkUnavailableError();
         }
         await this.authService.enqueueEmailVerification(tx, createdUser);
+        await this.authService.enqueueWelcomeEmail(tx, createdUser);
       },
     });
     this.outboxService.nudge();

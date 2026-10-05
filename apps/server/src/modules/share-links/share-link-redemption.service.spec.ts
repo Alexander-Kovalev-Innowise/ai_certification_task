@@ -168,6 +168,7 @@ describe('ShareLinkRedemptionService.redeem (Tasks 4.6, 4.9)', () => {
       authSnapshotRepository,
       usersRepository,
       prismaService,
+      { resolveForRedemption: jest.fn(), markUsed: jest.fn() } as never,
     );
   }
 
@@ -286,6 +287,10 @@ describe('ShareLinkRedemptionService.redeem (Tasks 4.6, 4.9)', () => {
       const jobs = await prismaService.outboxJob.findMany({ where: { type: 'EMAIL_SHARELINK_CONFIRMATION' } });
       expect(jobs).toHaveLength(1);
       expect(jobs[0].payload).toMatchObject({ to: dto.email });
+
+
+      // The registration confirmation replaces the welcome mail here - never both.
+      expect(await prismaService.outboxJob.count({ where: { type: 'EMAIL_WELCOME' } })).toBe(0);
     });
 
     it('rejects a minor registering as themself (isSelf) - players under 18 are parent-managed - and creates nothing', async () => {
@@ -323,6 +328,19 @@ describe('ShareLinkRedemptionService.redeem (Tasks 4.6, 4.9)', () => {
   // conditional `updateMany`'s atomicity under real concurrent Postgres
   // transactions, which a mocked Prisma client cannot demonstrate at all.
   describe('COACH_ACCEPT (Task 4.9)', () => {
+    it('anonymous acceptance (new coach account) enqueues exactly one welcome mail to the invitee', async () => {
+      const service = buildService();
+      const email = `${randomUUID()}@example.com`;
+      const link = await seedCoachUniqueLink(email);
+      const { req, res } = fakeReqRes();
+
+      await service.redeem(link.code, { password: 'Password1', firstName: 'Co', lastName: 'Ach' }, req, res);
+
+      const jobs = await prismaService.outboxJob.findMany({ where: { type: 'EMAIL_WELCOME' } });
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].payload).toEqual({ to: email, subject: 'Welcome to PracticePerfect', templateData: { firstName: 'Co' } });
+    });
+
     it('ShareLinksRepository.claimSingleUse: two concurrent claims on the same code — exactly one gets count===1, the other count===0', async () => {
       const link = await seedCoachUniqueLink(`${randomUUID()}@example.com`);
       const shareLinksRepository = new ShareLinksRepository(prismaService);

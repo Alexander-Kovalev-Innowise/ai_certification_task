@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { ImpersonationAuditLog, ImpersonationLog, Prisma, User } from '@prisma/client';
 
+import { DEFAULT_IMPERSONATION_TTL_SECONDS } from '../../shared/config/env.schema';
 import type { KeysetCursor } from '../../shared/http/pagination.dto';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 
@@ -116,24 +117,25 @@ export class ImpersonationRepository {
 
   /**
    * Task 7.4 (`ImpersonationMaintenanceJob`, arch §10 "No refresh" + §13.1).
-   * Closes any still-open (`endedAt: null`) log whose 60-minute hard cap
-   * (arch §10) has already passed without an explicit `/end` call. Sets
-   * `endedAt` to exactly `startedAt + 60 minutes` — the moment the token
+   * Closes any still-open (`endedAt: null`) log whose hard cap (arch §10;
+   * `ttlSeconds`, 3600 = 60 minutes unless overridden outside production)
+   * has already passed without an explicit `/end` call. Sets
+   * `endedAt` to exactly `startedAt + ttl` — the moment the token
    * itself actually stopped being valid — not "now" (whenever the 10-minute
    * sweep happens to run), so the audit trail reflects the session's real
    * lifetime rather than up-to-an-hour of sweep-interval slack;
-   * `durationSeconds` is therefore always exactly `3600` for a
-   * sweep-closed row, vs. a variable, shorter value for an explicit `/end`
+   * `durationSeconds` is therefore always exactly the TTL (`3600` by default)
+   * for a sweep-closed row, vs. a variable, shorter value for an explicit `/end`
    * call (`markEnded` above). Raw SQL (`$executeRaw`), not `updateMany`:
    * Prisma's update data has no way to express "set this column relative to
    * another column on the same row" (`"startedAt" + interval`).
    */
-  async closeStaleSessions(): Promise<number> {
+  async closeStaleSessions(ttlSeconds = DEFAULT_IMPERSONATION_TTL_SECONDS): Promise<number> {
     return this.prisma.$executeRaw`
       UPDATE "ImpersonationLog"
-      SET "endedAt" = "startedAt" + interval '60 minutes',
-          "durationSeconds" = 3600
-      WHERE "endedAt" IS NULL AND "startedAt" < now() - interval '60 minutes'
+      SET "endedAt" = "startedAt" + make_interval(secs => ${ttlSeconds}::double precision),
+          "durationSeconds" = ${ttlSeconds}::integer
+      WHERE "endedAt" IS NULL AND "startedAt" < now() - make_interval(secs => ${ttlSeconds}::double precision)
     `;
   }
 }

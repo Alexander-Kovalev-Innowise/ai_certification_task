@@ -1,6 +1,6 @@
 import { IsArray, IsBoolean, IsDateString, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
-import { IsAssetUrl } from '../../../shared/http/asset-url.decorator';
+import { IsPhotoUrl } from '../../../shared/http/asset-url.decorator';
 
 // Task 5.1 (api §4.3 "POST /player-profiles", FR-030/FR-031), reproduced
 // verbatim from the plan/spec. Child profiles only — a self profile
@@ -27,7 +27,7 @@ export class CreateChildProfileDto {
   school?: string;
 
   @IsOptional()
-  @IsAssetUrl()
+  @IsPhotoUrl()
   photoUrl?: string;
 
   // "Add myself as a player": creates the caller's own `isSelf` profile (only

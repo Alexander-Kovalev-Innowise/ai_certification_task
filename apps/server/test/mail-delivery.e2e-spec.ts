@@ -186,6 +186,12 @@ describe('Mail delivery + dev mailbox (e2e)', () => {
     await request(app.getHttpServer()).post('/auth/verify-email').send({ token: tokenOf(verification!.links[0]!) }).expect(200);
     const user = await db.prisma.user.findUniqueOrThrow({ where: { email } });
     expect(user.emailVerifiedAt).not.toBeNull();
+
+    // First activation also sends exactly one welcome mail (greeting by first name, CTA = sign in).
+    const welcomes = (await mailbox(email)).filter((m) => m.templateId === 'EMAIL_WELCOME');
+    expect(welcomes).toHaveLength(1);
+    expect(welcomes[0]).toMatchObject({ subject: 'Welcome to PracticePerfect', links: [`${CLIENT}/login`] });
+    expect(welcomes[0]!.text).toContain('Hi Tr,');
   });
 
   async function seedShareLink(type: 'PLAYER_STATIC' | 'COACH_UNIQUE', targetEmail?: string): Promise<string> {
@@ -245,6 +251,11 @@ describe('Mail delivery + dev mailbox (e2e)', () => {
 
     const verification = (await mailbox(email)).find((m) => m.templateId === 'EMAIL_VERIFICATION');
     expect(verification?.links[0]).toMatch(new RegExp(`^${CLIENT}/verify-email\\?token=`));
+
+    // The coach's first activation also gets exactly one welcome mail.
+    const welcomes = (await mailbox(email)).filter((m) => m.templateId === 'EMAIL_WELCOME');
+    expect(welcomes).toHaveLength(1);
+    expect(welcomes[0]!.links).toEqual([`${CLIENT}/login`]);
   });
 
   it('the raw verification token is not persisted: only its hash is in EmailVerificationToken', async () => {

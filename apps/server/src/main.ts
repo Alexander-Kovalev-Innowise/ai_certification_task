@@ -1,4 +1,6 @@
 import 'reflect-metadata';
+// Must precede every other import: sizes libuv's thread pool before anything can start it.
+import './shared/runtime/threadpool';
 
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -19,6 +21,8 @@ async function bootstrap() {
   app.enableCors({
     origin: env.CLIENT_URL,
     credentials: true,
+    // api §0.6: browsers hide Retry-After from cross-origin scripts unless it is exposed; the login form shows it.
+    exposedHeaders: ['Retry-After'],
   });
 
   // Task 2.14 — /auth/refresh and /auth/logout read the refreshToken/csrf

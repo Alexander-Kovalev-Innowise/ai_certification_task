@@ -8,10 +8,12 @@ import { resolveShareLinkInvalidReason } from '../share-links/share-link.service
 import { ShareLinksRepository } from '../share-links/share-links.repository';
 
 import { AssociationsRepository, ContextRow, PlayerProfileWithAvailability } from './associations.repository';
-import { formatAvailabilitySummary } from './availability-summary.formatter';
+import { computeSuggestedWindows, formatAvailabilitySummary, formatSuggestedRange } from './availability-summary.formatter';
 import { ContextEntryDto, ContextListResponseDto } from './dto/context-list-response.dto';
 import type { ListRosterQueryDto } from './dto/list-roster-query.dto';
 import { RosterPageDto, RosterRowDto } from './dto/roster-row.dto';
+import type { SetSkillLevelDto, SkillLevelResponseDto } from './dto/skill-level.dto';
+import type { SuggestedTimesResponseDto } from './dto/suggested-times.dto';
 
 export interface AddTrainerAssociationResult {
   statusCode: number;
@@ -211,6 +213,67 @@ export class AssociationsService {
   }
 
   /**
+   * US-01.09 "Suggest session times matching most players' availability":
+   * the top 3 day/time windows in which the most of the trainer's ACTIVE
+   * players are available. Own tenant only (`ctx.trainerId`, TRAINER role),
+   * deterministic ranking in `computeSuggestedWindows`.
+   */
+  async suggestTimesForTrainer(ctx: AuthContext): Promise<SuggestedTimesResponseDto> {
+    if (!ctx.trainerId) {
+      throw new NotFoundException({ message: 'Trainer not found', errorCode: 'NOT_FOUND' });
+    }
+
+    const players = await this.associationsRepository.listActivePlayersAvailableSlots(ctx.trainerId);
+    const windows = computeSuggestedWindows(
+      players.flatMap((player) => player.availability.map((slot) => ({ ...slot, playerProfileId: player.playerProfileId }))),
+    );
+
+    return {
+      items: windows.map((window) => ({
+        ...window,
+        label: formatSuggestedRange(window.dayOfWeek, window.startTime, window.endTime),
+      })),
+      totalCount: players.length,
+    };
+  }
+
+  /**
+   * Spec US-01.11 ("Skill level - trainer sets this"; read-only for the
+   * player/parent). Only the trainer who has this player ACTIVE on their
+   * roster may set it - 404 (never 403) otherwise, same posture as
+   * `removePlayerFromRoster`. Audited as a structured log line like the other
+   * trainer-made roster changes.
+   */
+  async setPlayerSkillLevel(
+    ctx: AuthContext,
+    trainerId: string,
+    playerProfileId: string,
+    dto: SetSkillLevelDto,
+  ): Promise<SkillLevelResponseDto> {
+    this.assertOwnershipOrNotFound(ctx, trainerId);
+
+    const association = await this.associationsRepository.findActive(trainerId, playerProfileId);
+    if (!association) {
+      throw new NotFoundException({ message: 'Player not found on this roster', errorCode: 'NOT_FOUND' });
+    }
+
+    const previous = await this.associationsRepository.findPlayerSkillLevel(playerProfileId);
+    const updated = await this.associationsRepository.updateSkillLevel(playerProfileId, dto.skillLevel);
+    this.logger.log(
+      JSON.stringify({
+        event: 'trainer.player.skill_level.changed',
+        trainerId,
+        playerProfileId,
+        from: previous,
+        to: updated.skillLevel,
+        changedBy: ctx.userId,
+      }),
+    );
+
+    return { playerProfileId, skillLevel: updated.skillLevel };
+  }
+
+  /**
    * Epic §3 "Manage own organization users": the trainer removes a player from
    * their roster. Soft — the association becomes `INACTIVE` with
    * `disconnectedAt` (history kept; the family can re-join via a share link).
@@ -263,6 +326,7 @@ function toRosterRow(player: PlayerProfileWithAvailability): RosterRowDto {
     playerProfileId: player.id,
     name: player.name,
     age: calculateAge(player.dateOfBirth),
+    skillLevel: player.skillLevel,
     availabilitySummary: formatAvailabilitySummary(player.availability),
   };
 }

@@ -25,14 +25,13 @@ export class UserSummaryDto {
 // origin. This project's actual architecture has them on separate origins
 // (apps/client :3001, apps/server :3000) — document.cookie on the client's
 // page can never see a cookie the server set on its own, different origin,
-// so the client could never actually echo the CSRF cookie back in
-// X-CSRF-Token, and every refresh/logout call failed CSRF validation
-// unconditionally. Returning the same token value in the response body too
-// lets the client store it (in-memory, alongside the access token) and use
-// that instead of trying to read the cookie. The cookie itself is unchanged
-// server-side — the double-submit *validation* still compares cookie vs.
-// header exactly as before, only the client's *source* for the header
-// value changed.
+// so the client could never read the CSRF cookie to echo it back in
+// X-CSRF-Token. Returning the same token value in the response body too
+// lets the client keep it in memory (alongside the access token) and send
+// that instead. The cookie itself is unchanged server-side — /auth/logout's
+// CsrfDoubleSubmitGuard still compares cookie vs. header; /auth/refresh
+// (which mints the token after a reload) is covered by the Origin check
+// (SameSiteOriginGuard) alone.
 export class AuthSessionResponseDto {
   accessToken!: string;
   expiresIn!: number;

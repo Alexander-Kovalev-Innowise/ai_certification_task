@@ -106,10 +106,11 @@ describe('AuthThrottlerGuard opt-in behavior (Task 2.7, e2e-style, no Testcontai
 
     const res = await request(app.getHttpServer()).get('/probe/opted-in');
     expect(res.status).toBe(429);
-    // Non-'default' named throttlers get a per-throttler suffixed header
-    // (`Retry-After-<name>`), per @nestjs/throttler's own handleRequest.
+    // @nestjs/throttler itself only sets a per-throttler suffixed header for named throttlers
+    // (`Retry-After-<name>`); AuthThrottlerGuard adds the plain `Retry-After` (seconds) api §0.6 promises.
     const retryAfterHeader = Object.keys(res.headers).find((h) => h.toLowerCase().startsWith('retry-after'));
     expect(retryAfterHeader).toBeDefined();
+    expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
   });
 
   it('does not apply auth-ip to a route that never declared it, even well past its 20/15min ceiling', async () => {

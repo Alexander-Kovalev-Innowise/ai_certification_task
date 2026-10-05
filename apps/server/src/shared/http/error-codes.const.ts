@@ -19,12 +19,11 @@ export const ERROR_CODES = {
   // codes) but required as GlobalExceptionFilter's fallback for anything
   // unhandled, per Task 0.10's "unhandled -> 500 INTERNAL_ERROR" requirement.
   INTERNAL_ERROR: 'INTERNAL_ERROR',
-  // Task 2.14 (arch §6.4) — no longer thrown (deviation, see auth.service.ts's
-  // refresh()/logout() doc comments: the double-submit CSRF check was
-  // removed as unenforceable across this app's cross-origin client/server
-  // split, superseded by SameSite=Lax + single-origin CORS + JSON
-  // Content-Type). Kept in the catalog, unused, rather than deleted — a
-  // same-origin deployment could reinstate the check and this code again.
+  // Task 2.14 (arch §6.4, spec §13) — 403 for a cookie-authenticated
+  // state-changing request (/auth/refresh, /auth/logout) whose Origin/Referer
+  // is missing or not CLIENT_URL (SameSiteOriginGuard), or — on /auth/logout —
+  // whose X-CSRF-Token header is missing/different from the csrf cookie
+  // (CsrfDoubleSubmitGuard).
   CSRF_MISMATCH: 'CSRF_MISMATCH',
   // Task 2.17/2.20 (api §1) — `410 Gone` for a token that was valid in
   // shape but has expired (distinct from `404 NOT_FOUND` for unknown/

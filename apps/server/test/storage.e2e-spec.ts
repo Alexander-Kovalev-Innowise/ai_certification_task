@@ -287,6 +287,58 @@ describe('Storage uploads (e2e)', () => {
         .send({ photoUrl: 'javascript:alert(1)' });
       expect(rejected.status).toBe(400);
     });
+
+    it('photo "upload or URL": an external https image URL is stored as-is on /me, POST and PATCH /player-profiles', async () => {
+      const parent = await parentSession();
+      const url = 'https://images.example.com/players/kid.jpg?w=512';
+
+      const me = await request(app.getHttpServer()).patch('/me').set('Authorization', `Bearer ${parent.token}`).send({ photoUrl: url });
+      expect(me.status).toBe(200);
+      expect(me.body.photoUrl).toBe(url);
+
+      const created = await request(app.getHttpServer())
+        .post('/player-profiles')
+        .set('Authorization', `Bearer ${parent.token}`)
+        .send({ name: 'Kiddo', dateOfBirth: '2016-05-05', gender: 'FEMALE', photoUrl: url });
+      expect(created.status).toBe(201);
+      expect(created.body.photoUrl).toBe(url);
+
+      const patched = await request(app.getHttpServer())
+        .patch(`/player-profiles/${created.body.id}`)
+        .set('Authorization', `Bearer ${parent.token}`)
+        .send({ photoUrl: 'https://cdn.example.org/other.png' });
+      expect(patched.status).toBe(200);
+      expect(patched.body.photoUrl).toBe('https://cdn.example.org/other.png');
+    });
+
+    it.each([
+      ['external http', 'http://images.example.com/kid.jpg'],
+      ['javascript:', 'javascript:alert(1)'],
+      ['data:', 'data:image/png;base64,iVBORw0KGgo='],
+      ['credentials in the URL', 'https://user:secret@images.example.com/kid.jpg'],
+      ['overly long', `https://images.example.com/${'a'.repeat(2100)}.jpg`],
+    ])('photo URL: %s is rejected with 400 on every photoUrl endpoint', async (_label, bad) => {
+      const parent = await parentSession();
+      const child = await request(app.getHttpServer())
+        .post('/player-profiles')
+        .set('Authorization', `Bearer ${parent.token}`)
+        .send({ name: 'Kiddo', dateOfBirth: '2016-05-05', gender: 'FEMALE' });
+
+      const attempts = [
+        () => request(app.getHttpServer()).patch('/me').set('Authorization', `Bearer ${parent.token}`).send({ photoUrl: bad }),
+        () => request(app.getHttpServer()).patch(`/player-profiles/${child.body.id}`).set('Authorization', `Bearer ${parent.token}`).send({ photoUrl: bad }),
+        () =>
+          request(app.getHttpServer())
+            .post('/player-profiles')
+            .set('Authorization', `Bearer ${parent.token}`)
+            .send({ name: 'Other', dateOfBirth: '2016-05-05', gender: 'MALE', photoUrl: bad }),
+      ];
+      for (const attempt of attempts) {
+        const res = await attempt();
+        expect(res.status).toBe(400);
+        expect(res.body.errorCode).toBe('VALIDATION_ERROR');
+      }
+    });
   });
 
   describe('profile surfaces', () => {

@@ -398,7 +398,7 @@ describe('AssociationsController (e2e, Task 5.7)', () => {
       expect(res.body.items[0]).toMatchObject({
         playerProfileId: profile.id,
         name: 'Roster Kid',
-        availabilitySummary: 'Mon 5-8pm, Wed 6-9pm',
+        availabilitySummary: 'Best Times: Mon 5-8pm, Wed 6-9pm',
       });
       expect(typeof res.body.items[0].age).toBe('number');
     });
@@ -603,6 +603,174 @@ describe('AssociationsController (e2e, Task 5.7)', () => {
         .delete(`/trainers/${trainer.trainerId}/players/${randomUUID()}`)
         .set('Authorization', `Bearer ${parent.accessToken}`)
         .expect(403);
+    });
+  });
+
+  describe('GET /trainers/me/players/suggested-times (US-01.09 suggest session times)', () => {
+    async function addAvailability(profileId: string, dayOfWeek: number, startHour: number, endHour: number, isAvailable = true) {
+      await db.prisma.availability.create({
+        data: { subjectType: 'PLAYER', playerProfileId: profileId, dayOfWeek, startTime: startHour * 60, endTime: endHour * 60, isAvailable },
+      });
+    }
+
+    it('returns the top 3 windows with the most players available, labelled and counted against the roster size', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const profiles = [];
+      for (const name of ['P1', 'P2', 'P3', 'P4']) {
+        const profile = await insertProfile(parent.userId, { name });
+        await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.trainerId, playerProfileId: profile.id } });
+        profiles.push(profile);
+      }
+      // Mon 5-8pm: P1+P2+P3. Wed 6-9pm: P1+P2. Fri 9-10am: P4. Sat 8-9am: P4 (4th, dropped). P3 also "not available" Tue (ignored).
+      for (const p of [profiles[0]!, profiles[1]!, profiles[2]!]) await addAvailability(p.id, 1, 17, 20);
+      for (const p of [profiles[0]!, profiles[1]!]) await addAvailability(p.id, 3, 18, 21);
+      await addAvailability(profiles[3]!.id, 5, 9, 10);
+      await addAvailability(profiles[3]!.id, 6, 8, 9);
+      await addAvailability(profiles[2]!.id, 2, 10, 12, false);
+
+      const res = await request(app.getHttpServer())
+        .get('/trainers/me/players/suggested-times')
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.totalCount).toBe(4);
+      expect(res.body.items).toEqual([
+        { dayOfWeek: 1, startTime: 1020, endTime: 1200, label: 'Mon 5:00-8:00 PM', availableCount: 3 },
+        { dayOfWeek: 3, startTime: 1080, endTime: 1260, label: 'Wed 6:00-9:00 PM', availableCount: 2 },
+        { dayOfWeek: 5, startTime: 540, endTime: 600, label: 'Fri 9:00-10:00 AM', availableCount: 1 },
+      ]);
+    });
+
+    it("is tenant-scoped: another trainer's players and removed players never count", async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const other = await insertTrainer();
+      const mine = await insertProfile(parent.userId, { name: 'Mine' });
+      const removed = await insertProfile(parent.userId, { name: 'Removed' });
+      const theirs = await insertProfile(parent.userId, { name: 'Theirs' });
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.trainerId, playerProfileId: mine.id } });
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.trainerId, playerProfileId: removed.id, status: 'INACTIVE' } });
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: other.trainerId, playerProfileId: theirs.id } });
+      for (const p of [mine, removed, theirs]) await addAvailability(p.id, 1, 17, 20);
+
+      const res = await request(app.getHttpServer())
+        .get('/trainers/me/players/suggested-times')
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.totalCount).toBe(1);
+      expect(res.body.items).toEqual([expect.objectContaining({ dayOfWeek: 1, availableCount: 1 })]);
+    });
+
+    it('a trainer with no players gets an empty list', async () => {
+      const trainer = await insertTrainer();
+
+      const res = await request(app.getHttpServer())
+        .get('/trainers/me/players/suggested-times')
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ items: [], totalCount: 0 });
+    });
+
+    it('a parent token -> 403', async () => {
+      const parent = await insertParent();
+      await request(app.getHttpServer())
+        .get('/trainers/me/players/suggested-times')
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .expect(403);
+    });
+  });
+
+  describe('PATCH /trainers/:id/players/:playerProfileId/skill-level (spec US-01.11, trainer sets it)', () => {
+    it('sets the level, shows it on the roster and on the family-side profile read', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const profile = await insertProfile(parent.userId);
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.trainerId, playerProfileId: profile.id } });
+
+      const res = await request(app.getHttpServer())
+        .patch(`/trainers/${trainer.trainerId}/players/${profile.id}/skill-level`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`)
+        .send({ skillLevel: 'ELITE' });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ playerProfileId: profile.id, skillLevel: 'ELITE' });
+
+      const roster = await request(app.getHttpServer())
+        .get(`/trainers/${trainer.trainerId}/players`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+      expect(roster.body.items[0]).toMatchObject({ playerProfileId: profile.id, skillLevel: 'ELITE' });
+
+      const familyRead = await request(app.getHttpServer())
+        .get(`/player-profiles/${profile.id}`)
+        .set('Authorization', `Bearer ${parent.accessToken}`);
+      expect(familyRead.body.skillLevel).toBe('ELITE');
+    });
+
+    it('rejects an unknown level (400) and leaves the stored level untouched', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const profile = await insertProfile(parent.userId);
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.trainerId, playerProfileId: profile.id } });
+
+      for (const body of [{ skillLevel: 'GOD_MODE' }, {}, { skillLevel: 'advanced' }]) {
+        const res = await request(app.getHttpServer())
+          .patch(`/trainers/${trainer.trainerId}/players/${profile.id}/skill-level`)
+          .set('Authorization', `Bearer ${trainer.accessToken}`)
+          .send(body);
+        expect(res.status).toBe(400);
+      }
+      expect((await db.prisma.playerProfile.findUniqueOrThrow({ where: { id: profile.id } })).skillLevel).toBe('BEGINNER');
+    });
+
+    it('a trainer who does not have the player on the roster -> 404 (never 403); removed players too', async () => {
+      const parent = await insertParent();
+      const trainerA = await insertTrainer();
+      const trainerB = await insertTrainer();
+      const profile = await insertProfile(parent.userId);
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainerA.trainerId, playerProfileId: profile.id } });
+
+      // B writing through A's id, and B writing through its own id, both 404.
+      await request(app.getHttpServer())
+        .patch(`/trainers/${trainerA.trainerId}/players/${profile.id}/skill-level`)
+        .set('Authorization', `Bearer ${trainerB.accessToken}`)
+        .send({ skillLevel: 'ADVANCED' })
+        .expect(404);
+      await request(app.getHttpServer())
+        .patch(`/trainers/${trainerB.trainerId}/players/${profile.id}/skill-level`)
+        .set('Authorization', `Bearer ${trainerB.accessToken}`)
+        .send({ skillLevel: 'ADVANCED' })
+        .expect(404);
+
+      await db.prisma.playerTrainerAssociation.updateMany({ where: { trainerId: trainerA.trainerId }, data: { status: 'INACTIVE' } });
+      await request(app.getHttpServer())
+        .patch(`/trainers/${trainerA.trainerId}/players/${profile.id}/skill-level`)
+        .set('Authorization', `Bearer ${trainerA.accessToken}`)
+        .send({ skillLevel: 'ADVANCED' })
+        .expect(404);
+
+      expect((await db.prisma.playerProfile.findUniqueOrThrow({ where: { id: profile.id } })).skillLevel).toBe('BEGINNER');
+    });
+
+    it('a parent cannot set it (403) and PATCH /player-profiles/:id rejects skillLevel (400)', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const profile = await insertProfile(parent.userId);
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.trainerId, playerProfileId: profile.id } });
+
+      await request(app.getHttpServer())
+        .patch(`/trainers/${trainer.trainerId}/players/${profile.id}/skill-level`)
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send({ skillLevel: 'ELITE' })
+        .expect(403);
+
+      const own = await request(app.getHttpServer())
+        .patch(`/player-profiles/${profile.id}`)
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send({ skillLevel: 'ELITE' });
+      expect(own.status).toBe(400);
+      expect((await db.prisma.playerProfile.findUniqueOrThrow({ where: { id: profile.id } })).skillLevel).toBe('BEGINNER');
     });
   });
 

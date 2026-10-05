@@ -1,8 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Availability, CoachProfile, PlayerProfile, Prisma } from '@prisma/client';
 
 import { JOB_TYPES } from '../../shared/jobs/job-types.const';
 import { OutboxService } from '../../shared/jobs/outbox.service';
+import { buildCoachChangeRequestEmailPayload } from '../../shared/mail/templates/coach-change-request.template';
 import { buildCoachOverrideNotifyEmailPayload } from '../../shared/mail/templates/coach-override-notify.template';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { AuthContext } from '../../shared/security/auth-context.interface';
@@ -12,7 +13,7 @@ import { PlayerProfilesRepository } from '../player-profiles/player-profiles.rep
 
 import { AvailabilityRepository } from './availability.repository';
 import { AvailabilityGridResponseDto, AvailabilitySlotDto, CoachAvailabilityGridResponseDto } from './dto/availability-grid.dto';
-import { CoachOverrideNoticeDto, CoachOverrideResponseDto, CreateOverrideDto } from './dto/create-override.dto';
+import { CoachOverrideNoticeDto, CoachOverrideResponseDto, CreateOverrideDto, RequestOverrideChangeDto } from './dto/create-override.dto';
 
 // Task 5.11 (api §4.5 "Player availability", FR-090). `Availability` has no
 // `trainerId` column (api §0.3's explicit design note) — the SAME weekly
@@ -201,6 +202,8 @@ export class AvailabilityService {
       trainerBusinessName: row.trainer.businessName,
       createdAt: row.createdAt,
       acknowledgedAt: row.acknowledgedAt,
+      changeRequestedAt: row.changeRequestedAt,
+      changeRequestMessage: row.changeRequestMessage,
     }));
   }
 
@@ -216,6 +219,48 @@ export class AvailabilityService {
         JSON.stringify({ event: 'coach.availability.override.acknowledged', override_id: overrideId, coach_id: coachProfileId, by: ctx.userId }),
       );
     }
+  }
+
+  /**
+   * US-01.10 "request change": the coach asks the employing trainer to change
+   * the assignment instead of accepting it. Stores the (latest) request on the
+   * override and emails the trainer in one transaction; the trainer also sees it
+   * as an in-app notification and a badge on the coaches roster. 409 once the
+   * coach has already accepted (acknowledged) the override.
+   */
+  async requestOverrideChange(ctx: AuthContext, coachProfileId: string, overrideId: string, dto: RequestOverrideChangeDto): Promise<void> {
+    const coachProfile = await this.requireOwnActiveCoach(ctx, coachProfileId);
+    const override = await this.availabilityRepository.findOverrideForCoach(overrideId, coachProfileId);
+    if (!override) {
+      throw new NotFoundException({ message: 'Override not found', errorCode: 'NOT_FOUND' });
+    }
+    if (override.acknowledgedAt) {
+      throw new ConflictException({ message: 'You already accepted this assignment', errorCode: 'OVERRIDE_ALREADY_ACKNOWLEDGED' });
+    }
+
+    const trainer = await this.prisma.trainerProfile.findUniqueOrThrow({ where: { id: override.trainerId }, include: { user: true } });
+    const { message } = dto;
+    await this.prisma.$transaction(async (tx) => {
+      await tx.coachAvailabilityOverride.update({
+        where: { id: overrideId },
+        data: { changeRequestedAt: new Date(), changeRequestMessage: message },
+      });
+      await this.outboxService.enqueue(
+        tx,
+        JOB_TYPES.EMAIL_COACH_CHANGE_REQUEST,
+        buildCoachChangeRequestEmailPayload(trainer.user.email, {
+          trainerFirstName: trainer.user.firstName,
+          coachName: `${coachProfile.user.firstName} ${coachProfile.user.lastName}`.trim(),
+          message,
+          sessionLabel: override.sessionLabel ?? undefined,
+        }) as unknown as Prisma.InputJsonValue,
+      );
+    });
+    this.outboxService.nudge();
+
+    this.logger.log(
+      JSON.stringify({ event: 'coach.availability.override.change_requested', override_id: overrideId, coach_id: coachProfileId, by: ctx.userId }),
+    );
   }
 
   private async requireOwnActiveCoach(ctx: AuthContext, coachProfileId: string): Promise<CoachProfileWithUser> {

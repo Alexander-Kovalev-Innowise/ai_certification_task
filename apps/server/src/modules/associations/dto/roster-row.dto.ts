@@ -6,6 +6,8 @@ export class RosterRowDto {
   playerProfileId!: string;
   name!: string;
   age!: number;
+  // Trainer-set (spec US-01.11), shown on the roster next to the summary.
+  skillLevel!: string;
   availabilitySummary!: string;
 }
 

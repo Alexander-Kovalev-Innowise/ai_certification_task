@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, HttpCode, HttpStatus, Post, Query, Req, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
@@ -7,6 +7,8 @@ import type { AuthContext } from '../../shared/security/auth-context.interface';
 import { Capability } from '../../shared/security/capability.enum';
 import { CurrentUser } from '../../shared/security/decorators/current-user.decorator';
 import { Public } from '../../shared/security/decorators/public.decorator';
+import { RequireCsrfToken } from '../../shared/security/decorators/require-csrf-token.decorator';
+import { RequireSameSiteOrigin } from '../../shared/security/decorators/require-same-site-origin.decorator';
 import { RequiresCapability } from '../../shared/security/decorators/requires-capability.decorator';
 
 import { AuthService } from './auth.service';
@@ -37,10 +39,20 @@ export class AuthController {
     return this.authService.login(dto, res);
   }
 
+  // CSRF (spec §13): Origin check only — after a page reload the client has no
+  // in-memory csrf token yet (this call is what mints it), so the double-submit
+  // header cannot be required here.
   @Public()
+  @RequireSameSiteOrigin()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Rotate the refresh token cookie, issuing a fresh access token' })
+  @ApiOperation({
+    summary: 'Rotate the refresh token cookie, issuing a fresh access token',
+    description:
+      'Cookie-authenticated, so CSRF-protected by an Origin/Referer check (must equal CLIENT_URL; requests without ' +
+      'either header, e.g. non-browser callers, get 403 CSRF_MISMATCH). X-CSRF-Token is not required here: the ' +
+      'response body returns the new csrfToken for the client to keep in memory.',
+  })
   @ApiResponse({ status: 200, type: AuthSessionResponseDto })
   @ApiResponse({ status: 401, description: 'Missing/expired/reused refresh token' })
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<AuthSessionResponseDto> {
@@ -53,19 +65,42 @@ export class AuthController {
   // boot-time "every non-@Public route must carry @RequiresCapability"
   // assertion (Task 2.8). Flagged there as a slightly awkward fit, not
   // worth a dedicated @AlwaysAllowed() decorator for Epic-01.
+  //
+  // CSRF (spec §13): Origin check + double-submit X-CSRF-Token (the client
+  // always has the token in memory here — it refreshed at boot).
   @RequiresCapability(Capability.EDIT_OWN_PROFILE)
+  @RequireSameSiteOrigin()
+  @RequireCsrfToken()
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Revoke the current session (and, with ?everywhere=true, every session)' })
+  @ApiOperation({
+    summary: 'Revoke the current session (and, with ?everywhere=true, every session)',
+    description:
+      'Cookie-authenticated, so CSRF-protected twice: Origin/Referer must equal CLIENT_URL (non-browser callers ' +
+      'without it are rejected) AND X-CSRF-Token must equal the csrf cookie. Not available on an impersonation ' +
+      'session (no refresh token of its own): exit impersonation first.',
+  })
   @ApiResponse({ status: 204 })
   @ApiResponse({ status: 401 })
+  @ApiResponse({ status: 403, description: 'Impersonation session', schema: { example: { errorCode: 'IMPERSONATION_NOT_ALLOWED' } } })
   async logout(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
     @CurrentUser() ctx: AuthContext,
     @Query('everywhere') everywhere?: string,
   ): Promise<void> {
+    // An impersonation access token has no refresh token / csrf pair of its
+    // own; the cookies in the browser belong to the impersonating admin, so
+    // honouring logout here would revoke the ADMIN's session (and, with
+    // ?everywhere=true, bump the impersonated user's tokenVersion). The client
+    // exits impersonation first (POST /impersonation/end + refresh), then logs out.
+    if (ctx.impersonation) {
+      throw new ForbiddenException({
+        message: 'Exit impersonation before signing out',
+        errorCode: 'IMPERSONATION_NOT_ALLOWED',
+      });
+    }
     return this.authService.logout(req, res, ctx.userId, everywhere === 'true');
   }
 

@@ -4,6 +4,7 @@ import { env } from '../../shared/config/config.module';
 import { JobsModule } from '../../shared/jobs/jobs.module';
 import { AssociationsModule } from '../associations/associations.module';
 import { AuthModule } from '../auth/auth.module';
+import { CampConversionsModule } from '../camp-conversions/camp-conversions.module';
 import { UsersModule } from '../users/users.module';
 
 import { ShareLinkMaintenanceJob } from './share-link-maintenance.job';
@@ -24,7 +25,7 @@ import { ShareLinksRepository } from './share-links.repository';
 // already use (Task 1.12's pattern); `ScheduleModule.forRoot()` itself is
 // registered once, by `JobsModule`, already imported here.
 @Module({
-  imports: [AssociationsModule, AuthModule, UsersModule, JobsModule],
+  imports: [AssociationsModule, AuthModule, CampConversionsModule, UsersModule, JobsModule],
   controllers: [ShareLinksController],
   providers: [
     ShareLinksRepository,

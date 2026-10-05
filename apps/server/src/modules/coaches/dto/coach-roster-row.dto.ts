@@ -7,6 +7,13 @@
 // from `status`, which is whichever raw enum the row's underlying source
 // carries (`CoachStatus` for an accepted/pending profile, the literal string
 // `'PENDING'`/`'EXPIRED'` for an invite-only row with no profile yet).
+export class CoachChangeRequestDto {
+  overrideId!: string;
+  message!: string;
+  requestedAt!: Date;
+  sessionLabel!: string | null;
+}
+
 export class CoachRosterRowDto {
   id!: string;
   userId!: string | null;
@@ -18,4 +25,6 @@ export class CoachRosterRowDto {
   /** Invite-only rows: when the link expires (Pending: the deadline, Expired: when it lapsed). `null` for accepted/profile rows. */
   expiresAt?: Date | null;
   invitationStatus!: 'Pending' | 'Accepted' | 'Expired';
+  /** US-01.10: the coach's latest still-open "request change" on an availability override; `null` when none. */
+  changeRequest?: CoachChangeRequestDto | null;
 }

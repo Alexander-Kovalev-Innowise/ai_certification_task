@@ -15,6 +15,7 @@ import { JOB_TYPES } from '../../shared/jobs/job-types.const';
 import { OutboxService } from '../../shared/jobs/outbox.service';
 import { buildEmailVerificationEmailPayload } from '../../shared/mail/templates/email-verification.template';
 import { buildPasswordResetEmailPayload } from '../../shared/mail/templates/password-reset.template';
+import { buildWelcomeEmailPayload } from '../../shared/mail/templates/welcome.template';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { UsersRepository } from '../users/users.repository';
 
@@ -99,20 +100,13 @@ export class AuthService {
    * `refreshToken` cookie, rotates via TokenRotationService, and issues a
    * fresh access token for whichever user the rotated row belongs to.
    *
-   * Deviation from arch §6.4's original double-submit CSRF requirement: not
-   * enforced here anymore (found while fixing a real bug — client and
-   * server run on different origins, so the client's document.cookie could
-   * never actually read the csrf cookie to echo it back, meaning every
-   * refresh call failed CSRF validation unconditionally). CSRF protection
-   * for this endpoint instead comes from
-   * SameSite=Lax (blocks the cookie on a cross-site POST entirely) + this
-   * server's CORS config allowlisting exactly one origin + the JSON
-   * Content-Type this endpoint requires (forces a CORS preflight, which a
-   * forged cross-origin request can't pass) — a combination OWASP's CSRF
-   * cheat sheet lists as sufficient on its own. The csrf cookie/token is
-   * still generated and returned (harmless, real defense-in-depth for a
-   * same-origin deployment where double-submit would actually work), just
-   * no longer required to match.
+   * CSRF (spec §13, arch §6.4): enforced at the controller by
+   * @RequireSameSiteOrigin() — the Origin (or Referer) header must equal
+   * CLIENT_URL. The double-submit X-CSRF-Token is deliberately NOT required
+   * on this endpoint: after a page reload the client has no in-memory token
+   * yet and this call is what mints it (the new csrfToken is returned in the
+   * body, since the client on another origin cannot read the API's cookie).
+   * Defence in depth: SameSite=Lax + single-origin CORS + JSON content type.
    */
   async refresh(req: Request, res: Response): Promise<AuthSessionResponseDto> {
     const presentedRawToken = (req.cookies as Record<string, string> | undefined)?.[REFRESH_TOKEN_COOKIE];
@@ -147,8 +141,10 @@ export class AuthService {
    * Task 2.15. `everywhere` additionally revokes every RefreshToken row for
    * the user AND bumps `tokenVersion` — a password-reset-grade "logout
    * everywhere", killing any still-live access token too (arch §6.3), not
-   * just future refreshes. CSRF: same deviation as refresh() above — not
-   * enforced, same SameSite+CORS+Content-Type reasoning applies identically.
+   * just future refreshes. CSRF: enforced at the controller by
+   * @RequireSameSiteOrigin() AND @RequireCsrfToken() (X-CSRF-Token must equal
+   * the csrf cookie) — logout is only reachable once a session exists, so the
+   * client always holds the token. Impersonation tokens are rejected there too.
    */
   async logout(req: Request, res: Response, userId: string, everywhere: boolean): Promise<void> {
     const presentedRawToken = (req.cookies as Record<string, string> | undefined)?.[REFRESH_TOKEN_COOKIE];
@@ -315,6 +311,21 @@ export class AuthService {
   }
 
   /**
+   * Welcome mail, sent ONCE when an account is first activated (trainer
+   * completing the setup link, coach accepting an invite). Same outbox
+   * contract as `enqueueEmailVerification`: call inside the caller's own
+   * transaction, `outboxService.nudge()` after commit. Anonymous ShareLink
+   * registrations do NOT call this - they already get a confirmation mail.
+   */
+  async enqueueWelcomeEmail(tx: Prisma.TransactionClient, user: Pick<User, 'email' | 'firstName'>): Promise<void> {
+    await this.outboxService.enqueue(
+      tx,
+      JOB_TYPES.EMAIL_WELCOME,
+      buildWelcomeEmailPayload(user.email, { firstName: user.firstName }) as unknown as Prisma.InputJsonValue,
+    );
+  }
+
+  /**
    * Task 2.19. One of the three routes exempt from PASSWORD_CHANGE_REQUIRED
    * blocking (Task 2.6, arch §6.6). `currentPassword` is optional only on
    * the forced-first-change path (`mustChangePassword: true`); that check
@@ -396,6 +407,7 @@ export class AuthService {
       if (!updated.emailVerifiedAt) {
         await this.enqueueEmailVerification(tx, updated);
       }
+      await this.enqueueWelcomeEmail(tx, updated);
       return updated;
     });
     this.outboxService.nudge();

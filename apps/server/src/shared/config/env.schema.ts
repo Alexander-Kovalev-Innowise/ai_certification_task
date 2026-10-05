@@ -50,6 +50,16 @@ const baseEnvSchema = z.object({
   // when NODE_ENV !== 'production' (see `areRateLimitsDisabled`) — a stray
   // value in a production environment is inert by construction.
   RATE_LIMITS_DISABLED: booleanFromString(false),
+  // IMPERSONATION_TTL_SECONDS: lifetime of an impersonation access token
+  // (spec US-01.07: 1 hour). Defaults to 3600. Only honoured when NODE_ENV !==
+  // 'production' (see `impersonationTtlSeconds`) so the e2e suite can show the
+  // expiry in seconds instead of waiting an hour.
+  IMPERSONATION_TTL_SECONDS: z
+    .string()
+    .optional()
+    .default('3600')
+    .transform((val) => Number(val))
+    .pipe(z.number().int().positive()),
   // Not in the plan's Task 0.8 var list, added in Task 1.11 — same
   // config-keyed useClass pattern as MAIL_PROVIDER (arch §13: "Ports, not
   // providers... bound by token in the module's useClass factory keyed off
@@ -89,6 +99,17 @@ export type EnvConfig = z.infer<typeof envSchema>;
  */
 export function areRateLimitsDisabled(config: Pick<EnvConfig, 'NODE_ENV' | 'RATE_LIMITS_DISABLED'>): boolean {
   return config.RATE_LIMITS_DISABLED && config.NODE_ENV !== 'production';
+}
+
+/** The spec'd impersonation lifetime (US-01.07): 1 hour. */
+export const DEFAULT_IMPERSONATION_TTL_SECONDS = 3600;
+
+/**
+ * Single source of truth for the impersonation session lifetime. Always the spec'd
+ * 3600s in production, whatever IMPERSONATION_TTL_SECONDS says.
+ */
+export function impersonationTtlSeconds(config: Pick<EnvConfig, 'NODE_ENV' | 'IMPERSONATION_TTL_SECONDS'>): number {
+  return config.NODE_ENV === 'production' ? DEFAULT_IMPERSONATION_TTL_SECONDS : config.IMPERSONATION_TTL_SECONDS;
 }
 
 /** Whether the in-memory dev mailbox (MAIL_PROVIDER=dev) may exist. Never in production. */

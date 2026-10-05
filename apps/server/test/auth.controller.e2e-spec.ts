@@ -23,6 +23,8 @@ describe('AuthController (e2e, Task 2.13)', () => {
   let db: TestDatabase;
   let app: INestApplication;
   let throttlerStorage: ThrottlerStorage;
+  // The origin CSRF verification (SameSiteOriginGuard) expects - what a browser on the client would send.
+  let CLIENT_ORIGIN: string;
 
   const originalDatabaseUrl = process.env.DATABASE_URL;
   const KNOWN_PASSWORD = 'CorrectHorseBattery1';
@@ -34,7 +36,9 @@ describe('AuthController (e2e, Task 2.13)', () => {
     /* eslint-disable @typescript-eslint/no-require-imports -- deliberate, defers evaluation until after DATABASE_URL is set */
     const { AppModule } = require('../src/app.module') as typeof import('../src/app.module');
     const { GlobalExceptionFilter } = require('../src/shared/http/global-exception.filter') as typeof import('../src/shared/http/global-exception.filter');
+    const { env } = require('../src/shared/config/config.module') as typeof import('../src/shared/config/config.module');
     /* eslint-enable @typescript-eslint/no-require-imports */
+    CLIENT_ORIGIN = new URL(env.CLIENT_URL).origin;
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
@@ -186,6 +190,7 @@ describe('AuthController (e2e, Task 2.13)', () => {
 
       const res = await request(app.getHttpServer())
         .post('/auth/refresh')
+        .set('Origin', CLIENT_ORIGIN)
         .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
         .set('X-CSRF-Token', csrf);
 
@@ -196,35 +201,76 @@ describe('AuthController (e2e, Task 2.13)', () => {
       expect(newRefreshToken).not.toBe(refreshToken);
     });
 
-    // Deviation from the original design (found fixing a real bug): the
-    // double-submit CSRF pair is no longer enforced. Client and server run
-    // on different origins, so the client's document.cookie can never
-    // actually read the csrf cookie to echo it back — every refresh call
-    // failed CSRF validation unconditionally, breaking session persistence
-    // across any full page reload. SameSite=Lax + this server's single-
-    // origin CORS allowlist + the JSON Content-Type this endpoint requires
-    // (forces a CORS preflight) already cover the realistic CSRF attack
-    // surface without the double-submit token. See auth.service.ts's
-    // refresh()/logout() doc comments for the full reasoning.
-    it('missing CSRF header -> 200 (not enforced, see deviation note above)', async () => {
+    // Spec §13 CSRF. /auth/refresh is protected by Origin verification only:
+    // after a page reload the client holds no csrf token yet (this call mints
+    // it), so the double-submit header must NOT be required.
+    it('correct Origin and no X-CSRF-Token -> 200 and the new csrfToken is returned in the body', async () => {
       const { email } = await insertUser();
       const { refreshToken, csrf } = await loginAndGetCookies(email, KNOWN_PASSWORD);
 
       const res = await request(app.getHttpServer())
         .post('/auth/refresh')
+        .set('Origin', CLIENT_ORIGIN)
         .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`]);
+
+      expect(res.status).toBe(200);
+      expect(res.body.csrfToken).toEqual(expect.any(String));
+    });
+
+    it('a stale/wrong X-CSRF-Token header does not matter on refresh -> 200', async () => {
+      const { email } = await insertUser();
+      const { refreshToken, csrf } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Origin', CLIENT_ORIGIN)
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
+        .set('X-CSRF-Token', 'not-the-real-csrf-value');
 
       expect(res.status).toBe(200);
     });
 
-    it('mismatched CSRF header -> 200 (not enforced, see deviation note above)', async () => {
+    it('wrong Origin -> 403 CSRF_MISMATCH, and the refresh token is NOT consumed', async () => {
+      const { email } = await insertUser();
+      const { refreshToken, csrf } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Origin', 'http://evil.example')
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
+        .set('X-CSRF-Token', csrf);
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('CSRF_MISMATCH');
+
+      const legit = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Origin', CLIENT_ORIGIN)
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`]);
+      expect(legit.status).toBe(200);
+    });
+
+    it('missing Origin (and Referer) -> 403 CSRF_MISMATCH', async () => {
       const { email } = await insertUser();
       const { refreshToken, csrf } = await loginAndGetCookies(email, KNOWN_PASSWORD);
 
       const res = await request(app.getHttpServer())
         .post('/auth/refresh')
         .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
-        .set('X-CSRF-Token', 'not-the-real-csrf-value');
+        .set('X-CSRF-Token', csrf);
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('CSRF_MISMATCH');
+    });
+
+    it('no Origin but a same-origin Referer -> 200 (fallback)', async () => {
+      const { email } = await insertUser();
+      const { refreshToken, csrf } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Referer', `${CLIENT_ORIGIN}/dashboard`)
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`]);
 
       expect(res.status).toBe(200);
     });
@@ -236,12 +282,14 @@ describe('AuthController (e2e, Task 2.13)', () => {
       // Ordinary rotation once — the original refreshToken is now revoked.
       await request(app.getHttpServer())
         .post('/auth/refresh')
+        .set('Origin', CLIENT_ORIGIN)
         .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
         .set('X-CSRF-Token', csrf);
 
       // Re-present the now-revoked original token (e.g. a stolen cookie replayed).
       const reuse = await request(app.getHttpServer())
         .post('/auth/refresh')
+        .set('Origin', CLIENT_ORIGIN)
         .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
         .set('X-CSRF-Token', csrf);
 
@@ -259,6 +307,7 @@ describe('AuthController (e2e, Task 2.13)', () => {
 
       const logoutRes = await request(app.getHttpServer())
         .post('/auth/logout')
+        .set('Origin', CLIENT_ORIGIN)
         .set('Authorization', `Bearer ${body.accessToken}`)
         .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
         .set('X-CSRF-Token', csrf);
@@ -266,6 +315,7 @@ describe('AuthController (e2e, Task 2.13)', () => {
 
       const refreshAfterLogout = await request(app.getHttpServer())
         .post('/auth/refresh')
+        .set('Origin', CLIENT_ORIGIN)
         .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
         .set('X-CSRF-Token', csrf);
       expect(refreshAfterLogout.status).toBe(401);
@@ -278,6 +328,7 @@ describe('AuthController (e2e, Task 2.13)', () => {
 
       const logoutRes = await request(app.getHttpServer())
         .post('/auth/logout?everywhere=true')
+        .set('Origin', CLIENT_ORIGIN)
         .set('Authorization', `Bearer ${session1.body.accessToken}`)
         .set('Cookie', [`refreshToken=${session1.refreshToken}`, `csrf=${session1.csrf}`])
         .set('X-CSRF-Token', session1.csrf);
@@ -285,10 +336,12 @@ describe('AuthController (e2e, Task 2.13)', () => {
 
       const refreshSession1 = await request(app.getHttpServer())
         .post('/auth/refresh')
+        .set('Origin', CLIENT_ORIGIN)
         .set('Cookie', [`refreshToken=${session1.refreshToken}`, `csrf=${session1.csrf}`])
         .set('X-CSRF-Token', session1.csrf);
       const refreshSession2 = await request(app.getHttpServer())
         .post('/auth/refresh')
+        .set('Origin', CLIENT_ORIGIN)
         .set('Cookie', [`refreshToken=${session2.refreshToken}`, `csrf=${session2.csrf}`])
         .set('X-CSRF-Token', session2.csrf);
 
@@ -299,16 +352,89 @@ describe('AuthController (e2e, Task 2.13)', () => {
       expect(user!.tokenVersion).toBeGreaterThan(0);
     });
 
-    it('no CSRF header at all -> 204 (not enforced, same deviation as refresh)', async () => {
+    it('no X-CSRF-Token header -> 403 CSRF_MISMATCH, and nothing is revoked', async () => {
       const { email } = await insertUser();
-      const { body, refreshToken } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+      const { body, refreshToken, csrf } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/logout')
+        .set('Origin', CLIENT_ORIGIN)
+        .set('Authorization', `Bearer ${body.accessToken}`)
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`]);
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('CSRF_MISMATCH');
+
+      const stillValid = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Origin', CLIENT_ORIGIN)
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`]);
+      expect(stillValid.status).toBe(200);
+    });
+
+    it('wrong X-CSRF-Token header -> 403 CSRF_MISMATCH', async () => {
+      const { email } = await insertUser();
+      const { body, refreshToken, csrf } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/logout')
+        .set('Origin', CLIENT_ORIGIN)
+        .set('Authorization', `Bearer ${body.accessToken}`)
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
+        .set('X-CSRF-Token', 'not-the-real-csrf-value');
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('CSRF_MISMATCH');
+    });
+
+    it('right X-CSRF-Token but wrong Origin -> 403 CSRF_MISMATCH', async () => {
+      const { email } = await insertUser();
+      const { body, refreshToken, csrf } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+
+      const res = await request(app.getHttpServer())
+        .post('/auth/logout')
+        .set('Origin', 'http://evil.example')
+        .set('Authorization', `Bearer ${body.accessToken}`)
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
+        .set('X-CSRF-Token', csrf);
+
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('CSRF_MISMATCH');
+    });
+
+    it('right X-CSRF-Token but missing Origin -> 403 CSRF_MISMATCH', async () => {
+      const { email } = await insertUser();
+      const { body, refreshToken, csrf } = await loginAndGetCookies(email, KNOWN_PASSWORD);
 
       const res = await request(app.getHttpServer())
         .post('/auth/logout')
         .set('Authorization', `Bearer ${body.accessToken}`)
-        .set('Cookie', [`refreshToken=${refreshToken}`]);
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
+        .set('X-CSRF-Token', csrf);
 
-      expect(res.status).toBe(204);
+      expect(res.status).toBe(403);
+      expect(res.body.errorCode).toBe('CSRF_MISMATCH');
+    });
+
+    it('works right after a "page reload": refresh (Origin only) mints the token, logout with it -> 204', async () => {
+      const { email } = await insertUser();
+      const { refreshToken, csrf } = await loginAndGetCookies(email, KNOWN_PASSWORD);
+
+      // Reload: the client has no in-memory token, refreshes with the cookie only.
+      const refreshRes = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .set('Origin', CLIENT_ORIGIN)
+        .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`]);
+      expect(refreshRes.status).toBe(200);
+      const cookies = refreshRes.headers['set-cookie'] as unknown as string[];
+
+      const logoutRes = await request(app.getHttpServer())
+        .post('/auth/logout')
+        .set('Origin', CLIENT_ORIGIN)
+        .set('Authorization', `Bearer ${refreshRes.body.accessToken}`)
+        .set('Cookie', [`refreshToken=${extractCookie(cookies, 'refreshToken')}`, `csrf=${extractCookie(cookies, 'csrf')}`])
+        .set('X-CSRF-Token', refreshRes.body.csrfToken);
+      expect(logoutRes.status).toBe(204);
     });
   });
 
@@ -381,6 +507,7 @@ describe('AuthController (e2e, Task 2.13)', () => {
       // Old session's refresh token is now revoked (tokenVersion bump / family revoke).
       const refreshAfter = await request(app.getHttpServer())
         .post('/auth/refresh')
+        .set('Origin', CLIENT_ORIGIN)
         .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
         .set('X-CSRF-Token', csrf);
       expect(refreshAfter.status).toBe(401);
@@ -565,6 +692,7 @@ describe('AuthController (e2e, Task 2.13)', () => {
 
       const refreshAfter = await request(app.getHttpServer())
         .post('/auth/refresh')
+        .set('Origin', CLIENT_ORIGIN)
         .set('Cookie', [`refreshToken=${refreshToken}`, `csrf=${csrf}`])
         .set('X-CSRF-Token', csrf);
       expect(refreshAfter.status).toBe(401);
@@ -676,6 +804,7 @@ describe('AuthController (e2e, Task 2.13)', () => {
 
       const refreshRes = await request(app.getHttpServer())
         .post('/auth/refresh')
+        .set('Origin', CLIENT_ORIGIN)
         .set('Cookie', [`refreshToken=${refreshToken1}`, `csrf=${csrf1}`])
         .set('X-CSRF-Token', csrf1);
       expect(refreshRes.status).toBe(200);
@@ -687,6 +816,7 @@ describe('AuthController (e2e, Task 2.13)', () => {
 
       const logoutRes = await request(app.getHttpServer())
         .post('/auth/logout')
+        .set('Origin', CLIENT_ORIGIN)
         .set('Authorization', `Bearer ${refreshRes.body.accessToken}`)
         .set('Cookie', [`refreshToken=${refreshToken2}`, `csrf=${csrf2}`])
         .set('X-CSRF-Token', csrf2);
@@ -695,6 +825,7 @@ describe('AuthController (e2e, Task 2.13)', () => {
       // The session is now fully wound down — the last-issued refresh token no longer works.
       const refreshAfterLogout = await request(app.getHttpServer())
         .post('/auth/refresh')
+        .set('Origin', CLIENT_ORIGIN)
         .set('Cookie', [`refreshToken=${refreshToken2}`, `csrf=${csrf2}`])
         .set('X-CSRF-Token', csrf2);
       expect(refreshAfterLogout.status).toBe(401);

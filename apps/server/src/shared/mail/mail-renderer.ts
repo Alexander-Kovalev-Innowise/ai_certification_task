@@ -112,6 +112,16 @@ const BODY_BUILDERS: Record<string, BodyBuilder> = {
     cta: { label: 'Log in', url: buildClientUrl(c, '/login') },
   }),
 
+  // First activation (trainer setup / coach invite accepted) - not sent after an anonymous ShareLink registration.
+  [JOB_TYPES.EMAIL_WELCOME]: (d, c) => ({
+    subject: `Welcome to ${BRAND}`,
+    paragraphs: [
+      greeting(optStr(d, 'firstName')),
+      `Welcome to ${BRAND} - the place where trainers, coaches, players and parents plan training sessions and stay in sync. Your account is ready.`,
+    ],
+    cta: { label: 'Sign in', url: buildClientUrl(c, '/login') },
+  }),
+
   [JOB_TYPES.EMAIL_COACH_INVITE]: (d, c) => {
     const business = str(d, 'trainerBusinessName', 'A trainer');
     const message = optStr(d, 'message');
@@ -187,6 +197,24 @@ const BODY_BUILDERS: Record<string, BodyBuilder> = {
     }
   },
 
+  // Camp/evaluation sign-up -> "create your account later". The CTA is the join page carrying the conversion token,
+  // so the registration form arrives pre-filled.
+  [JOB_TYPES.EMAIL_CAMP_CONVERSION_LINK]: (d, c) => {
+    const trainer = str(d, 'trainerBusinessName', 'your trainer');
+    return {
+      subject: `Finish creating your ${BRAND} account with ${trainer}`,
+      paragraphs: [
+        greeting(optStr(d, 'firstName')),
+        `Thanks for signing up with ${trainer}. Create your ${BRAND} account to see schedules and stay connected - we already filled in your details, you only need to choose a password.`,
+      ],
+      cta: {
+        label: 'Create my account',
+        url: buildClientUrl(c, `/join/${encodeURIComponent(str(d, 'shareLinkCode'))}`, { camp: str(d, 'conversionToken') }),
+      },
+      footnote: 'This link expires in 7 days.',
+    };
+  },
+
   [JOB_TYPES.EMAIL_COACH_OVERRIDE_NOTIFY]: (d, c) => ({
     subject: `${str(d, 'trainerBusinessName', 'Your trainer')} scheduled you despite an availability conflict`,
     paragraphs: [
@@ -196,6 +224,20 @@ const BODY_BUILDERS: Record<string, BodyBuilder> = {
     ],
     cta: { label: 'View your schedule', url: buildClientUrl(c, '/my-times') },
   }),
+
+  [JOB_TYPES.EMAIL_COACH_CHANGE_REQUEST]: (d, c) => {
+    const coach = str(d, 'coachName', 'A coach');
+    const session = optStr(d, 'sessionLabel');
+    return {
+      subject: `${coach} asked you to change an assignment`,
+      paragraphs: [
+        greeting(optStr(d, 'trainerFirstName')),
+        `${coach} asked for a change to an assignment that conflicts with their availability${session ? ` (${session})` : ''}.`,
+        `Their message: ${str(d, 'message')}`,
+      ],
+      cta: { label: 'Open your coaches', url: buildClientUrl(c, '/coaches') },
+    };
+  },
 };
 
 export function hasMailTemplate(templateId: string): boolean {

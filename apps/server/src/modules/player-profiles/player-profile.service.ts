@@ -189,8 +189,9 @@ export class PlayerProfileService {
 
     const updated = await this.playerProfilesRepository.update(id, {
       ...(dto.name !== undefined ? { name: dto.name } : {}),
-      ...(dto.school !== undefined ? { school: dto.school } : {}),
-      ...(dto.jerseyNumber !== undefined ? { jerseyNumber: dto.jerseyNumber } : {}),
+      // '' clears the optional field (stored as NULL).
+      ...(dto.school !== undefined ? { school: dto.school.trim() || null } : {}),
+      ...(dto.jerseyNumber !== undefined ? { jerseyNumber: dto.jerseyNumber.trim() || null } : {}),
       ...(dto.photoUrl !== undefined ? { photoUrl: dto.photoUrl } : {}),
       ...(dto.emergencyContact !== undefined ? { emergencyContact: dto.emergencyContact as Prisma.InputJsonValue } : {}),
       ...(dto.allowChildTokenSpendWithoutApproval !== undefined

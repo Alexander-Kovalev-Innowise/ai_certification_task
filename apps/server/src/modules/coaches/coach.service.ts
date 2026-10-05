@@ -231,8 +231,18 @@ export class CoachService {
         limit,
         cursor: cursor?.keyset,
       });
-      for (const cp of profiles.slice(0, limit)) {
-        items.push(this.toProfileRow(cp));
+      const page = profiles.slice(0, limit);
+      const changeRequests = await this.coachesRepository.findOpenChangeRequests(
+        trainerId,
+        page.map((cp) => cp.id),
+      );
+      for (const cp of page) {
+        const row = this.toProfileRow(cp);
+        const request = changeRequests.get(cp.id);
+        row.changeRequest = request
+          ? { overrideId: request.id, message: request.message, requestedAt: request.requestedAt, sessionLabel: request.sessionLabel }
+          : null;
+        items.push(row);
         last = { createdAt: cp.joinedAt.toISOString(), id: `p:${cp.id}` };
       }
       hasMore = profiles.length > limit;
