@@ -3,10 +3,23 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { apiRequest } from '../lib/api/apiClient';
+import { parseApiErrorBody } from '../lib/api/apiError';
+import { useTrainerContextStore } from '../stores/useTrainerContextStore';
 import type { MeBootstrapResponse } from '../types/bootstrap';
 
 async function fetchBootstrap(): Promise<MeBootstrapResponse> {
-  const res = await apiRequest('/me/bootstrap');
+  let res = await apiRequest('/me/bootstrap');
+
+  // The selected trainer context lives in a cookie that outlives the session. When another family signs in on the
+  // same browser, that stale selection is not one of their connections (403 TENANT_CONTEXT_INVALID): drop it and
+  // load the bootstrap again without a context instead of leaving the portal broken.
+  if (res.status === 403 && useTrainerContextStore.getState().activeTrainerId) {
+    const body = await parseApiErrorBody(res.clone());
+    if (body?.errorCode === 'TENANT_CONTEXT_INVALID') {
+      useTrainerContextStore.getState().setActiveTrainerId(null);
+      res = await apiRequest('/me/bootstrap');
+    }
+  }
 
   if (!res.ok) {
     throw new Error(`GET /me/bootstrap failed with status ${res.status}`);

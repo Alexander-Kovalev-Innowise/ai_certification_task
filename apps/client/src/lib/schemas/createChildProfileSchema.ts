@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+import { personNameSchema } from './common';
+import { optionalHttpUrlSchema, optionalTextSchema } from './optionalFields';
+
 // api §4.3 `CreateChildProfileDto`, reproduced: `name` max100,
 // `dateOfBirth` ISO date string (server derives age, validated 1-18 — BR
 // "1-18 years"), `gender` enum, `school` max200 optional, `photoUrl` optional
@@ -31,11 +34,11 @@ function parseAge(dateOfBirth: string): number | null {
 
 export const createChildProfileSchema = z
   .object({
-    name: z.string().min(1, "Name is required.").max(100),
+    name: personNameSchema('Name'),
     dateOfBirth: z.string().min(1, 'Date of birth is required.'),
     gender: z.enum(GENDERS, { message: 'Select a gender.' }),
-    school: z.string().max(200).optional().or(z.literal('')),
-    photoUrl: z.string().url('Enter a valid URL.').optional().or(z.literal('')),
+    school: optionalTextSchema('School', 200).optional(),
+    photoUrl: optionalHttpUrlSchema('Photo URL').optional(),
     trainerIds: z.array(z.string()).optional(),
   })
   .superRefine((values, ctx) => {

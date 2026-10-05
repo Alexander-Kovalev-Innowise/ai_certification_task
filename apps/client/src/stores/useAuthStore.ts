@@ -7,6 +7,13 @@ export interface AuthSession {
   user: UserSummaryDto;
   expiresAt: number;
   isImpersonating?: boolean;
+  // Deviation (see auth-session-response.dto.ts server-side): the
+  // double-submit CSRF cookie is set on apps/server's own origin (:3000),
+  // which apps/client's document.cookie (origin :3001) can never read —
+  // cookie JS-access is strictly per-origin, unlike cookie transmission on
+  // a credentialed fetch. The server now also returns the same token value
+  // in the response body specifically so it can be stored here instead.
+  csrfToken: string;
 }
 
 export interface AuthState {
@@ -14,6 +21,7 @@ export interface AuthState {
   user: UserSummaryDto | null;
   expiresAt: number | null;
   isImpersonating: boolean;
+  csrfToken: string | null;
   setSession: (session: AuthSession) => void;
   clear: () => void;
 }
@@ -23,6 +31,7 @@ const initialState = {
   user: null,
   expiresAt: null,
   isImpersonating: false,
+  csrfToken: null,
 } satisfies Omit<AuthState, 'setSession' | 'clear'>;
 
 // fe §6.1 — a small hand-rolled Zustand store, NOT React Context. Context
@@ -37,7 +46,7 @@ const initialState = {
 // call Zustand's in-memory `set`, nothing browser-storage-backed.
 export const useAuthStore = create<AuthState>((set) => ({
   ...initialState,
-  setSession: ({ accessToken, user, expiresAt, isImpersonating = false }) =>
-    set({ accessToken, user, expiresAt, isImpersonating }),
+  setSession: ({ accessToken, user, expiresAt, isImpersonating = false, csrfToken }) =>
+    set({ accessToken, user, expiresAt, isImpersonating, csrfToken }),
   clear: () => set({ ...initialState }),
 }));

@@ -68,7 +68,7 @@ describe("useAuthStore's boot sequence (refreshSession)", () => {
   });
 
   it('short-circuits to false without calling fetch at all when already impersonating', async () => {
-    useAuthStore.getState().setSession({ accessToken: 'imp-token', user: testUser, expiresAt: Date.now() + 60_000, isImpersonating: true });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 'imp-token', user: testUser, expiresAt: Date.now() + 60_000, isImpersonating: true });
 
     const result = await refreshSession();
 

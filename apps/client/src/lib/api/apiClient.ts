@@ -12,11 +12,6 @@ import { parseApiErrorBody } from './apiError';
 // next.config.mjs's root-.env loader (Task 0.5).
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
-// Double-submit CSRF cookie name (session-cookies.util.ts's CSRF_COOKIE,
-// mirrored here — non-httpOnly by server design specifically so client JS
-// can read and echo it, arch §6.4).
-const CSRF_COOKIE = 'csrf';
-
 export class SessionExpiredError extends Error {
   constructor() {
     super('Session expired');
@@ -94,14 +89,6 @@ interface ApiRequestOptions extends Omit<RequestInit, 'headers'> {
   _isRetry?: boolean;
 }
 
-function readCsrfCookie(): string | null {
-  if (typeof document === 'undefined') {
-    return null;
-  }
-  const match = document.cookie.match(new RegExp(`(?:^|; )${CSRF_COOKIE}=([^;]*)`));
-  return match ? decodeURIComponent(match[1] ?? '') : null;
-}
-
 /**
  * fe §6.2 — narrow helper for the two calls that need X-CSRF-Token per the
  * double-submit design (arch §6.4): refreshSession() and logout(). Kept
@@ -109,9 +96,19 @@ function readCsrfCookie(): string | null {
  * header to routes that don't check it is harmless, but attaching it
  * *inconsistently* would itself be a signal something's wrong, so it stays
  * scoped to the two routes that actually require it.
+ *
+ * Reads the token from useAuthStore, NOT document.cookie (deviation — see
+ * auth-session-response.dto.ts server-side and useAuthStore.ts's AuthSession
+ * comment). The `csrf` cookie is set on apps/server's own origin; apps/client
+ * runs on a different origin, and document.cookie can only ever see cookies
+ * belonging to the page's own origin, so the original "read it client-side
+ * from the cookie" design could never actually work here — every refresh/
+ * logout call failed CSRF validation unconditionally. The server now also
+ * returns the same token value in the response body specifically so it can
+ * be stored in memory instead.
  */
 function csrfHeaders(): Record<string, string> {
-  const csrf = readCsrfCookie();
+  const csrf = useAuthStore.getState().csrfToken;
   return csrf ? { 'X-CSRF-Token': csrf } : {};
 }
 
@@ -134,7 +131,24 @@ function redirectToLogin(): void {
  * untouched admin cookie) belongs to ImpersonationBanner (Task 16.1) — this
  * function only needs to know not to pretend a refresh is possible.
  */
-export async function refreshSession(): Promise<boolean> {
+export function refreshSession(): Promise<boolean> {
+  // Single-flight: the refresh token rotates on every use and the server
+  // treats a second use of the same token as theft, revoking the whole
+  // family. Concurrent callers (React StrictMode's double-mounted boot
+  // effect in dev, several queries 401-ing at once) must therefore share
+  // ONE request, never fire one each — otherwise the loser's 401 also kills
+  // the winner's brand-new session and the user is logged out on reload.
+  if (!inflightRefresh) {
+    inflightRefresh = performRefresh().finally(() => {
+      inflightRefresh = null;
+    });
+  }
+  return inflightRefresh;
+}
+
+let inflightRefresh: Promise<boolean> | null = null;
+
+async function performRefresh(): Promise<boolean> {
   if (useAuthStore.getState().isImpersonating) {
     return false;
   }
@@ -154,6 +168,7 @@ export async function refreshSession(): Promise<boolean> {
     accessToken: session.accessToken,
     user: session.user,
     expiresAt: Date.now() + session.expiresIn * 1000,
+    csrfToken: session.csrfToken,
   });
   return true;
 }

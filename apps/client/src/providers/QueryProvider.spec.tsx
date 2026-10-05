@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 
 import { ErrorBoundary } from '../components/shared/ErrorBoundary';
 import { FatalApiError } from '../lib/api/apiClient';
+import { useAuthStore } from '../stores/useAuthStore';
 
 import { QueryProvider } from './QueryProvider';
 
@@ -67,5 +68,61 @@ describe('QueryProvider throwOnError wiring', () => {
 
     await waitFor(() => expect(screen.getByText('query reported its own error')).toBeInTheDocument());
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+function sessionFor(id: string, isImpersonating = false) {
+  return {
+    accessToken: `token-${id}`,
+    expiresAt: Date.now() + 60_000,
+    csrfToken: '',
+    isImpersonating,
+    user: { id, email: `${id}@example.com`, role: 'TRAINER' as const, accountType: 'ADULT' as const, firstName: id, lastName: 'User', mustChangePassword: false },
+  };
+}
+
+// A different identity (sign out -> sign in as someone else, or entering/leaving
+// impersonation) must never be served the previous identity's cached server state.
+describe('QueryProvider identity change', () => {
+  function IdentityProbe({ onFetch }: { onFetch: () => string }) {
+    const { data } = useQuery({ queryKey: ['me', 'bootstrap'], queryFn: async () => onFetch() });
+    return <div>{data ?? 'loading'}</div>;
+  }
+
+  afterEach(() => act(() => useAuthStore.getState().clear()));
+
+  it('drops cached queries and refetches when the signed-in user changes', async () => {
+    let calls = 0;
+    const onFetch = () => `payload-${++calls}`;
+    act(() => useAuthStore.getState().setSession(sessionFor('admin')));
+
+    render(
+      <QueryProvider>
+        <IdentityProbe onFetch={onFetch} />
+      </QueryProvider>,
+    );
+    expect(await screen.findByText('payload-1')).toBeInTheDocument();
+
+    act(() => useAuthStore.getState().setSession(sessionFor('trainer', true)));
+
+    expect(await screen.findByText('payload-2')).toBeInTheDocument();
+  });
+
+  it('keeps the cache when only the token is refreshed for the same identity', async () => {
+    let calls = 0;
+    const onFetch = () => `payload-${++calls}`;
+    act(() => useAuthStore.getState().setSession(sessionFor('admin')));
+
+    render(
+      <QueryProvider>
+        <IdentityProbe onFetch={onFetch} />
+      </QueryProvider>,
+    );
+    expect(await screen.findByText('payload-1')).toBeInTheDocument();
+
+    act(() => useAuthStore.getState().setSession({ ...sessionFor('admin'), accessToken: 'refreshed' }));
+
+    await waitFor(() => expect(screen.getByText('payload-1')).toBeInTheDocument());
+    expect(calls).toBe(1);
   });
 });

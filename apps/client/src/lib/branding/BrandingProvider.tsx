@@ -1,12 +1,14 @@
 'use client';
 
-import { createContext, useContext, useMemo, type CSSProperties, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, type CSSProperties, type ReactNode } from 'react';
+
+import { DEFAULT_ACCENT_HEX, useBrandAccentStore } from '../../stores/useBrandAccentStore';
 
 import { darkenColor, hexToRgb, lightenColor } from './color-transform';
 
-// fe §1.2 — platform default (mint), used pre-branding and for the Super
+// fe §1.2 — platform default (green, Task/designs), used pre-branding and for the Super
 // Admin's own un-impersonated session ("no trainer to derive from", fe §8).
-const DEFAULT_PRIMARY_COLOR_HEX = '#6EE7B7';
+const DEFAULT_PRIMARY_COLOR_HEX = '#00B300';
 // fe §8 point 4 — "falling back to the platform default mark
 // (default_logo.svg) when null". Served from apps/client/public/ (Next.js
 // static-file convention), sourced from Task/designs/default_logo.svg.
@@ -59,6 +61,10 @@ const BrandingContext = createContext<ComputedBranding | null>(null);
  * BrandingLivePreview component to consume without re-implementing the
  * `derivedPalette`-vs-raw-hex/null-branding fallback chain itself.
  */
+export function useOptionalBranding(): ComputedBranding | null {
+  return useContext(BrandingContext);
+}
+
 export function useBranding(): ComputedBranding {
   const ctx = useContext(BrandingContext);
   if (!ctx) {
@@ -126,6 +132,13 @@ export interface BrandingProviderProps {
  */
 export function BrandingProvider({ branding, children }: BrandingProviderProps) {
   const computed = useMemo(() => computeBranding(branding), [branding]);
+  const setAccentHex = useBrandAccentStore((state) => state.setAccentHex);
+
+  // Let the root-level shader background follow this tenant's accent.
+  useEffect(() => {
+    setAccentHex(computed.primaryColorHex);
+    return () => setAccentHex(DEFAULT_ACCENT_HEX);
+  }, [computed.primaryColorHex, setAccentHex]);
 
   const style: CSSProperties = {
     ['--brand-primary' as string]: computed.primaryColorHex,

@@ -1,9 +1,17 @@
 'use client';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import { FatalApiError } from '../lib/api/apiClient';
+import { useAuthStore, type AuthState } from '../stores/useAuthStore';
+
+// Cached server state belongs to ONE identity. A different user id (sign out ->
+// sign in as someone else, SPA navigation) or entering/leaving impersonation must
+// never be served the previous identity's `/me/bootstrap`, profile, rosters, ...
+function identityKey(state: Pick<AuthState, 'user' | 'isImpersonating'>): string {
+  return `${state.user?.id ?? ''}:${state.isImpersonating ? 'imp' : 'own'}`;
+}
 
 // fe §6.3 — TanStack Query owns every server-state read/write cache across
 // the ~45-endpoint API surface; Zustand (useAuthStore/useTrainerContextStore)
@@ -37,6 +45,25 @@ export function QueryProvider({ children }: { children: ReactNode }) {
         },
       }),
   );
+
+  useEffect(() => {
+    let previous = identityKey(useAuthStore.getState());
+    return useAuthStore.subscribe((state) => {
+      const next = identityKey(state);
+      if (next === previous) {
+        return;
+      }
+      previous = next;
+      if (state.user) {
+        // Another identity is now live: wipe every cached result and refetch what is on screen.
+        void queryClient.resetQueries();
+      } else {
+        // Signed out: nothing to refetch (and nothing may be requested without a session).
+        void queryClient.cancelQueries();
+        queryClient.clear();
+      }
+    });
+  }, [queryClient]);
 
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }

@@ -14,9 +14,11 @@ function pastIsoDate(yearsAgo: number): string {
 
 describe('anonymousPlayerRegistrationSchema', () => {
   const base = {
+    parentFirstName: 'Pat',
+    parentLastName: 'Parent',
     email: 'parent@example.com',
     password: 'Password1',
-    phone: '+15551234567',
+    phone: '+14155552671',
     playerName: 'Alex',
     gender: 'MALE' as const,
   };
@@ -61,12 +63,35 @@ describe('anonymousPlayerRegistrationSchema', () => {
   });
 });
 
+describe('anonymousPlayerRegistrationSchema — account holder name', () => {
+  const valid = {
+    parentFirstName: 'Pat',
+    parentLastName: 'Parent',
+    email: 'parent@example.com',
+    password: 'Password1',
+    phone: '+14155552671',
+    playerName: 'Alex',
+    gender: 'MALE' as const,
+    dateOfBirth: pastIsoDate(10),
+    isSelf: 'false' as const,
+  };
+
+  it.each(['parentFirstName', 'parentLastName'] as const)('requires %s, separate from the player name', (field) => {
+    expect(anonymousPlayerRegistrationSchema.safeParse({ ...valid, [field]: '' }).success).toBe(false);
+  });
+});
+
 describe('anonymousCoachAcceptSchema', () => {
-  it('accepts a password satisfying PASSWORD_POLICY and requires nothing else', () => {
-    expect(anonymousCoachAcceptSchema.safeParse({ password: 'Password1' }).success).toBe(true);
+  it('accepts a first name, last name and a password satisfying PASSWORD_POLICY', () => {
+    expect(anonymousCoachAcceptSchema.safeParse({ firstName: 'Casey', lastName: 'Coach', password: 'Password1' }).success).toBe(true);
+  });
+
+  it('requires first and last name', () => {
+    expect(anonymousCoachAcceptSchema.safeParse({ firstName: '', lastName: 'Coach', password: 'Password1' }).success).toBe(false);
+    expect(anonymousCoachAcceptSchema.safeParse({ firstName: 'Casey', lastName: '', password: 'Password1' }).success).toBe(false);
   });
 
   it('rejects a weak password', () => {
-    expect(anonymousCoachAcceptSchema.safeParse({ password: 'weak' }).success).toBe(false);
+    expect(anonymousCoachAcceptSchema.safeParse({ firstName: 'Casey', lastName: 'Coach', password: 'weak' }).success).toBe(false);
   });
 });

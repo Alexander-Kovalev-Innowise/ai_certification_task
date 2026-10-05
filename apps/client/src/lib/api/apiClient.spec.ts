@@ -3,7 +3,7 @@ import { useToastStore } from '../../stores/useToastStore';
 import { useTrainerContextStore } from '../../stores/useTrainerContextStore';
 import type { UserSummaryDto } from '../../types/auth';
 
-import { apiRequest, FatalApiError, publicApiRequest } from './apiClient';
+import { apiRequest, FatalApiError, publicApiRequest, refreshSession } from './apiClient';
 
 const testUser: UserSummaryDto = {
   id: 'user-1',
@@ -58,7 +58,7 @@ describe('apiRequest', () => {
     const [, optionsAnonymous] = (global.fetch as jest.Mock).mock.calls[0];
     expect(optionsAnonymous.headers.Authorization).toBeUndefined();
 
-    useAuthStore.getState().setSession({ accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200));
     await apiRequest('/authenticated');
     const [, optionsAuthenticated] = (global.fetch as jest.Mock).mock.calls[1];
@@ -155,12 +155,40 @@ describe('publicApiRequest', () => {
   });
 
   it('attaches Authorization when an access token is present, but never X-Trainer-Context', async () => {
-    useAuthStore.getState().setSession({ accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200));
 
     await publicApiRequest('/auth/change-password');
 
     const [, options] = (global.fetch as jest.Mock).mock.calls[0];
     expect(options.headers.Authorization).toBe('Bearer token-abc');
+  });
+});
+
+describe('refreshSession — single-flight', () => {
+  beforeEach(() => {
+    useAuthStore.getState().clear();
+    global.fetch = jest.fn();
+  });
+
+  it('shares one POST /auth/refresh between concurrent callers (the refresh token rotates, so a second request would be treated as reuse)', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue(
+      mockResponse(200, { accessToken: 'new-token', expiresIn: 900, csrfToken: 'csrf', user: testUser }),
+    );
+
+    const results = await Promise.all([refreshSession(), refreshSession(), refreshSession()]);
+
+    expect(results).toEqual([true, true, true]);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState().accessToken).toBe('new-token');
+  });
+
+  it('allows a fresh request once the in-flight one has settled', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue(mockResponse(401));
+
+    await refreshSession();
+    await refreshSession();
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 });

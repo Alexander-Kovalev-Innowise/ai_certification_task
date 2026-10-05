@@ -28,14 +28,14 @@ describe('BrandingProvider', () => {
     document.documentElement.style.cssText = '';
   });
 
-  it('falls back to the platform default (mint) and default logo when branding is null (Super Admin, no trainer)', () => {
+  it('falls back to the platform default (green) and default logo when branding is null (Super Admin, no trainer)', () => {
     render(
       <BrandingProvider branding={null}>
         <Probe />
       </BrandingProvider>,
     );
 
-    expect(screen.getByText('#6EE7B7')).toBeInTheDocument();
+    expect(screen.getByText('#00B300')).toBeInTheDocument();
     expect(screen.getByText('/default_logo.svg')).toBeInTheDocument();
   });
 

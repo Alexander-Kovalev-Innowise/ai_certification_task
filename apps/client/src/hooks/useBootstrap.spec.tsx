@@ -33,7 +33,7 @@ function wrapper({ children }: { children: ReactNode }) {
 describe('useBootstrap', () => {
   beforeEach(() => {
     useAuthStore.getState().clear();
-    useAuthStore.getState().setSession({ accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
     global.fetch = jest.fn();
   });
 

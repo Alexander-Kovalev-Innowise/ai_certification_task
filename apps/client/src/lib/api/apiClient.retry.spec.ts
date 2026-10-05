@@ -89,6 +89,7 @@ describe('apiRequest retry behavior (single-retry-then-hard-fail)', () => {
       user: testUser,
       expiresAt: Date.now() + 60_000,
       isImpersonating: true,
+      csrfToken: 'test-csrf-token',
     });
     (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(401));
 

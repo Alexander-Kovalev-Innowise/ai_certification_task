@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
+import { emailSchema, personNameSchema } from './common';
 import { passwordPolicySchema } from './passwordPolicy';
+import { requiredPhoneSchema } from './phone';
 
 export const GENDERS = ['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY'] as const;
 export type Gender = (typeof GENDERS)[number];
@@ -33,10 +35,14 @@ function parseAge(dateOfBirth: string): number | null {
 }
 
 const baseFields = {
-  email: z.string().min(1, 'Email is required.').max(255).email('Enter a valid email address.'),
+  // The account holder's own name — separate from the player's (a parent
+  // registering a child is not the child).
+  parentFirstName: personNameSchema('First name'),
+  parentLastName: personNameSchema('Last name'),
+  email: emailSchema,
   password: passwordPolicySchema,
-  phone: z.string().min(1, 'Phone number is required.'),
-  playerName: z.string().min(1, "Player's name is required.").max(100),
+  phone: requiredPhoneSchema,
+  playerName: personNameSchema("Player's name"),
   dateOfBirth: z.string().min(1, 'Date of birth is required.'),
   gender: z.enum(GENDERS, { message: 'Select a gender.' }),
   // The DOM field is a native <select> ("Me" / "My child"), which — like
@@ -68,15 +74,26 @@ export const anonymousPlayerRegistrationSchema = z
     if (values.isSelf === 'false' && (age < 1 || age > 18)) {
       ctx.addIssue({ code: 'custom', path: ['dateOfBirth'], message: 'Age must be between 1 and 18 years.' });
     }
+    // All players under 18 are parent-managed: a minor cannot register as "Me".
+    if (values.isSelf === 'true' && age < 18) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['dateOfBirth'],
+        message: 'Players under 18 must be registered by a parent - choose "My child".',
+      });
+    }
   });
 
 export type AnonymousPlayerRegistrationFormValues = z.infer<typeof anonymousPlayerRegistrationSchema>;
 
-// api §4.4 COACH_ACCEPT (anonymous) branch — verified against
-// RedeemShareLinkDto/redeemCoachAccept: body is `{ password? }` ONLY, no
-// email field (the target email comes from the link's own `targetEmail`
-// server-side), rendered for `type: 'COACH_UNIQUE'` with no access token.
+// api §4.4 COACH_ACCEPT (anonymous) branch: body is `{ firstName, lastName,
+// password }` — no email field (the target email comes from the link's own
+// `targetEmail` server-side). The new coach's name is collected here rather
+// than derived from the email. Rendered for `type: 'COACH_UNIQUE'` with no
+// access token.
 export const anonymousCoachAcceptSchema = z.object({
+  firstName: personNameSchema('First name'),
+  lastName: personNameSchema('Last name'),
   password: passwordPolicySchema,
 });
 

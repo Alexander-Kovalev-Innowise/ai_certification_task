@@ -27,7 +27,7 @@ describe('useAuthStore', () => {
   });
 
   it('setSession populates every field, defaulting isImpersonating to false', () => {
-    useAuthStore.getState().setSession({ accessToken: 'token-123', user: testUser, expiresAt: 999 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 'token-123', user: testUser, expiresAt: 999 });
 
     const state = useAuthStore.getState();
     expect(state.accessToken).toBe('token-123');
@@ -37,13 +37,13 @@ describe('useAuthStore', () => {
   });
 
   it('setSession honors an explicit isImpersonating: true', () => {
-    useAuthStore.getState().setSession({ accessToken: 'imp-token', user: testUser, expiresAt: 999, isImpersonating: true });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 'imp-token', user: testUser, expiresAt: 999, isImpersonating: true });
 
     expect(useAuthStore.getState().isImpersonating).toBe(true);
   });
 
   it('clear() resets every field back to the initial state', () => {
-    useAuthStore.getState().setSession({ accessToken: 'token-123', user: testUser, expiresAt: 999, isImpersonating: true });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 'token-123', user: testUser, expiresAt: 999, isImpersonating: true });
 
     useAuthStore.getState().clear();
 
@@ -64,7 +64,7 @@ describe('useAuthStore', () => {
   it('never writes to window.localStorage or window.sessionStorage', () => {
     const setItemSpy = jest.spyOn(Storage.prototype, 'setItem');
 
-    useAuthStore.getState().setSession({ accessToken: 'token-123', user: testUser, expiresAt: 999, isImpersonating: true });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 'token-123', user: testUser, expiresAt: 999, isImpersonating: true });
     useAuthStore.getState().clear();
 
     expect(setItemSpy).not.toHaveBeenCalled();

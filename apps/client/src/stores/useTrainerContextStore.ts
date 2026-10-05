@@ -4,6 +4,9 @@ import { create } from 'zustand';
 // both client JS (this store, on load) and a server component (to pre-set
 // the X-Trainer-Context header on the initial request) can read it.
 export const ACTIVE_TRAINER_COOKIE = 'activeTrainerId';
+// A context is a (player profile, trainer) pair: several profiles can train with the same trainer, so the selected
+// profile is remembered next to the trainer (the server only needs the trainer id, X-Trainer-Context).
+export const ACTIVE_PROFILE_COOKIE = 'activeProfileId';
 
 function readCookie(name: string): string | null {
   if (typeof document === 'undefined') {
@@ -32,7 +35,10 @@ function writeCookie(name: string, value: string | null): void {
 
 export interface TrainerContextState {
   activeTrainerId: string | null;
+  activeProfileId: string | null;
   setActiveTrainerId: (trainerId: string | null) => void;
+  /** Selects one (player profile, trainer) context. */
+  setActiveContext: (trainerId: string, profileId: string) => void;
 }
 
 // fe §6.3: "{ activeTrainerId: string | null }, backed by a non-httpOnly
@@ -46,8 +52,15 @@ export interface TrainerContextState {
 // `setActiveTrainerId` with `queryClient.invalidateQueries(...)`.
 export const useTrainerContextStore = create<TrainerContextState>((set) => ({
   activeTrainerId: readCookie(ACTIVE_TRAINER_COOKIE),
+  activeProfileId: readCookie(ACTIVE_PROFILE_COOKIE),
   setActiveTrainerId: (trainerId) => {
     writeCookie(ACTIVE_TRAINER_COOKIE, trainerId);
-    set({ activeTrainerId: trainerId });
+    writeCookie(ACTIVE_PROFILE_COOKIE, null);
+    set({ activeTrainerId: trainerId, activeProfileId: null });
+  },
+  setActiveContext: (trainerId, profileId) => {
+    writeCookie(ACTIVE_TRAINER_COOKIE, trainerId);
+    writeCookie(ACTIVE_PROFILE_COOKIE, profileId);
+    set({ activeTrainerId: trainerId, activeProfileId: profileId });
   },
 }));

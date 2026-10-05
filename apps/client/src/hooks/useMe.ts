@@ -20,6 +20,7 @@ export interface MeProfile {
   photoUrl: string | null;
   emailVerified: boolean;
   mustChangePassword: boolean;
+  notificationPrefs?: Record<string, boolean> | null;
   createdAt: string;
 }
 

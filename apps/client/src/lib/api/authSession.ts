@@ -15,5 +15,6 @@ export function toAuthSession(dto: AuthSessionResponseDto, isImpersonating = fal
     user: dto.user,
     expiresAt: Date.now() + dto.expiresIn * 1000,
     isImpersonating,
+    csrfToken: dto.csrfToken,
   };
 }

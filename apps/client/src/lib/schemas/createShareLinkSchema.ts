@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { optionalEmailSchema } from './optionalFields';
+
 // api §4.4 `CreateShareLinkDto`, reproduced: `type` enum
 // `PLAYER_STATIC | COACH_UNIQUE`; `targetEmail` conditionally required via
 // `.superRefine`, mirroring the server DTO's
@@ -11,7 +13,7 @@ export type ShareLinkType = (typeof SHARE_LINK_TYPES)[number];
 export const createShareLinkSchema = z
   .object({
     type: z.enum(SHARE_LINK_TYPES, { message: 'Select a link type.' }),
-    targetEmail: z.string().max(255).email('Enter a valid email address.').optional().or(z.literal('')),
+    targetEmail: optionalEmailSchema().optional(),
   })
   .superRefine((values, ctx) => {
     if (values.type === 'COACH_UNIQUE' && !values.targetEmail) {

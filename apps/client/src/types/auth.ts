@@ -17,10 +17,13 @@ export interface UserSummaryDto {
   firstName: string;
   lastName: string;
   mustChangePassword: boolean;
+  /** Only filled by GET /me/bootstrap (and kept in step after a profile save); drives the shell's user pill. */
+  photoUrl?: string | null;
 }
 
 export interface AuthSessionResponseDto {
   accessToken: string;
   expiresIn: number;
+  csrfToken: string;
   user: UserSummaryDto;
 }
