@@ -17,4 +17,8 @@ export interface UploadFileResult {
 export abstract class StorageService {
   abstract upload(options: UploadFileOptions): Promise<UploadFileResult>;
   abstract delete(key: string): Promise<void>;
+  /** Reads a stored object's bytes; rejects when the key does not exist. */
+  abstract read(key: string): Promise<Buffer>;
+  /** Returns the storage key when `url` was issued by this adapter, else null. */
+  abstract keyFromUrl(url: string): string | null;
 }

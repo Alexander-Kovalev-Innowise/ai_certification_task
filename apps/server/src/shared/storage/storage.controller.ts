@@ -11,34 +11,46 @@ import { RequiresCapability } from '../security/decorators/requires-capability.d
 import { Roles } from '../security/decorators/roles.decorator';
 
 import { UploadLogoResponseDto } from './dto/upload-logo-response.dto';
+import { UploadPhotoResponseDto } from './dto/upload-photo-response.dto';
+import { InvalidImageError, prepareLogo, preparePhoto } from './image-processor';
 import { StorageService } from './storage.service';
 
 // api §4.1: "400 VALIDATION_ERROR bad hex / logo >2MB / wrong type".
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
-const EXTENSION_BY_MIME_TYPE: Record<string, string> = {
-  'image/png': '.png',
-  'image/jpeg': '.jpg',
-  'image/webp': '.webp',
-};
+const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
+// Hard cap handed to multer so an oversize body is never buffered in full;
+// the precise 2MB limit is enforced in requireFile() so the error stays a 400.
+const MULTER_HARD_LIMIT_BYTES = 3 * 1024 * 1024;
+
+interface UploadedImage {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+}
+
+function toBadRequest(error: unknown): never {
+  if (error instanceof InvalidImageError) {
+    throw new BadRequestException({ message: error.message, errorCode: 'VALIDATION_ERROR' });
+  }
+  throw error;
+}
 
 /**
  * Task 8.2 (api §4.1 "PATCH /trainers/:id/branding": "Multipart or two-step
  * (POST logo to shared/storage first, then this PATCH with the resulting
  * URL — matches FileStorageService port design)"). This is the pre-upload
- * step: stores the raw bytes via StorageService and hands back the URL to
- * PATCH with. It does NOT enqueue MEDIA_LOGO_RESIZE itself — that happens
- * inside PortalBrandingService.updateBranding (Task 8.1, `modules/trainers`)
- * when the PATCH actually sets `logoUrl`, atomically with the TrainerProfile
- * write. Keeping the resize-job trigger out of this controller is what lets
- * `shared/storage` stay a one-directional dependency of `shared/jobs`
- * (JobsModule already imports StorageModule for StorageService) instead of a
- * circular one.
+ * step: validates and normalises the image, stores it via StorageService and
+ * hands back the URL to PATCH with. It does NOT enqueue MEDIA_LOGO_RESIZE
+ * itself — that happens inside PortalBrandingService.updateBranding (Task
+ * 8.1, `modules/trainers`) when the PATCH actually sets `logoUrl`,
+ * atomically with the TrainerProfile write. Keeping the resize-job trigger
+ * out of this controller is what lets `shared/storage` stay a
+ * one-directional dependency of `shared/jobs` (JobsModule already imports
+ * StorageModule for StorageService) instead of a circular one.
  *
  * Same `@RequiresCapability(MANAGE_PORTAL_BRANDING)` gate as the PATCH this
- * feeds — uploading a logo has no purpose outside that flow in Epic-01
- * scope, so it gets the same authorization as the endpoint that consumes it
- * rather than a broader "any authenticated user can upload files" capability
- * that doesn't exist yet.
+ * feeds. US-01.11 adds POST /storage/photo for profile photos, gated by
+ * EDIT_OWN_PROFILE instead.
  */
 @ApiTags('storage')
 @ApiBearerAuth()
@@ -50,29 +62,63 @@ export class StorageController {
   @RequiresCapability(Capability.MANAGE_PORTAL_BRANDING)
   @Post('logo')
   @HttpCode(HttpStatus.CREATED)
-  @UseInterceptors(FileInterceptor('file'))
-  @ApiOperation({ summary: 'Pre-upload step for PATCH /trainers/:id/branding — uploads raw logo bytes, returns a URL to PATCH with' })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MULTER_HARD_LIMIT_BYTES } }))
+  @ApiOperation({
+    summary:
+      'Pre-upload step for PATCH /trainers/:id/branding — accepts PNG/JPEG/WebP/SVG (<=2MB), stores a 200x200-bounded PNG, returns its URL',
+  })
   @ApiResponse({ status: 201, type: UploadLogoResponseDto })
   @ApiResponse({ status: 400 })
   @ApiResponse({ status: 403 })
-  async uploadLogo(@UploadedFile() file?: { buffer: Buffer; mimetype: string; size: number }): Promise<UploadLogoResponseDto> {
+  async uploadLogo(@UploadedFile() file?: UploadedImage): Promise<UploadLogoResponseDto> {
+    const input = this.requireFile(file, MAX_LOGO_BYTES, 'Logo');
+
+    // The image is validated (by content, not declared mimetype), SVG is
+    // rasterised, and everything is normalised to a 200x200-bounded PNG right
+    // here — the stored key, extension and content type always agree
+    // (.png / image/png). The later MEDIA_LOGO_RESIZE job is then an
+    // idempotent safety net, never the thing that fixes up a bad extension.
+    const body = await prepareLogo(input).catch(toBadRequest);
+
+    // Flat key, no "/" — LocalStorageAdapter only writes into one directory.
+    const key = `logo-${randomUUID()}.png`;
+    const result = await this.storageService.upload({ key, contentType: 'image/png', body });
+
+    return plainToInstance(UploadLogoResponseDto, { logoUrl: result.url }, { excludeExtraneousValues: true });
+  }
+
+  // US-01.11. Any authenticated user (incl. CHILD logins — EDIT_OWN_PROFILE is
+  // not in CHILD_DENIED) can upload a profile photo; the URL is then PATCHed
+  // onto /me, /player-profiles/:id or a new child profile.
+  @RequiresCapability(Capability.EDIT_OWN_PROFILE)
+  @Post('photo')
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MULTER_HARD_LIMIT_BYTES } }))
+  @ApiOperation({
+    summary: 'Upload a profile photo (PNG/JPEG/WebP/SVG, <=2MB) — stores a 512px photo and a 128px thumbnail, returns both URLs',
+  })
+  @ApiResponse({ status: 201, type: UploadPhotoResponseDto })
+  @ApiResponse({ status: 400 })
+  async uploadPhoto(@UploadedFile() file?: UploadedImage): Promise<UploadPhotoResponseDto> {
+    const input = this.requireFile(file, MAX_PHOTO_BYTES, 'Photo');
+    const { photo, thumbnail } = await preparePhoto(input).catch(toBadRequest);
+
+    const id = randomUUID();
+    const [full, thumb] = await Promise.all([
+      this.storageService.upload({ key: `photo-${id}.webp`, contentType: 'image/webp', body: photo }),
+      this.storageService.upload({ key: `photo-${id}-thumb.webp`, contentType: 'image/webp', body: thumbnail }),
+    ]);
+
+    return plainToInstance(UploadPhotoResponseDto, { url: full.url, thumbnailUrl: thumb.url }, { excludeExtraneousValues: true });
+  }
+
+  private requireFile(file: UploadedImage | undefined, maxBytes: number, label: string): Buffer {
     if (!file) {
       throw new BadRequestException({ message: 'A "file" field is required', errorCode: 'VALIDATION_ERROR' });
     }
-    if (file.size > MAX_LOGO_BYTES) {
-      throw new BadRequestException({ message: 'Logo exceeds the 2MB limit', errorCode: 'VALIDATION_ERROR' });
+    if (file.size > maxBytes) {
+      throw new BadRequestException({ message: `${label} exceeds the 2MB limit`, errorCode: 'VALIDATION_ERROR' });
     }
-    const extension = EXTENSION_BY_MIME_TYPE[file.mimetype];
-    if (!extension) {
-      throw new BadRequestException({ message: `Unsupported logo type: ${file.mimetype}`, errorCode: 'VALIDATION_ERROR' });
-    }
-
-    // Flat key, no "/" — LocalStorageAdapter (Task 1.11) only mkdir's its
-    // single UPLOAD_DIR, not arbitrary nested subdirectories a slash in the
-    // key would imply, so a nested key would fail dev/test uploads.
-    const key = `logo-${randomUUID()}${extension}`;
-    const result = await this.storageService.upload({ key, contentType: file.mimetype, body: file.buffer });
-
-    return plainToInstance(UploadLogoResponseDto, { logoUrl: result.url }, { excludeExtraneousValues: true });
+    return file.buffer;
   }
 }

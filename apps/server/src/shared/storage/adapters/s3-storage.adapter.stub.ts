@@ -20,4 +20,12 @@ export class S3StorageAdapterStub extends StorageService {
   delete(_key: string): Promise<void> {
     return Promise.reject(new Error('S3StorageAdapterStub is not implemented'));
   }
+
+  read(_key: string): Promise<Buffer> {
+    return Promise.reject(new Error('S3StorageAdapterStub is not implemented'));
+  }
+
+  keyFromUrl(_url: string): string | null {
+    return null;
+  }
 }

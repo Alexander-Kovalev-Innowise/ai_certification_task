@@ -6,6 +6,7 @@ import { LocalStorageAdapter } from './adapters/local-storage.adapter';
 import { S3StorageAdapterStub } from './adapters/s3-storage.adapter.stub';
 import { StorageController } from './storage.controller';
 import { StorageService } from './storage.service';
+import { UploadsController } from './uploads.controller';
 
 // Task 1.11. Binds StorageService (the port) to a concrete adapter via
 // `useClass`, keyed off STORAGE_PROVIDER (shared/config) — INT-002's
@@ -15,7 +16,7 @@ import { StorageService } from './storage.service';
 // transitively via JobsModule's import, so no new top-level AppModule import
 // is needed for Nest to register this controller's route.
 @Module({
-  controllers: [StorageController],
+  controllers: [StorageController, UploadsController],
   providers: [
     {
       provide: StorageService,
