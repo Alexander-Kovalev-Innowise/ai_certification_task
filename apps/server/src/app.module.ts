@@ -5,7 +5,9 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './modules/auth/auth.module';
 import { AvailabilityModule } from './modules/availability/availability.module';
 import { ChildApprovalsModule } from './modules/child-approvals/child-approvals.module';
+import { ChildLoginsModule } from './modules/child-logins/child-logins.module';
 import { CoachesModule } from './modules/coaches/coaches.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ImpersonationModule } from './modules/impersonation/impersonation.module';
 import { PlayerProfilesModule } from './modules/player-profiles/player-profiles.module';
 import { ShareLinksModule } from './modules/share-links/share-links.module';
@@ -63,7 +65,9 @@ import { TenantContextInterceptor } from './shared/tenancy/tenant-context.interc
     PlayerProfilesModule,
     AvailabilityModule,
     ChildApprovalsModule,
+    ChildLoginsModule,
     ImpersonationModule,
+    DashboardModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthThrottlerGuard },
