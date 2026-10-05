@@ -12,6 +12,9 @@ import { resetPasswordSchema, type ResetPasswordFormValues } from '../../lib/sch
 
 import { RateLimitNotice } from './RateLimitNotice';
 
+const INPUT_CLASSNAME =
+  'w-full min-w-0';
+
 // fe §4.1 "/reset-password?token=" — 404/410 both render this same distinct
 // copy, linking back to /forgot-password rather than a generic error page.
 // A missing token in the URL (no ?token= at all) is treated identically —
@@ -40,7 +43,11 @@ export function ResetPasswordForm() {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<ResetPasswordFormValues>({ resolver: zodResolver(resetPasswordSchema) });
+  } = useForm<ResetPasswordFormValues>({
+    resolver: zodResolver(resetPasswordSchema),
+    mode: 'onTouched',
+    defaultValues: { newPassword: '' },
+  });
 
   const onSubmit = handleSubmit(async (values) => {
     if (!token) {
@@ -90,14 +97,15 @@ export function ResetPasswordForm() {
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-md">
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="reset-password-new-password" className="text-body text-text-secondary">
+        <label htmlFor="reset-password-new-password" className="field-label">
           New password
         </label>
         <input
           id="reset-password-new-password"
           type="password"
+          placeholder="At least 8 characters"
           autoComplete="new-password"
-          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary"
+          className={INPUT_CLASSNAME}
           aria-invalid={!!errors.newPassword}
           aria-describedby={errors.newPassword ? 'reset-password-new-password-error' : undefined}
           {...register('newPassword')}
@@ -119,7 +127,7 @@ export function ResetPasswordForm() {
       <button
         type="submit"
         disabled={status === 'submitting'}
-        className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+        className="btn btn-primary"
       >
         {status === 'submitting' ? 'Resetting…' : 'Reset password'}
       </button>

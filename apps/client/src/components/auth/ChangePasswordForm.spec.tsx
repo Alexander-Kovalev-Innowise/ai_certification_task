@@ -44,7 +44,7 @@ describe('ChangePasswordForm', () => {
   });
 
   it('omits the currentPassword field entirely on the forced path (mustChangePassword: true)', () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: userWith(true), expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith(true), expiresAt: Date.now() + 60_000 });
 
     render(<ChangePasswordForm />);
 
@@ -53,7 +53,7 @@ describe('ChangePasswordForm', () => {
   });
 
   it('shows the currentPassword field on the voluntary path (mustChangePassword: false)', () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: userWith(false), expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith(false), expiresAt: Date.now() + 60_000 });
 
     render(<ChangePasswordForm />);
 
@@ -61,7 +61,7 @@ describe('ChangePasswordForm', () => {
   });
 
   it('submits only newPassword on the forced path', async () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: userWith(true), expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith(true), expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, { message: 'Password changed.' }));
 
     render(<ChangePasswordForm />);
@@ -74,7 +74,7 @@ describe('ChangePasswordForm', () => {
   });
 
   it('clears the session and redirects to /login on success, rather than patching mustChangePassword and going to /dashboard', async () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: userWith(true), expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith(true), expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, { message: 'Password changed.' }));
 
     render(<ChangePasswordForm />);
@@ -87,7 +87,7 @@ describe('ChangePasswordForm', () => {
   });
 
   it('shows "Current password is incorrect." on a 401 from the voluntary path', async () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: userWith(false), expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith(false), expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock).mockResolvedValueOnce(
       mockResponse(401, { statusCode: 401, errorCode: 'UNAUTHORIZED', message: 'x', error: 'Unauthorized', path: '/auth/change-password', requestId: 'r-1' }),
     );

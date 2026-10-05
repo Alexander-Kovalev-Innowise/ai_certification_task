@@ -55,6 +55,15 @@ describe('TrainerSetupForm', () => {
     expect(await screen.findByText('This link is invalid or has expired.')).toBeInTheDocument();
   });
 
+  it('shows the invalid/expired copy when the one-time link was already used (409)', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(409));
+
+    render(<TrainerSetupForm />);
+    await fillAndSubmit();
+
+    expect(await screen.findByText('This link is invalid or has expired.')).toBeInTheDocument();
+  });
+
   it('sends setupToken + password and auto-logs-in on success, redirecting to /dashboard', async () => {
     (global.fetch as jest.Mock).mockResolvedValueOnce(
       mockResponse(200, {

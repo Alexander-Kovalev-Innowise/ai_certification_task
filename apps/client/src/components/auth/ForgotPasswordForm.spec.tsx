@@ -63,7 +63,7 @@ describe('ForgotPasswordForm', () => {
     render(<ForgotPasswordForm />);
     await fillAndSubmit('not-an-email');
 
-    await waitFor(() => expect(screen.getByText('Enter a valid email address.')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Enter a valid email address, e.g. name@example.com.')).toBeInTheDocument());
     expect(global.fetch).not.toHaveBeenCalled();
   });
 });

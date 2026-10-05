@@ -8,7 +8,7 @@ export default async function JoinPage({ params }: { params: Promise<{ code: str
   const { code } = await params;
 
   return (
-    <main className="flex min-h-screen w-full items-center justify-center bg-surface-0 p-lg">
+    <main className="flex min-h-screen w-full items-center justify-center p-lg">
       <div className="w-full max-w-[28rem]">
         <ShareLinkDispatcher code={code} />
       </div>

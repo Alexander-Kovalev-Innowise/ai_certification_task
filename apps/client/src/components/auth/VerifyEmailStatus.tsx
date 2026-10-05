@@ -1,5 +1,6 @@
 'use client';
 
+import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -7,6 +8,8 @@ import { useEffect, useState } from 'react';
 import { publicApiRequest } from '../../lib/api/apiClient';
 
 type Status = 'checking' | 'verified' | 'invalid';
+
+const inFlightVerifications = new Map<string, Promise<boolean>>();
 
 // fe §4.1 "/verify-email?token=" (api §1 POST /auth/verify-email) — a
 // landing confirmation only, never a gate: architecture §6.5 is explicit
@@ -16,6 +19,7 @@ type Status = 'checking' | 'verified' | 'invalid';
 // success/failure of the link that was just clicked.
 export function VerifyEmailStatus() {
   const token = useSearchParams().get('token');
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<Status>(token ? 'checking' : 'invalid');
 
   useEffect(() => {
@@ -25,26 +29,40 @@ export function VerifyEmailStatus() {
 
     let cancelled = false;
 
-    publicApiRequest('/auth/verify-email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
-    })
-      .then((res) => {
-        if (!cancelled) {
-          setStatus(res.ok ? 'verified' : 'invalid');
-        }
+    // The token is single-use. React StrictMode (dev) runs this effect twice; both runs must share ONE
+    // request, otherwise the second one finds the token already consumed and reports "invalid".
+    let verification = inFlightVerifications.get(token);
+    if (!verification) {
+      verification = publicApiRequest('/auth/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
       })
-      .catch(() => {
-        if (!cancelled) {
-          setStatus('invalid');
-        }
-      });
+        .then((res) => {
+          if (res.ok) {
+            // Cached (or still in-flight) `GET /me` says emailVerified:false - drop it
+            // and refetch so the persistent "Verify your email" banner goes away without
+            // a reload. An in-flight fetch must be cancelled first, otherwise
+            // invalidate would just reuse that stale request.
+            void queryClient.cancelQueries({ queryKey: ['me'] }).then(() => queryClient.invalidateQueries({ queryKey: ['me'] }));
+          }
+          return res.ok;
+        })
+        .catch(() => false)
+        .finally(() => inFlightVerifications.delete(token));
+      inFlightVerifications.set(token, verification);
+    }
+
+    void verification.then((ok) => {
+      if (!cancelled) {
+        setStatus(ok ? 'verified' : 'invalid');
+      }
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, queryClient]);
 
   if (status === 'checking') {
     return (

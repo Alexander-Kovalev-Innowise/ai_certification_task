@@ -1,23 +1,18 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import Link from 'next/link';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { z } from 'zod';
 
 import { publicApiRequest } from '../../lib/api/apiClient';
 import { readRetryAfterSeconds } from '../../lib/api/apiError';
+import { forgotPasswordSchema, type ForgotPasswordFormValues } from '../../lib/schemas/forgotPasswordSchema';
 
 import { RateLimitNotice } from './RateLimitNotice';
 
-// api §1 ForgotPasswordDto: `{ email: string }` (@IsEmail). No schemas/
-// file for this one (Task 11.2's Files list is just page.tsx +
-// ForgotPasswordForm.tsx) — this is the one field the DTO carries.
-const forgotPasswordSchema = z.object({
-  email: z.string().min(1, 'Email is required.').max(255).email('Enter a valid email address.'),
-});
-
-type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
+const INPUT_CLASSNAME =
+  'w-full min-w-0';
 
 // fe §4.1 / api §1 — the server ALWAYS 202s with the identical message
 // whether or not the email exists (FR-002 anti-enumeration). The client
@@ -35,7 +30,11 @@ export function ForgotPasswordForm() {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<ForgotPasswordFormValues>({ resolver: zodResolver(forgotPasswordSchema) });
+  } = useForm<ForgotPasswordFormValues>({
+    resolver: zodResolver(forgotPasswordSchema),
+    mode: 'onTouched',
+    defaultValues: { email: '' },
+  });
 
   const onSubmit = handleSubmit(async (values) => {
     setStatus('submitting');
@@ -76,14 +75,16 @@ export function ForgotPasswordForm() {
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-md">
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="forgot-password-email" className="text-body text-text-secondary">
+        <label htmlFor="forgot-password-email" className="field-label">
           Email
         </label>
         <input
           id="forgot-password-email"
           type="email"
+          inputMode="email"
+          placeholder="you@example.com"
           autoComplete="email"
-          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary"
+          className={INPUT_CLASSNAME}
           aria-invalid={!!errors.email}
           aria-describedby={errors.email ? 'forgot-password-email-error' : undefined}
           {...register('email')}
@@ -105,10 +106,14 @@ export function ForgotPasswordForm() {
       <button
         type="submit"
         disabled={status === 'submitting'}
-        className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+        className="btn btn-primary btn-lg mt-xs w-full"
       >
         {status === 'submitting' ? 'Sending…' : 'Send reset link'}
       </button>
+
+      <Link href="/login" className="text-center text-caption text-text-secondary underline underline-offset-4 transition-colors hover:text-brand-primary">
+        Back to sign in
+      </Link>
     </form>
   );
 }

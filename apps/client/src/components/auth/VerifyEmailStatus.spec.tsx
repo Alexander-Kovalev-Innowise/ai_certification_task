@@ -1,4 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render as rtlRender, screen, waitFor } from '@testing-library/react';
+import type { ReactElement } from 'react';
 
 import { VerifyEmailStatus } from './VerifyEmailStatus';
 
@@ -7,6 +9,11 @@ let searchParams = new URLSearchParams('token=abc123');
 jest.mock('next/navigation', () => ({
   useSearchParams: () => searchParams,
 }));
+
+function render(ui: ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 
 function mockResponse(status: number, body: unknown = {}): Response {
   return {

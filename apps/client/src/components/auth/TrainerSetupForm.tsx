@@ -14,6 +14,9 @@ import type { AuthSessionResponseDto } from '../../types/auth';
 const CHANGE_PASSWORD_PATH = '/change-password';
 const DASHBOARD_PATH = '/dashboard';
 
+const INPUT_CLASSNAME =
+  'w-full min-w-0';
+
 // fe §4.1 "/register?token=" (api §1 POST /auth/register,
 // CompleteTrainerSetupDto) — NOT public self-registration (BR-005): a
 // Super-Admin-provisioned trainer completing their own setup link. Same
@@ -41,7 +44,11 @@ export function TrainerSetupForm() {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<CompleteTrainerSetupFormValues>({ resolver: zodResolver(completeTrainerSetupSchema) });
+  } = useForm<CompleteTrainerSetupFormValues>({
+    resolver: zodResolver(completeTrainerSetupSchema),
+    mode: 'onTouched',
+    defaultValues: { password: '' },
+  });
 
   const onSubmit = handleSubmit(async (values) => {
     if (!token) {
@@ -57,7 +64,8 @@ export function TrainerSetupForm() {
       body: JSON.stringify({ setupToken: token, password: values.password }),
     });
 
-    if (res.status === 404 || res.status === 410) {
+    // 409 = the one-time setup link was already used (POST /auth/register).
+    if (res.status === 404 || res.status === 409 || res.status === 410) {
       setStatus('invalid');
       return;
     }
@@ -79,14 +87,15 @@ export function TrainerSetupForm() {
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-md">
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="trainer-setup-password" className="text-body text-text-secondary">
+        <label htmlFor="trainer-setup-password" className="field-label">
           Choose a password
         </label>
         <input
           id="trainer-setup-password"
           type="password"
+          placeholder="At least 8 characters"
           autoComplete="new-password"
-          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary"
+          className={INPUT_CLASSNAME}
           aria-invalid={!!errors.password}
           aria-describedby={errors.password ? 'trainer-setup-password-error' : undefined}
           {...register('password')}
@@ -107,7 +116,7 @@ export function TrainerSetupForm() {
       <button
         type="submit"
         disabled={status === 'submitting'}
-        className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+        className="btn btn-primary"
       >
         {status === 'submitting' ? 'Setting up…' : 'Complete setup'}
       </button>

@@ -12,6 +12,9 @@ import { useAuthStore } from '../../stores/useAuthStore';
 
 const LOGIN_PATH = '/login';
 
+const INPUT_CLASSNAME =
+  'w-full min-w-0';
+
 /**
  * fe §4.7 / Task 11.6 — dual-mode: mounted both as the forced landing
  * (`/change-password`, `mustChangePassword: true`) and later reused
@@ -48,7 +51,11 @@ export function ChangePasswordForm() {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<ChangePasswordFormValues>({ resolver: zodResolver(schema) });
+  } = useForm<ChangePasswordFormValues>({
+    resolver: zodResolver(schema),
+    mode: 'onTouched',
+    defaultValues: { currentPassword: '', newPassword: '' },
+  });
 
   const onSubmit = handleSubmit(async (values) => {
     setStatus('submitting');
@@ -93,14 +100,15 @@ export function ChangePasswordForm() {
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-md">
       {requireCurrentPassword && (
         <div className="flex flex-col gap-xxs">
-          <label htmlFor="change-password-current" className="text-body text-text-secondary">
+          <label htmlFor="change-password-current" className="field-label">
             Current password
           </label>
           <input
             id="change-password-current"
             type="password"
+            placeholder="Your current password"
             autoComplete="current-password"
-            className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary"
+            className={INPUT_CLASSNAME}
             aria-invalid={!!errors.currentPassword}
             aria-describedby={errors.currentPassword ? 'change-password-current-error' : undefined}
             {...register('currentPassword')}
@@ -114,14 +122,15 @@ export function ChangePasswordForm() {
       )}
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="change-password-new" className="text-body text-text-secondary">
+        <label htmlFor="change-password-new" className="field-label">
           New password
         </label>
         <input
           id="change-password-new"
           type="password"
+          placeholder="At least 8 characters"
           autoComplete="new-password"
-          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary"
+          className={INPUT_CLASSNAME}
           aria-invalid={!!errors.newPassword}
           aria-describedby={errors.newPassword ? 'change-password-new-error' : undefined}
           {...register('newPassword')}
@@ -142,7 +151,7 @@ export function ChangePasswordForm() {
       <button
         type="submit"
         disabled={status === 'submitting'}
-        className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+        className="btn btn-primary"
       >
         {status === 'submitting' ? 'Changing…' : 'Change password'}
       </button>

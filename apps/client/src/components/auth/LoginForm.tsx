@@ -9,9 +9,11 @@ import { useForm } from 'react-hook-form';
 import { publicApiRequest } from '../../lib/api/apiClient';
 import { parseApiErrorBody, readRetryAfterSeconds } from '../../lib/api/apiError';
 import { toAuthSession } from '../../lib/api/authSession';
+import { safeNextPath } from '../../lib/safeNextPath';
 import { loginSchema, type LoginFormValues } from '../../lib/schemas/loginSchema';
 import { useAuthStore } from '../../stores/useAuthStore';
 import type { AuthSessionResponseDto } from '../../types/auth';
+import { NavIcon } from '../shell/NavIcon';
 
 import { RateLimitNotice } from './RateLimitNotice';
 
@@ -23,20 +25,33 @@ import { RateLimitNotice } from './RateLimitNotice';
 const GENERIC_INVALID_CREDENTIALS = 'Invalid email or password.';
 const ACCOUNT_INACTIVE_MESSAGE = 'Account deactivated. Contact support.';
 
+const INPUT_CLASSNAME =
+  'w-full min-w-0';
+
 const CHANGE_PASSWORD_PATH = '/change-password';
 const DASHBOARD_PATH = '/dashboard';
 
-export function LoginForm() {
+export interface LoginFormProps {
+  /** Post-login destination from the `?next=` query param; honored only if it is a same-origin relative path (see `safeNextPath`). */
+  next?: string | null;
+}
+
+export function LoginForm({ next = null }: LoginFormProps = {}) {
   const router = useRouter();
   const setSession = useAuthStore((state) => state.setSession);
   const [formError, setFormError] = useState<string | null>(null);
   const [retryAfterSeconds, setRetryAfterSeconds] = useState<number | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<LoginFormValues>({ resolver: zodResolver(loginSchema) });
+  } = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+    mode: 'onTouched',
+    defaultValues: { email: '', password: '' },
+  });
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
@@ -63,25 +78,34 @@ export function LoginForm() {
     setSession(toAuthSession(session));
 
     // fe §4.1 Task 11.1 "Do" — mustChangePassword redirects to the forced
-    // landing BEFORE any role dashboard is ever touched.
-    router.push(session.user.mustChangePassword ? CHANGE_PASSWORD_PATH : DASHBOARD_PATH);
+    // landing BEFORE any role dashboard is ever touched — it wins over a
+    // `next` target too. Otherwise a safe `next` (e.g. back to /join/<code>)
+    // beats the default dashboard.
+    router.push(session.user.mustChangePassword ? CHANGE_PASSWORD_PATH : (safeNextPath(next) ?? DASHBOARD_PATH));
   });
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-md">
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="login-email" className="text-body text-text-secondary">
+        <label htmlFor="login-email" className="field-label">
           Email
         </label>
-        <input
-          id="login-email"
-          type="email"
-          autoComplete="email"
-          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary"
-          aria-invalid={!!errors.email}
-          aria-describedby={errors.email ? 'login-email-error' : undefined}
-          {...register('email')}
-        />
+        <div className="relative">
+          <span aria-hidden="true" className="pointer-events-none absolute left-md top-1/2 flex -translate-y-1/2 text-text-subtle">
+            <NavIcon name="mail" size={18} />
+          </span>
+          <input
+            id="login-email"
+            type="email"
+            inputMode="email"
+            placeholder="you@example.com"
+            autoComplete="email"
+            className={`${INPUT_CLASSNAME} pl-[2.75rem]`}
+            aria-invalid={!!errors.email}
+            aria-describedby={errors.email ? 'login-email-error' : undefined}
+            {...register('email')}
+          />
+        </div>
         {errors.email && (
           <p id="login-email-error" role="alert" className="text-caption text-danger">
             {errors.email.message}
@@ -90,18 +114,33 @@ export function LoginForm() {
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="login-password" className="text-body text-text-secondary">
+        <label htmlFor="login-password" className="field-label">
           Password
         </label>
-        <input
-          id="login-password"
-          type="password"
-          autoComplete="current-password"
-          className="rounded-sm border border-border-soft bg-surface-1 p-sm text-body text-text-primary outline-none focus:border-brand-primary"
-          aria-invalid={!!errors.password}
-          aria-describedby={errors.password ? 'login-password-error' : undefined}
-          {...register('password')}
-        />
+        <div className="relative">
+          <span aria-hidden="true" className="pointer-events-none absolute left-md top-1/2 flex -translate-y-1/2 text-text-subtle">
+            <NavIcon name="lock" size={18} />
+          </span>
+          <input
+            id="login-password"
+            type={showPassword ? 'text' : 'password'}
+            placeholder="Your password"
+            autoComplete="current-password"
+            className={`${INPUT_CLASSNAME} pl-[2.75rem] pr-[2.75rem]`}
+            aria-invalid={!!errors.password}
+            aria-describedby={errors.password ? 'login-password-error' : undefined}
+            {...register('password')}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((value) => !value)}
+            aria-label={showPassword ? 'Hide password' : 'Show password'}
+            aria-pressed={showPassword}
+            className="absolute right-xs top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-pill text-text-subtle transition-colors hover:text-ink"
+          >
+            <NavIcon name={showPassword ? 'eye-off' : 'eye'} size={18} />
+          </button>
+        </div>
         {errors.password && (
           <p id="login-password-error" role="alert" className="text-caption text-danger">
             {errors.password.message}
@@ -120,12 +159,12 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={isSubmitting}
-        className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+        className="btn btn-primary btn-lg mt-xs w-full"
       >
         {isSubmitting ? 'Signing in…' : 'Sign in'}
       </button>
 
-      <Link href="/forgot-password" className="text-center text-caption text-text-secondary underline">
+      <Link href="/forgot-password" className="text-center text-caption text-text-secondary underline underline-offset-4 transition-colors hover:text-brand-primary">
         Forgot your password?
       </Link>
     </form>

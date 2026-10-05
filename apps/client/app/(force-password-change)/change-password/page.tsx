@@ -29,7 +29,7 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <main className="flex min-h-screen w-full items-center justify-center bg-surface-0 p-lg">
+    <main className="flex min-h-screen w-full items-center justify-center p-lg">
       <div className="w-full max-w-[28rem]">
         <h1 className="mb-lg font-display text-hero-title text-text-primary">
           {user.mustChangePassword ? 'Set a new password to continue' : 'Change your password'}

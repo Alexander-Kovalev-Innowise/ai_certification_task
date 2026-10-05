@@ -35,7 +35,7 @@ describe('HomePage (root `/`)', () => {
   });
 
   it('redirects to /dashboard when a session exists', () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: userWithRole('TRAINER'), expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWithRole('TRAINER'), expiresAt: Date.now() + 60_000 });
 
     render(<HomePage />);
 

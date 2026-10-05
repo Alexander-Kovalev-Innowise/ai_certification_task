@@ -114,4 +114,49 @@ describe('LoginForm', () => {
 
     expect(await screen.findByText(/Please try again in 45 seconds/)).toBeInTheDocument();
   });
+  describe('?next= redirect', () => {
+    function sessionResponse(mustChangePassword: boolean) {
+      return mockResponse(200, {
+        accessToken: 'token-abc',
+        expiresIn: 900,
+        user: {
+          id: 'user-1',
+          email: 'trainer@example.com',
+          role: 'PLAYER_PARENT',
+          accountType: 'ADULT',
+          firstName: 'A',
+          lastName: 'B',
+          mustChangePassword,
+        },
+      });
+    }
+
+    it('goes to a safe relative next path after login', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(sessionResponse(false));
+
+      render(<LoginForm next="/join/abc123" />);
+      await fillAndSubmit();
+
+      await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/join/abc123'));
+    });
+
+    it.each(['https://evil.example.com', '//evil.example.com', '/\\evil.example.com', 'join/abc'])('ignores the unsafe next %s and goes to /dashboard', async (next) => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(sessionResponse(false));
+
+      render(<LoginForm next={next} />);
+      await fillAndSubmit();
+
+      await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/dashboard'));
+    });
+
+    it('mustChangePassword still wins over next', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(sessionResponse(true));
+
+      render(<LoginForm next="/join/abc123" />);
+      await fillAndSubmit();
+
+      await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/change-password'));
+      expect(pushMock).not.toHaveBeenCalledWith('/join/abc123');
+    });
+  });
 });

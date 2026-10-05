@@ -35,7 +35,7 @@ describe('ChangePasswordPage', () => {
   });
 
   it('renders the forced-landing heading and form when a session exists', () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: testUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: testUser, expiresAt: Date.now() + 60_000 });
 
     render(<ChangePasswordPage />);
 
