@@ -44,6 +44,6 @@ describe('Button', () => {
   it('renders the secondary/ghost variant', () => {
     render(<Button variant="secondary">Cancel</Button>);
     const button = screen.getByRole('button', { name: 'Cancel' });
-    expect(button.className).toContain('border');
+    expect(button.className).toContain('btn-secondary');
   });
 });

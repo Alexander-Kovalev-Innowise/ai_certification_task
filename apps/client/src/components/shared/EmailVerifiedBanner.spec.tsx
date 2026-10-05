@@ -74,7 +74,7 @@ describe('EmailVerifiedBanner', () => {
   });
 
   it('renders nothing when GET /me reports emailVerified: true', async () => {
-    useAuthStore.getState().setSession({ accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, meBody({ emailVerified: true })));
 
     renderBanner();
@@ -87,7 +87,7 @@ describe('EmailVerifiedBanner', () => {
   });
 
   it('shows the banner when GET /me reports emailVerified: false', async () => {
-    useAuthStore.getState().setSession({ accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, meBody()));
 
     renderBanner();
@@ -97,7 +97,7 @@ describe('EmailVerifiedBanner', () => {
   });
 
   it('dismisses the banner on click, without blocking navigation (no modal)', async () => {
-    useAuthStore.getState().setSession({ accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, meBody()));
 
     renderBanner();
@@ -109,7 +109,7 @@ describe('EmailVerifiedBanner', () => {
   });
 
   it('disables the resend button with a Retry-After countdown after a 429', async () => {
-    useAuthStore.getState().setSession({ accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 'token-abc', user: testUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock)
       .mockResolvedValueOnce(mockResponse(200, meBody()))
       .mockResolvedValueOnce(mockResponse(429, {}, { 'Retry-After': '30' }));

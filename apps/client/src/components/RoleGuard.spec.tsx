@@ -30,7 +30,7 @@ describe('RoleGuard', () => {
   });
 
   it('renders children when the session role is in the allow list', () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: userWithRole('TRAINER'), expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWithRole('TRAINER'), expiresAt: Date.now() + 60_000 });
 
     render(
       <RoleGuard allow="TRAINER">
@@ -43,7 +43,7 @@ describe('RoleGuard', () => {
   });
 
   it('accepts an array of allowed roles', () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: userWithRole('COACH'), expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWithRole('COACH'), expiresAt: Date.now() + 60_000 });
 
     render(
       <RoleGuard allow={['TRAINER', 'COACH']}>
@@ -66,7 +66,7 @@ describe('RoleGuard', () => {
   });
 
   it("redirects to /dashboard and renders nothing when the session's role isn't allowed", () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: userWithRole('COACH'), expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWithRole('COACH'), expiresAt: Date.now() + 60_000 });
 
     render(
       <RoleGuard allow="TRAINER">

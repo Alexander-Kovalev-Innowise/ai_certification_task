@@ -20,7 +20,7 @@ function BootLoadingScreen() {
       role="status"
       aria-live="polite"
       aria-label="Loading PracticePerfect"
-      className="flex min-h-screen w-full items-center justify-center bg-surface-0"
+      className="flex min-h-screen w-full items-center justify-center"
     >
       <div
         aria-hidden="true"

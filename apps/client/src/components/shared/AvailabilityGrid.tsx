@@ -130,7 +130,7 @@ export function AvailabilityGrid({ subject, mode, slots, onSave, isSaving = fals
                     type="time"
                     value={minutesToHHMM(slot.startTime)}
                     onChange={(event) => updateRow(index, { startTime: hhmmToMinutes(event.target.value) })}
-                    className="rounded-sm border border-border-soft bg-surface-0 p-xxs text-body text-text-primary"
+                    className=""
                   />
                   <span className="text-caption text-text-secondary">to</span>
                   <input
@@ -138,7 +138,7 @@ export function AvailabilityGrid({ subject, mode, slots, onSave, isSaving = fals
                     type="time"
                     value={minutesToHHMM(slot.endTime)}
                     onChange={(event) => updateRow(index, { endTime: hhmmToMinutes(event.target.value) })}
-                    className="rounded-sm border border-border-soft bg-surface-0 p-xxs text-body text-text-primary"
+                    className=""
                   />
                   <button type="button" onClick={() => removeRow(index)} className={ROW_BUTTON_CLASSNAME}>
                     Remove
@@ -159,7 +159,7 @@ export function AvailabilityGrid({ subject, mode, slots, onSave, isSaving = fals
           type="button"
           onClick={handleSave}
           disabled={isSaving}
-          className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+          className="btn btn-primary"
         >
           {isSaving ? 'Saving…' : 'Save'}
         </button>

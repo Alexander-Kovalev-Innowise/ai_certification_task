@@ -31,7 +31,7 @@ function setImpersonatingSession(expiresInMs: number): void {
     exp,
     act: { sub: 'admin-42', role: 'SUPER_ADMIN', imp: 'implog-99' },
   });
-  useAuthStore.getState().setSession({ accessToken, user: TARGET_USER, expiresAt: exp * 1000, isImpersonating: true });
+  useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken, user: TARGET_USER, expiresAt: exp * 1000, isImpersonating: true });
 }
 
 // Mirrors ImpersonationBanner.tsx's own (unexported) TICK_MS — the `useNow`
@@ -70,7 +70,7 @@ describe('ImpersonationBanner', () => {
 
   it('renders nothing for a normal (non-impersonation) session, i.e. a token with no act claim', () => {
     const accessToken = makeToken({ sub: TARGET_USER.id, role: TARGET_USER.role, exp: Math.floor((Date.now() + 60_000) / 1000) });
-    useAuthStore.getState().setSession({ accessToken, user: TARGET_USER, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken, user: TARGET_USER, expiresAt: Date.now() + 60_000 });
 
     render(<ImpersonationBanner />);
     expect(screen.queryByTestId('impersonation-banner')).not.toBeInTheDocument();

@@ -15,10 +15,9 @@ export interface ButtonProps extends Omit<HTMLMotionProps<'button'>, 'className'
 // destructive (danger-based gradient, "never tenant-colored, for the same
 // legibility-of-danger reason as the impersonation banner").
 const VARIANT_CLASSNAME: Record<ButtonVariant, string> = {
-  primary: 'bg-brand-primary text-[#0D0D0D] shadow-button-primary',
-  secondary:
-    'border border-border-soft bg-transparent text-text-primary hover:border-brand-primary hover:text-brand-primary',
-  destructive: 'bg-gradient-to-r from-danger to-[#B91C1C] text-white',
+  primary: 'btn btn-primary',
+  secondary: 'btn btn-secondary',
+  destructive: 'btn btn-danger',
 };
 
 // fe §1.3 — "-translate-y-1 scale-1.02 on hover ... spring-eased
@@ -43,7 +42,7 @@ export function Button({ variant = 'primary', className = '', type = 'button', d
       disabled={disabled}
       whileHover={disabled ? undefined : HOVER_TRANSFORM}
       transition={HOVER_TRANSITION}
-      className={`rounded-sm p-sm text-body font-semibold disabled:opacity-40 disabled:hover:translate-y-0 ${VARIANT_CLASSNAME[variant]} ${className}`}
+      className={`${VARIANT_CLASSNAME[variant]} ${className}`}
       {...props}
     />
   );

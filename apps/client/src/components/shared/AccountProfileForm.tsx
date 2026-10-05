@@ -1,11 +1,16 @@
 'use client';
 
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useMemo, useState } from 'react';
+import { Controller, useForm } from 'react-hook-form';
 
 import { apiRequest } from '../../lib/api/apiClient';
 import { parseApiErrorBody } from '../../lib/api/apiError';
+import { buildAccountProfileSchema, type AccountProfileFormValues } from '../../lib/schemas/accountProfileSchema';
 import type { AccountType } from '../../types/auth';
+
+import { PhoneInput } from './PhoneInput';
+import { PhotoUploadField } from './PhotoUploadField';
 
 // api §3 MeResponseDto's editable slice (Task 2.22) — the fields
 // AccountProfileForm reads/writes. Deliberately NOT the same shape as
@@ -23,10 +28,9 @@ export interface AccountProfileValues {
   lastName: string;
   phone: string | null;
   photoUrl: string | null;
-  // Optional, not required: the real `MeResponseDto` (api §3/Task 2.22)
-  // never exposes this field back on GET/PATCH — `UpdateMeDto` accepts it as
-  // write-only, so a fetched `MeProfile` (useMe.ts) has no value to prefill
-  // from and this always falls back to the defaults in `toDefaultValues`.
+  // Optional: null/absent until the user first saves their preferences, in
+  // which case `toDefaultValues` falls back to the defaults. `GET/PATCH /me`
+  // return the saved value so the checkboxes reflect what is stored.
   notificationPrefs?: Record<string, boolean> | null;
 }
 
@@ -37,21 +41,12 @@ export interface AccountProfileFormProps {
   onSaved: (updated: AccountProfileValues) => void;
 }
 
-interface FormValues {
-  firstName: string;
-  lastName: string;
-  phone: string;
-  photoUrl: string;
-  emailNotifications: boolean;
-  smsNotifications: boolean;
-}
-
 const GENERIC_SAVE_ERROR = "Some changes couldn't be saved. Please try again.";
 
 const INPUT_CLASSNAME =
-  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
+  'w-full min-w-0';
 
-function toDefaultValues(profile: AccountProfileValues): FormValues {
+function toDefaultValues(profile: AccountProfileValues): AccountProfileFormValues {
   const prefs = profile.notificationPrefs ?? {};
   return {
     firstName: profile.firstName,
@@ -78,25 +73,32 @@ function toDefaultValues(profile: AccountProfileValues): FormValues {
 // `role="alert"` stopgap every prior phase has used). Task 18.1.
 export function AccountProfileForm({ profile, accountType, onSaved }: AccountProfileFormProps) {
   const isChild = accountType === 'CHILD';
+  const schema = useMemo(() => buildAccountProfileSchema(isChild), [isChild]);
   const [formError, setFormError] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors, isSubmitting },
-  } = useForm<FormValues>({ defaultValues: toDefaultValues(profile) });
+  } = useForm<AccountProfileFormValues>({
+    resolver: zodResolver(schema),
+    mode: 'onTouched',
+    defaultValues: toDefaultValues(profile),
+  });
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
 
     const body: Record<string, unknown> = {
-      photoUrl: values.photoUrl.trim() || undefined,
+      // null clears a removed photo (PATCH /me accepts null).
+      photoUrl: values.photoUrl || null,
       notificationPrefs: { email: values.emailNotifications, sms: values.smsNotifications },
     };
     if (!isChild) {
       body.firstName = values.firstName;
       body.lastName = values.lastName;
-      body.phone = values.phone.trim() || undefined;
+      body.phone = values.phone || undefined;
     }
 
     const res = await apiRequest('/me', {
@@ -120,55 +122,95 @@ export function AccountProfileForm({ profile, accountType, onSaved }: AccountPro
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-md">
       {!isChild && (
         <>
-          <div className="flex flex-col gap-xxs">
-            <label htmlFor="account-profile-first-name" className="text-body text-text-secondary">
-              First name
-            </label>
-            <input
-              id="account-profile-first-name"
-              className={INPUT_CLASSNAME}
-              aria-invalid={!!errors.firstName}
-              {...register('firstName', { required: 'First name is required.', maxLength: { value: 100, message: 'First name must be 100 characters or fewer.' } })}
-            />
-            {errors.firstName && (
-              <p role="alert" className="text-caption text-danger">
-                {errors.firstName.message}
-              </p>
-            )}
+          <div className="flex flex-wrap gap-md">
+            <div className="flex min-w-0 flex-[1_1_11rem] flex-col gap-xxs">
+              <label htmlFor="account-profile-first-name" className="field-label">
+                First name
+              </label>
+              <input
+                id="account-profile-first-name"
+                placeholder="John"
+                autoComplete="given-name"
+                className={INPUT_CLASSNAME}
+                aria-invalid={!!errors.firstName}
+                aria-describedby={errors.firstName ? 'account-profile-first-name-error' : undefined}
+                {...register('firstName')}
+              />
+              {errors.firstName && (
+                <p id="account-profile-first-name-error" role="alert" className="text-caption text-danger">
+                  {errors.firstName.message}
+                </p>
+              )}
+            </div>
+
+            <div className="flex min-w-0 flex-[1_1_11rem] flex-col gap-xxs">
+              <label htmlFor="account-profile-last-name" className="field-label">
+                Last name
+              </label>
+              <input
+                id="account-profile-last-name"
+                placeholder="Smith"
+                autoComplete="family-name"
+                className={INPUT_CLASSNAME}
+                aria-invalid={!!errors.lastName}
+                aria-describedby={errors.lastName ? 'account-profile-last-name-error' : undefined}
+                {...register('lastName')}
+              />
+              {errors.lastName && (
+                <p id="account-profile-last-name-error" role="alert" className="text-caption text-danger">
+                  {errors.lastName.message}
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="account-profile-last-name" className="text-body text-text-secondary">
-              Last name
-            </label>
-            <input
-              id="account-profile-last-name"
-              className={INPUT_CLASSNAME}
-              aria-invalid={!!errors.lastName}
-              {...register('lastName', { required: 'Last name is required.', maxLength: { value: 100, message: 'Last name must be 100 characters or fewer.' } })}
-            />
-            {errors.lastName && (
-              <p role="alert" className="text-caption text-danger">
-                {errors.lastName.message}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-xxs">
-            <label htmlFor="account-profile-phone" className="text-body text-text-secondary">
+            <label htmlFor="account-profile-phone" className="field-label">
               Phone
             </label>
-            <input id="account-profile-phone" type="tel" className={INPUT_CLASSNAME} {...register('phone')} />
+            <Controller
+              control={control}
+              name="phone"
+              render={({ field }) => (
+                <PhoneInput
+                  id="account-profile-phone"
+                  value={field.value ?? ''}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  className={INPUT_CLASSNAME}
+                  aria-invalid={!!errors.phone}
+                  aria-describedby={errors.phone ? 'account-profile-phone-error' : undefined}
+                />
+              )}
+            />
+            {errors.phone && (
+              <p id="account-profile-phone-error" role="alert" className="text-caption text-danger">
+                {errors.phone.message}
+              </p>
+            )}
           </div>
         </>
       )}
 
-      <div className="flex flex-col gap-xxs">
-        <label htmlFor="account-profile-photo" className="text-body text-text-secondary">
-          Photo URL
-        </label>
-        <input id="account-profile-photo" className={INPUT_CLASSNAME} {...register('photoUrl')} />
-      </div>
+      <Controller
+        control={control}
+        name="photoUrl"
+        render={({ field }) => (
+          <PhotoUploadField
+            id="account-profile-photo"
+            label="Photo"
+            value={field.value ?? ''}
+            onChange={(url) => field.onChange(url)}
+            initials={`${profile.firstName.charAt(0)}${profile.lastName.charAt(0)}`.toUpperCase()}
+            disabled={isSubmitting}
+          />
+        )}
+      />
+      {errors.photoUrl && (
+        <p id="account-profile-photo-error" role="alert" className="text-caption text-danger">
+          {errors.photoUrl.message}
+        </p>
+      )}
 
       <fieldset className="flex flex-col gap-xs">
         <legend className="text-body text-text-secondary">Notifications</legend>
@@ -192,7 +234,7 @@ export function AccountProfileForm({ profile, accountType, onSaved }: AccountPro
         <button
           type="submit"
           disabled={isSubmitting}
-          className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+          className="btn btn-primary"
         >
           {isSubmitting ? 'Saving…' : 'Save'}
         </button>

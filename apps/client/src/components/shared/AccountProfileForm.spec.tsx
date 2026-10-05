@@ -44,13 +44,27 @@ describe('AccountProfileForm', () => {
     expect(screen.getByLabelText(/last name/i)).toHaveValue('Kovalev');
   });
 
+  it('pre-checks the notification boxes from the saved preferences returned by GET /me', () => {
+    render(<AccountProfileForm profile={profile({ notificationPrefs: { email: false, sms: true } })} accountType="ADULT" onSaved={jest.fn()} />);
+
+    expect(screen.getByLabelText('Email notifications')).not.toBeChecked();
+    expect(screen.getByLabelText('SMS notifications')).toBeChecked();
+  });
+
+  it('falls back to email on / sms off when nothing has been saved yet', () => {
+    render(<AccountProfileForm profile={profile({ notificationPrefs: null })} accountType="ADULT" onSaved={jest.fn()} />);
+
+    expect(screen.getByLabelText('Email notifications')).toBeChecked();
+    expect(screen.getByLabelText('SMS notifications')).not.toBeChecked();
+  });
+
   it('omits firstName/lastName/phone fields entirely for a CHILD account', () => {
     render(<AccountProfileForm profile={profile()} accountType="CHILD" onSaved={jest.fn()} />);
 
     expect(screen.queryByLabelText(/first name/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/last name/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/^phone/i)).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/photo url/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Photo')).toBeInTheDocument();
   });
 
   it('submits PATCH /me with edited fields and calls onSaved', async () => {
@@ -93,5 +107,37 @@ describe('AccountProfileForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /save/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't be saved/i);
+  });
+
+  it('removing the photo sends photoUrl: null so the server clears it', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, profile({ photoUrl: null })));
+
+    render(
+      <AccountProfileForm profile={profile({ photoUrl: 'http://localhost:3000/uploads/photo-abc.webp' })} accountType="ADULT" onSaved={jest.fn()} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /remove photo/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string).photoUrl).toBeNull();
+  });
+
+  it('an uploaded photo URL is sent as photoUrl in the PATCH /me payload', async () => {
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(mockResponse(201, { url: 'http://localhost:3000/uploads/photo-new.webp', thumbnailUrl: 'http://localhost:3000/uploads/photo-new-thumb.webp' }))
+      .mockResolvedValueOnce(mockResponse(200, profile()));
+
+    render(<AccountProfileForm profile={profile()} accountType="ADULT" onSaved={jest.fn()} />);
+
+    fireEvent.change(screen.getByLabelText('Photo'), { target: { files: [new File(['x'], 'me.png', { type: 'image/png' })] } });
+    await waitFor(() => expect(screen.getByRole('img', { name: /photo preview/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect((global.fetch as jest.Mock).mock.calls.length).toBe(2));
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[1] as [string, RequestInit];
+    expect(url).toContain('/me');
+    expect(JSON.parse(init.body as string).photoUrl).toBe('http://localhost:3000/uploads/photo-new.webp');
   });
 });
