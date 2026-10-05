@@ -144,8 +144,12 @@ model User {
   impersonationsAsTarget  ImpersonationLog[]       @relation("Target")
   childPurchaseApprovals  ChildPurchaseApproval[]  @relation("Parent")
   deletionLogsPerformed   UserDeletionLog[]        @relation("DeletedBy")
+  notificationReads       NotificationRead[]
 
   @@index([status, role, createdAt])
+  // Super Admin directory keyset order (createdAt DESC, id DESC): unfiltered and role-only pages read the first N index entries instead of sorting every user.
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@index([role, createdAt(sort: Desc), id(sort: Desc)])
   @@schema("public")
 }
 
@@ -232,13 +236,16 @@ model PlayerTrainerAssociation {
   status          AssociationStatus @default(ACTIVE)
   connectedAt     DateTime          @default(now())
   disconnectedAt  DateTime?
+  // How the player got connected beyond a plain ShareLink (e.g. "CAMP" / "EVALUATION" from a camp-to-user conversion); null = ordinary join.
+  source          String?
 
   trainer       TrainerProfile @relation(fields: [trainerId], references: [id])
   playerProfile PlayerProfile  @relation(fields: [playerProfileId], references: [id])
   shareLink     ShareLink?     @relation(fields: [shareLinkId], references: [id])
 
   @@unique([trainerId, playerProfileId])
-  @@index([trainerId, status])
+  // Roster keyset order (connectedAt DESC, id DESC) per trainer+status; also serves the dashboard's connectedAt range counts. Supersedes (trainerId, status).
+  @@index([trainerId, status, connectedAt(sort: Desc), id(sort: Desc)])
   @@index([playerProfileId, status])
   @@schema("public")
 }
@@ -256,11 +263,29 @@ model ShareLink {
   status          ShareLinkStatus @default(ACTIVE)
   createdAt       DateTime        @default(now())
 
-  trainer      TrainerProfile             @relation(fields: [trainerId], references: [id])
-  createdBy    User                       @relation("ShareLinkCreator", fields: [createdByUserId], references: [id])
-  associations PlayerTrainerAssociation[]
+  trainer         TrainerProfile             @relation(fields: [trainerId], references: [id])
+  createdBy       User                       @relation("ShareLinkCreator", fields: [createdByUserId], references: [id])
+  associations    PlayerTrainerAssociation[]
+  campConversions CampConversion[]
 
   @@index([trainerId, status])
+  @@schema("public")
+}
+
+// Camp/evaluation sign-up -> account conversion (Epic-01 seam for the Epic-08 camp form). Only the SHA-256 of the
+// token is stored; `payload` holds the submitted contact/player data (never secrets).
+model CampConversion {
+  id          String    @id @default(uuid())
+  tokenHash   String    @unique
+  shareLinkId String
+  payload     Json
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  shareLink ShareLink @relation(fields: [shareLinkId], references: [id])
+
+  @@index([shareLinkId])
   @@schema("public")
 }
 
@@ -287,21 +312,39 @@ model Availability {
 }
 
 model CoachAvailabilityOverride {
-  id        String   @id @default(uuid())
-  eventId   String   @db.Uuid // opaque FK, no relation — Epic-02 forward reference (arch §18)
-  coachId   String
-  trainerId String
-  reason    String
-  createdAt DateTime @default(now())
+  id                   String    @id @default(uuid())
+  eventId              String    @db.Uuid // opaque FK, no relation — Epic-02 forward reference (arch §18)
+  coachId              String
+  trainerId            String
+  reason               String
+  createdAt            DateTime  @default(now())
   // Epic-02 stand-in: human label of the session the coach was assigned to anyway (events don't exist until Epic-02).
-  sessionLabel   String?
+  sessionLabel         String?
   // Coach-side acknowledgement of the override notice (US-01.10); null = not yet acknowledged.
-  acknowledgedAt DateTime?
+  acknowledgedAt       DateTime?
+  // Coach asked the trainer to change the assignment (US-01.10 "request change"); the latest request wins.
+  changeRequestedAt    DateTime?
+  changeRequestMessage String?
 
   coach   CoachProfile   @relation(fields: [coachId], references: [id])
   trainer TrainerProfile @relation(fields: [trainerId], references: [id])
 
   @@index([eventId])
+  @@schema("public")
+}
+
+// In-app notifications are derived from live data (never stored); this table only remembers
+// which derived items a user has already seen. `itemKey` is the derived item's stable id.
+model NotificationRead {
+  id      String   @id @default(uuid())
+  userId  String
+  itemKey String
+  readAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemKey])
+  @@index([readAt])
   @@schema("public")
 }
 
@@ -319,6 +362,7 @@ model ImpersonationLog {
 
   @@index([adminUserId])
   @@index([targetUserId])
+  @@index([startedAt])
   @@schema("public")
 }
 

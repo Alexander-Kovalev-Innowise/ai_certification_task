@@ -4,11 +4,13 @@ import { ThrottlerModule } from '@nestjs/throttler';
 
 import { AuthModule } from './modules/auth/auth.module';
 import { AvailabilityModule } from './modules/availability/availability.module';
+import { CampConversionsModule } from './modules/camp-conversions/camp-conversions.module';
 import { ChildApprovalsModule } from './modules/child-approvals/child-approvals.module';
 import { ChildLoginsModule } from './modules/child-logins/child-logins.module';
 import { CoachesModule } from './modules/coaches/coaches.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ImpersonationModule } from './modules/impersonation/impersonation.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PlayerProfilesModule } from './modules/player-profiles/player-profiles.module';
 import { ShareLinksModule } from './modules/share-links/share-links.module';
 import { TrainersModule } from './modules/trainers/trainers.module';
@@ -61,6 +63,7 @@ import { TenantContextInterceptor } from './shared/tenancy/tenant-context.interc
     AuthModule,
     TrainersModule,
     ShareLinksModule,
+    CampConversionsModule,
     CoachesModule,
     PlayerProfilesModule,
     AvailabilityModule,
@@ -68,6 +71,7 @@ import { TenantContextInterceptor } from './shared/tenancy/tenant-context.interc
     ChildLoginsModule,
     ImpersonationModule,
     DashboardModule,
+    NotificationsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthThrottlerGuard },
