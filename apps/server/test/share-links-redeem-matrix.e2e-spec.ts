@@ -134,6 +134,8 @@ describe('ShareLinksController (e2e, Task 4.10) — full redeem branch matrix', 
         email: `${randomUUID()}@example.com`,
         password: 'Password1',
         phone: '+14155552671',
+        parentFirstName: 'Matrix',
+        parentLastName: 'Parent',
         playerName: 'Matrix Player',
         dateOfBirth: '2015-01-01',
         gender: 'OTHER',
@@ -150,7 +152,7 @@ describe('ShareLinksController (e2e, Task 4.10) — full redeem branch matrix', 
 
     const res = await request(app.getHttpServer())
       .post(`/share-links/${link.code}/redeem`)
-      .send({ password: 'Password1' });
+      .send({ password: 'Password1', firstName: 'Matrix', lastName: 'Coach' });
 
     expect(res.status).toBe(201);
     expect(res.body.user).toMatchObject({ role: 'COACH' });

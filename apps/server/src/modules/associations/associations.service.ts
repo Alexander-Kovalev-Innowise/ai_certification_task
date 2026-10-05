@@ -1,6 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 
-import type { PaginatedResponseDto } from '../../shared/http/pagination.dto';
+import { buildPaginatedResponse, decodeCursor } from '../../shared/http/pagination.dto';
+import type { KeysetCursor } from '../../shared/http/pagination.dto';
+import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { AuthContext } from '../../shared/security/auth-context.interface';
 import { resolveShareLinkInvalidReason } from '../share-links/share-link.service';
 import { ShareLinksRepository } from '../share-links/share-links.repository';
@@ -9,7 +11,7 @@ import { AssociationsRepository, ContextRow, PlayerProfileWithAvailability } fro
 import { formatAvailabilitySummary } from './availability-summary.formatter';
 import { ContextEntryDto, ContextListResponseDto } from './dto/context-list-response.dto';
 import type { ListRosterQueryDto } from './dto/list-roster-query.dto';
-import { RosterRowDto } from './dto/roster-row.dto';
+import { RosterPageDto, RosterRowDto } from './dto/roster-row.dto';
 
 export interface AddTrainerAssociationResult {
   statusCode: number;
@@ -37,9 +39,12 @@ export interface AddTrainerAssociationResult {
 // `UsersModule` already uses for `RefreshTokenRepository`.
 @Injectable()
 export class AssociationsService {
+  private readonly logger = new Logger(AssociationsService.name);
+
   constructor(
     private readonly associationsRepository: AssociationsRepository,
     private readonly shareLinksRepository: ShareLinksRepository,
+    private readonly prisma: PrismaService,
   ) {}
 
   /**
@@ -89,8 +94,14 @@ export class AssociationsService {
     let shareLinkId: string | undefined;
 
     if (dto.trainerId) {
+      // Authorization: a parent may only add a trainer they are already
+      // actively connected to (through any of their profiles) - otherwise any
+      // trainer UUID would be attachable. 404 for both "unknown" and "not
+      // yours" so existence is not disclosed.
       const trainer = await this.associationsRepository.findTrainerById(dto.trainerId);
-      if (!trainer) {
+      const authorized =
+        trainer !== null && (await this.associationsRepository.accountHasActiveAssociation(ctx.userId, dto.trainerId));
+      if (!authorized) {
         throw new NotFoundException({ message: 'Trainer not found', errorCode: 'NOT_FOUND' });
       }
       trainerId = dto.trainerId;
@@ -99,7 +110,7 @@ export class AssociationsService {
       if (!link) {
         throw new NotFoundException({ message: 'Unknown ShareLink code', errorCode: 'NOT_FOUND' });
       }
-      if (resolveShareLinkInvalidReason(link) !== null) {
+      if (link.type !== 'PLAYER_STATIC' || resolveShareLinkInvalidReason(link) !== null) {
         throw new NotFoundException({ message: 'ShareLink is no longer available', errorCode: 'NOT_FOUND' });
       }
       trainerId = link.trainerId;
@@ -107,7 +118,15 @@ export class AssociationsService {
     }
 
     const existing = await this.associationsRepository.findActive(trainerId, playerProfileId);
-    const association = await this.associationsRepository.associate({ trainerId, playerProfileId, shareLinkId });
+    // Redeeming a code counts as a use of the link; the association and the
+    // counter commit together.
+    const association = await this.prisma.$transaction(async (tx) => {
+      const row = await this.associationsRepository.associate({ trainerId, playerProfileId, shareLinkId }, tx);
+      if (shareLinkId) {
+        await this.shareLinksRepository.incrementUseCount(shareLinkId, tx);
+      }
+      return row;
+    });
 
     return {
       statusCode: existing ? 200 : 201,
@@ -151,25 +170,71 @@ export class AssociationsService {
    * Own tenant for TRAINER, any for SUPER_ADMIN — same ownership pattern
    * CoachService.listCoaches/ShareLinkService.listShareLinks already use;
    * checked BEFORE the repository call so a mismatched `:id` never reaches
-   * the tenant-guard extension (same reasoning those methods document).
-   * `dayOfWeek`/`startTime`/`endTime` narrow to players with at least one
-   * matching available slot; pagination is an in-memory slice, same
-   * deliberate simplification CoachService.listCoaches uses for its own
-   * bounded roster.
+   * the tenant-guard extension. `dayOfWeek`/`startTime`/`endTime` narrow to
+   * players with at least one matching available slot — in the DATABASE, with
+   * a real `(connectedAt, id)` keyset cursor (US-01.09). The page also
+   * carries `availableCount`/`totalCount` for the "X out of Y" line.
    */
-  async listRosterForTrainer(
-    ctx: AuthContext,
-    trainerId: string,
-    query: ListRosterQueryDto,
-  ): Promise<PaginatedResponseDto<RosterRowDto>> {
+  async listRosterForTrainer(ctx: AuthContext, trainerId: string, query: ListRosterQueryDto): Promise<RosterPageDto> {
     this.assertOwnershipOrNotFound(ctx, trainerId);
 
-    const players = await this.associationsRepository.listActivePlayersForTrainer(trainerId);
-    const filtered = players.filter((player) => matchesFilter(player, query));
-    const rows = filtered.map((player) => toRosterRow(player));
-
     const limit = query.limit ?? 50;
-    return { items: rows.slice(0, limit), nextCursor: null, hasMore: rows.length > limit };
+    let cursor: KeysetCursor | undefined;
+    if (query.cursor) {
+      try {
+        cursor = decodeCursor(query.cursor);
+      } catch {
+        throw new BadRequestException({
+          message: 'Invalid pagination cursor',
+          errorCode: 'VALIDATION_ERROR',
+          details: [{ field: 'cursor', message: 'Invalid pagination cursor' }],
+        });
+      }
+    }
+    const filter = { dayOfWeek: query.dayOfWeek, startTime: query.startTime, endTime: query.endTime };
+    const filterActive = query.dayOfWeek !== undefined;
+
+    const [rows, totalCount, availableCount] = await Promise.all([
+      this.associationsRepository.listActivePlayersPage(trainerId, { filter, limit, cursor }),
+      this.associationsRepository.countActivePlayers(trainerId),
+      filterActive ? this.associationsRepository.countActivePlayers(trainerId, filter) : Promise.resolve(undefined),
+    ]);
+
+    const page = buildPaginatedResponse(rows, limit, (row) => ({ createdAt: row.connectedAt.toISOString(), id: row.id }));
+    return {
+      items: page.items.map((row) => toRosterRow(row.playerProfile)),
+      nextCursor: page.nextCursor,
+      hasMore: page.hasMore,
+      availableCount: availableCount ?? totalCount,
+      totalCount,
+    };
+  }
+
+  /**
+   * Epic §3 "Manage own organization users": the trainer removes a player from
+   * their roster. Soft — the association becomes `INACTIVE` with
+   * `disconnectedAt` (history kept; the family can re-join via a share link).
+   * 404 (never 403) for another tenant or for a player not actively on the
+   * roster.
+   */
+  async removePlayerFromRoster(ctx: AuthContext, trainerId: string, playerProfileId: string): Promise<void> {
+    this.assertOwnershipOrNotFound(ctx, trainerId);
+
+    const association = await this.associationsRepository.findActive(trainerId, playerProfileId);
+    if (!association) {
+      throw new NotFoundException({ message: 'Player not found on this roster', errorCode: 'NOT_FOUND' });
+    }
+
+    await this.associationsRepository.disconnect(association.id);
+    this.logger.log(
+      JSON.stringify({
+        event: 'trainer.player.removed',
+        trainerId,
+        playerProfileId,
+        associationId: association.id,
+        removedBy: ctx.userId,
+      }),
+    );
   }
 
   /** Mirrors CoachService's own ownership check (api §4.1 footnote) — 404, never 403 (arch §8 Layer 3). */
@@ -182,21 +247,6 @@ export class AssociationsService {
     }
     throw new NotFoundException({ message: 'Trainer not found', errorCode: 'NOT_FOUND' });
   }
-}
-
-function matchesFilter(player: PlayerProfileWithAvailability, query: ListRosterQueryDto): boolean {
-  if (query.dayOfWeek === undefined) {
-    return true;
-  }
-  return player.availability.some((slot) => {
-    if (!slot.isAvailable || slot.dayOfWeek !== query.dayOfWeek) {
-      return false;
-    }
-    if (query.startTime === undefined || query.endTime === undefined) {
-      return true;
-    }
-    return slot.startTime < query.endTime && slot.endTime > query.startTime;
-  });
 }
 
 function calculateAge(dateOfBirth: Date, now: Date = new Date()): number {

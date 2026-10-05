@@ -33,6 +33,30 @@ export class RedeemShareLinkDto {
   @IsPhoneNumber()
   phone?: string;
 
+  // ANONYMOUS_REGISTRATION: the account holder's own name, separate from the
+  // player's (`playerName`) - a parent registering a child is not the child.
+  // Optional only when `isSelf` is true (holder == player; split from playerName).
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  parentFirstName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  parentLastName?: string;
+
+  // COACH_ACCEPT anonymous case: the new coach's own name (required there).
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  firstName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  lastName?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(100)

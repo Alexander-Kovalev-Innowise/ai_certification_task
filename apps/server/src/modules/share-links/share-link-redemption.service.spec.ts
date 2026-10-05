@@ -242,6 +242,8 @@ describe('ShareLinkRedemptionService.redeem (Tasks 4.6, 4.9)', () => {
       email: `${randomUUID()}@example.com`,
       password: 'Password1',
       phone: '+14155552671',
+      parentFirstName: 'Pat',
+      parentLastName: 'Doe',
       playerName: 'Jamie Doe',
       dateOfBirth: '2015-01-01',
       gender: 'OTHER',
@@ -284,6 +286,17 @@ describe('ShareLinkRedemptionService.redeem (Tasks 4.6, 4.9)', () => {
       const jobs = await prismaService.outboxJob.findMany({ where: { type: 'EMAIL_SHARELINK_CONFIRMATION' } });
       expect(jobs).toHaveLength(1);
       expect(jobs[0].payload).toMatchObject({ to: dto.email });
+    });
+
+    it('rejects a minor registering as themself (isSelf) - players under 18 are parent-managed - and creates nothing', async () => {
+      const service = buildService();
+      const link = await seedPlayerStaticLink();
+      const dto = baseDto({ isSelf: true, dateOfBirth: '2015-01-01' });
+      const { req, res } = fakeReqRes();
+
+      await expect(service.redeem(link.code, dto, req, res)).rejects.toMatchObject({ status: 400 });
+
+      expect(await prismaService.user.findUnique({ where: { email: dto.email } })).toBeNull();
     });
 
     it('leaves no User/PlayerProfile/association row when the afterCreate step (outbox enqueue) fails partway through', async () => {

@@ -1,4 +1,6 @@
-import { IsArray, IsDateString, IsIn, IsOptional, IsString, IsUrl, IsUUID, MaxLength } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+
+import { IsAssetUrl } from '../../../shared/http/asset-url.decorator';
 
 // Task 5.1 (api §4.3 "POST /player-profiles", FR-030/FR-031), reproduced
 // verbatim from the plan/spec. Child profiles only — a self profile
@@ -25,8 +27,14 @@ export class CreateChildProfileDto {
   school?: string;
 
   @IsOptional()
-  @IsUrl()
+  @IsAssetUrl()
   photoUrl?: string;
+
+  // "Add myself as a player": creates the caller's own `isSelf` profile (only
+  // when none exists yet). Omitted/false = a child profile.
+  @IsOptional()
+  @IsBoolean()
+  isSelf?: boolean;
 
   // FR-031's trainer-selection checklist — if provided, PlayerProfileService
   // creates one PlayerTrainerAssociation per id in the same transaction as

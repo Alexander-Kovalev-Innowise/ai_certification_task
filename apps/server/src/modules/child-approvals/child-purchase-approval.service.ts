@@ -1,16 +1,19 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 
 import { DomainEventsEmitter } from '../../shared/events/domain-events.emitter';
 import { buildPaginatedResponse, decodeCursor, PaginatedResponseDto } from '../../shared/http/pagination.dto';
 import { JOB_TYPES } from '../../shared/jobs/job-types.const';
 import { OutboxService } from '../../shared/jobs/outbox.service';
-import { buildChildApprovalDecisionEmailPayload } from '../../shared/mail/templates/child-approval-decision.template';
+import { buildChildApprovalDecisionEmailPayload, ChildApprovalDecisionTemplateData } from '../../shared/mail/templates/child-approval-decision.template';
+import { buildChildApprovalRequestEmailPayload } from '../../shared/mail/templates/child-approval-request.template';
+import { buildChildTokenSpendNoticeEmailPayload } from '../../shared/mail/templates/child-token-spend-notice.template';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { AuthContext } from '../../shared/security/auth-context.interface';
 
-import { ApprovalWithPlayerName, ChildApprovalsRepository } from './child-approvals.repository';
+import { ApprovalWithNotifyTargets, ApprovalWithPlayerName, ChildApprovalsRepository } from './child-approvals.repository';
 import { ApprovalRowDto } from './dto/approval-row.dto';
+import type { CreatePurchaseRequestDto } from './dto/create-purchase-request.dto';
 import type { ListApprovalsQueryDto } from './dto/list-approvals-query.dto';
 
 // arch §9.3's 48-hour approval window, applied by `createRequest` when the
@@ -20,7 +23,8 @@ export const APPROVAL_EXPIRY_MS = 48 * 60 * 60 * 1000;
 export interface CreateApprovalRequestInput {
   playerProfileId: string;
   parentUserId: string;
-  eventId: string;
+  eventId?: string | null;
+  title?: string | null;
   amount: number | string;
   paymentType: 'USD' | 'TOKEN';
   expiresAt?: Date;
@@ -56,7 +60,8 @@ export class ChildPurchaseApprovalService {
       {
         playerProfile: { connect: { id: input.playerProfileId } },
         parent: { connect: { id: input.parentUserId } },
-        eventId: input.eventId,
+        eventId: input.eventId ?? null,
+        title: input.title ?? null,
         amount: input.amount,
         paymentType: input.paymentType,
         expiresAt: input.expiresAt ?? new Date(Date.now() + APPROVAL_EXPIRY_MS),
@@ -109,8 +114,10 @@ export class ChildPurchaseApprovalService {
       if (result.count === 0) {
         throw new ConflictException({ message: 'This request has already been resolved or expired', errorCode: 'CONFLICT' });
       }
+      await this.notifyChild(tx, id, 'APPROVED', notes ?? null);
       return this.childApprovalsRepository.findById(id, tx);
     });
+    this.outboxService.nudge();
 
     this.domainEventsEmitter.emit('child-approval.approved', {
       approvalId: id,
@@ -143,27 +150,153 @@ export class ChildPurchaseApprovalService {
         throw new ConflictException({ message: 'This request has already been resolved or expired', errorCode: 'CONFLICT' });
       }
 
-      const withTargets = await this.childApprovalsRepository.findByIdWithNotifyTargets(id, tx);
-      if (withTargets) {
-        const notifyTo = withTargets.playerProfile.childLogin?.email ?? withTargets.parent.email;
-        await this.outboxService.enqueue(
-          tx,
-          JOB_TYPES.EMAIL_CHILD_APPROVAL_DECISION,
-          buildChildApprovalDecisionEmailPayload(notifyTo, {
-            playerName: withTargets.playerProfile.name,
-            amount: withTargets.amount.toString(),
-            paymentType: withTargets.paymentType,
-            decision: 'DENIED',
-            parentNotes: notes ?? null,
-          }) as unknown as Prisma.InputJsonValue,
-        );
-      }
+      await this.notifyChild(tx, id, 'DENIED', notes ?? null);
 
       return this.childApprovalsRepository.findById(id, tx);
     });
     this.outboxService.nudge();
 
     return toRow(updated!);
+  }
+
+  /**
+   * Child-initiated purchase request (`POST /me/purchase-requests`) - the
+   * hook the future events/payments epics call at child checkout. CHILD
+   * tokens only. USD, or TOKENS without the profile's
+   * `allowChildTokenSpendWithoutApproval`, is `PENDING` (48h expiry via
+   * `ApprovalExpiryJob`) and emails the guardian; TOKENS with that flag ON
+   * is `APPROVED` immediately and the guardian gets an informational email.
+   */
+  async createPurchaseRequest(ctx: AuthContext, dto: CreatePurchaseRequestDto): Promise<ApprovalRowDto> {
+    if (ctx.accountType !== 'CHILD') {
+      throw new ForbiddenException({ message: 'Only a child login can create a purchase request', errorCode: 'FORBIDDEN' });
+    }
+    const profile = await this.childApprovalsRepository.findChildProfileWithGuardian(ctx.userId);
+    if (!profile) {
+      throw new NotFoundException({ message: 'Player profile not found', errorCode: 'NOT_FOUND' });
+    }
+
+    const paymentType = dto.paymentType === 'TOKENS' ? 'TOKEN' : 'USD';
+    const autoApprove = paymentType === 'TOKEN' && profile.allowChildTokenSpendWithoutApproval;
+    const amount = (dto.amountCents / 100).toFixed(2);
+    const guardian = profile.accountOwner;
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      const row = await this.childApprovalsRepository.create(
+        {
+          playerProfile: { connect: { id: profile.id } },
+          parent: { connect: { id: guardian.id } },
+          title: dto.title,
+          amount,
+          paymentType,
+          status: autoApprove ? 'APPROVED' : 'PENDING',
+          respondedAt: autoApprove ? new Date() : null,
+          expiresAt: new Date(Date.now() + APPROVAL_EXPIRY_MS),
+        },
+        tx,
+      );
+
+      if (autoApprove) {
+        await this.outboxService.enqueue(
+          tx,
+          JOB_TYPES.EMAIL_CHILD_APPROVAL_DECISION,
+          buildChildTokenSpendNoticeEmailPayload(guardian.email, {
+            parentFirstName: guardian.firstName,
+            playerName: profile.name,
+            amount,
+            title: dto.title,
+          }) as unknown as Prisma.InputJsonValue,
+        );
+      } else {
+        await this.outboxService.enqueue(
+          tx,
+          JOB_TYPES.EMAIL_CHILD_APPROVAL_REQUEST,
+          buildChildApprovalRequestEmailPayload(guardian.email, {
+            parentFirstName: guardian.firstName,
+            playerName: profile.name,
+            amount,
+            paymentType,
+            description: dto.title,
+          }) as unknown as Prisma.InputJsonValue,
+        );
+      }
+
+      return this.childApprovalsRepository.findById(row.id, tx);
+    });
+    this.outboxService.nudge();
+
+    return toRow(created!);
+  }
+
+  /** `GET /me/purchase-requests` - a CHILD login's own requests, newest first, with status. */
+  async listOwnRequests(ctx: AuthContext, query: ListApprovalsQueryDto): Promise<PaginatedResponseDto<ApprovalRowDto>> {
+    if (ctx.accountType !== 'CHILD') {
+      throw new ForbiddenException({ message: 'Only a child login has purchase requests', errorCode: 'FORBIDDEN' });
+    }
+    const profile = await this.childApprovalsRepository.findChildProfileWithGuardian(ctx.userId);
+    if (!profile) {
+      return { items: [], nextCursor: null, hasMore: false };
+    }
+    const limit = query.limit ?? 50;
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
+    const rows = await this.childApprovalsRepository.listForChildProfile({
+      playerProfileId: profile.id,
+      status: query.status,
+      limit,
+      cursor,
+    });
+    const page = buildPaginatedResponse(rows, limit, (row) => ({ createdAt: row.requestedAt.toISOString(), id: row.id }));
+    return { ...page, items: page.items.map((row) => toRow(row)) };
+  }
+
+  /**
+   * "Request more info": the request stays `PENDING` (and keeps its 48h
+   * expiry); the guardian's message is recorded and emailed to the child.
+   */
+  async requestInfo(ctx: AuthContext, id: string, message: string): Promise<ApprovalRowDto> {
+    await this.assertOwned(ctx, id);
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await this.childApprovalsRepository.transitionIfPending(
+        id,
+        { infoRequestMessage: message, infoRequestedAt: new Date() },
+        tx,
+      );
+      if (result.count === 0) {
+        throw new ConflictException({ message: 'This request has already been resolved or expired', errorCode: 'CONFLICT' });
+      }
+      await this.notifyChild(tx, id, 'INFO_REQUESTED', message);
+      return this.childApprovalsRepository.findById(id, tx);
+    });
+    this.outboxService.nudge();
+
+    return toRow(updated!);
+  }
+
+  /** Enqueues the child-facing decision email: the profile's own login, falling back to the guardian when it has none (see `deny`). */
+  private async notifyChild(
+    tx: Prisma.TransactionClient,
+    id: string,
+    decision: ChildApprovalDecisionTemplateData['decision'],
+    parentNotes: string | null,
+  ): Promise<void> {
+    const withTargets: ApprovalWithNotifyTargets | null = await this.childApprovalsRepository.findByIdWithNotifyTargets(id, tx);
+    if (!withTargets) {
+      return;
+    }
+    const notifyTo = withTargets.playerProfile.childLogin?.email ?? withTargets.parent.email;
+    await this.outboxService.enqueue(
+      tx,
+      JOB_TYPES.EMAIL_CHILD_APPROVAL_DECISION,
+      buildChildApprovalDecisionEmailPayload(notifyTo, {
+        playerName: withTargets.playerProfile.name,
+        amount: withTargets.amount.toString(),
+        paymentType: withTargets.paymentType,
+        decision,
+        parentNotes,
+        title: withTargets.title,
+      }) as unknown as Prisma.InputJsonValue,
+    );
   }
 
   /** Ownership check shared by `approve`/`deny` — a generic 404 for both "unknown id" and "not the caller's child" (arch §8 Layer 3 posture, applied to family ownership). */
@@ -182,6 +315,7 @@ function toRow(row: ApprovalWithPlayerName): ApprovalRowDto {
     playerProfileId: row.playerProfileId,
     playerName: row.playerProfile.name,
     eventId: row.eventId,
+    title: row.title,
     amount: row.amount.toString(),
     paymentType: row.paymentType,
     status: row.status,
@@ -189,5 +323,7 @@ function toRow(row: ApprovalWithPlayerName): ApprovalRowDto {
     expiresAt: row.expiresAt.toISOString(),
     respondedAt: row.respondedAt ? row.respondedAt.toISOString() : null,
     parentNotes: row.parentNotes,
+    infoRequestMessage: row.infoRequestMessage,
+    infoRequestedAt: row.infoRequestedAt ? row.infoRequestedAt.toISOString() : null,
   };
 }

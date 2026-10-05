@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { PlayerProfile } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
@@ -7,6 +7,7 @@ import { PrismaService } from '../../shared/prisma/prisma.service';
 import type { AuthContext } from '../../shared/security/auth-context.interface';
 import { AssociationsRepository } from '../associations/associations.repository';
 
+import { ADULT_AGE, calculateAge } from './age.util';
 import type { CreateChildProfileDto } from './dto/create-child-profile.dto';
 import { PlayerProfileResponseDto } from './dto/player-profile-response.dto';
 import type { UpdatePlayerProfileDto } from './dto/update-player-profile.dto';
@@ -19,16 +20,6 @@ import { PlayerProfilesRepository, TrainerRowForProfile } from './player-profile
 export interface CreateChildProfileResult {
   statusCode: number;
   body: PlayerProfileResponseDto;
-}
-
-/** Whole years between `dateOfBirth` and `now`, calendar-correct (not a naive `/365` division). */
-function calculateAge(dateOfBirth: Date, now: Date = new Date()): number {
-  let age = now.getFullYear() - dateOfBirth.getFullYear();
-  const monthDiff = now.getMonth() - dateOfBirth.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dateOfBirth.getDate())) {
-    age -= 1;
-  }
-  return age;
 }
 
 // Task 5.1, extended in Tasks 5.2-5.4 (list/read/patch).
@@ -57,7 +48,23 @@ export class PlayerProfileService {
   async createChildProfile(ctx: AuthContext, dto: CreateChildProfileDto): Promise<CreateChildProfileResult> {
     const dateOfBirth = new Date(dto.dateOfBirth);
     const age = calculateAge(dateOfBirth);
-    if (age < 1 || age > 18) {
+    const isSelf = dto.isSelf === true;
+
+    if (isSelf) {
+      // The parent adding themself as a player ("Add myself"): only when no
+      // self profile exists yet; the 1-18 child age rule does not apply.
+      if (age < ADULT_AGE) {
+        // Players under 18 are always parent-managed child profiles, never a guardian's own "self" profile.
+        throw new BadRequestException({
+          message: 'A player under 18 must be added as a child profile',
+          errorCode: 'VALIDATION_ERROR',
+          details: [{ field: 'dateOfBirth', message: 'A player under 18 must be added as a child profile' }],
+        });
+      }
+      if (await this.playerProfilesRepository.findSelfByAccount(ctx.userId)) {
+        throw new ConflictException({ message: 'You already have a player profile of your own', errorCode: 'CONFLICT' });
+      }
+    } else if (age < 1 || age > 18) {
       throw new BadRequestException({
         message: 'age must be between 1 and 18',
         errorCode: 'VALIDATION_ERROR',
@@ -65,7 +72,18 @@ export class PlayerProfileService {
       });
     }
 
-    const duplicate = await this.playerProfilesRepository.findDuplicateSibling(ctx.userId, dto.name, dateOfBirth);
+    // Authorization: every requested trainer must already be an ACTIVE
+    // association of this parent (any of their profiles). 404, never
+    // disclosing whether the trainer exists.
+    for (const trainerId of dto.trainerIds ?? []) {
+      if (!(await this.associationsRepository.accountHasActiveAssociation(ctx.userId, trainerId))) {
+        throw new NotFoundException({ message: 'Unknown trainer', errorCode: 'NOT_FOUND' });
+      }
+    }
+
+    const duplicate = isSelf
+      ? null
+      : await this.playerProfilesRepository.findDuplicateSibling(ctx.userId, dto.name, dateOfBirth);
 
     const created = await this.prisma.$transaction(async (tx) => {
       const profile = await this.playerProfilesRepository.create(
@@ -76,7 +94,7 @@ export class PlayerProfileService {
           gender: dto.gender,
           school: dto.school,
           photoUrl: dto.photoUrl,
-          isSelf: false,
+          isSelf,
         },
         tx,
       );

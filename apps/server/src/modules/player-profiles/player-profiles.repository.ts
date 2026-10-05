@@ -31,6 +31,11 @@ export class PlayerProfilesRepository {
     return client.playerProfile.findFirst({ where: { id } });
   }
 
+  /** The account's own (`isSelf`) player profile, if it has one. */
+  async findSelfByAccount(accountUserId: string): Promise<PlayerProfile | null> {
+    return this.prisma.extended.playerProfile.findFirst({ where: { accountUserId, isSelf: true } });
+  }
+
   /** Task 5.2 — adult family list: caller's own self profile + every child profile they own. */
   async listForAccount(accountUserId: string): Promise<PlayerProfile[]> {
     return this.prisma.extended.playerProfile.findMany({

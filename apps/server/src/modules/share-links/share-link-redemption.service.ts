@@ -15,6 +15,7 @@ import { AssociationsRepository } from '../associations/associations.repository'
 import { AuthService } from '../auth/auth.service';
 import type { AuthSessionResponseDto } from '../auth/dto/auth-session-response.dto';
 import { PasswordService } from '../auth/password.service';
+import { ADULT_AGE, calculateAge } from '../player-profiles/age.util';
 import { AccountProvisioningService } from '../users/account-provisioning.service';
 import { UsersRepository } from '../users/users.repository';
 
@@ -152,7 +153,7 @@ export class ShareLinkRedemptionService {
     // be checked ahead of the ASSOCIATE_EXISTING role check below, never
     // folded into it.
     if (authContext.accountType === 'CHILD') {
-      await this.redeemChildBlocked(authContext, link.code);
+      await this.redeemChildBlocked(authContext, link.code, link.trainer.businessName);
     }
 
     if (authContext.role === 'PLAYER_PARENT') {
@@ -206,6 +207,20 @@ export class ShareLinkRedemptionService {
       throw missingFieldError(missing);
     }
 
+    // The account holder's name is separate from the player's. When the
+    // registrant IS the player (`isSelf`) it may be omitted and is derived from
+    // `playerName`; registering a child requires the parent's own name.
+    if (dto.isSelf === true && calculateAge(new Date(dto.dateOfBirth!)) < ADULT_AGE) {
+      // All players under 18 are parent-managed: a minor cannot register their own independent account.
+      throw new BadRequestException({
+        message: 'A player under 18 must be registered by a parent or guardian',
+        errorCode: 'VALIDATION_ERROR',
+        details: [{ field: 'dateOfBirth', message: 'A player under 18 must be registered by a parent or guardian (choose "My child")' }],
+      });
+    }
+
+    const parentNames = this.resolveParentNames(dto);
+
     const passwordHash = await this.passwordService.hash(dto.password!);
 
     // Captured by `createProfile` and read back by `afterCreate` — both
@@ -215,7 +230,7 @@ export class ShareLinkRedemptionService {
     // `accountUserId` alone (an account can own several PlayerProfiles —
     // itself plus any children, arch §4's model).
     let createdPlayerProfileId: string;
-    const { firstName, lastName } = splitName(dto.playerName!);
+    const { firstName, lastName } = parentNames;
 
     const user = await this.accountProvisioningService.createUserWithProfile({
       role: 'PLAYER_PARENT',
@@ -251,11 +266,24 @@ export class ShareLinkRedemptionService {
             templateData: { firstName: createdUser.firstName, trainerBusinessName: link.trainer.businessName },
           } as unknown as Prisma.InputJsonValue,
         );
+        await this.authService.enqueueEmailVerification(tx, createdUser);
       },
     });
     this.outboxService.nudge();
 
     return this.authService.issueSession(user, res);
+  }
+
+  private resolveParentNames(dto: RedeemShareLinkDto): { firstName: string; lastName: string } {
+    const first = dto.parentFirstName?.trim();
+    const last = dto.parentLastName?.trim();
+    if (first && last) {
+      return { firstName: first, lastName: last };
+    }
+    if (dto.isSelf === true && !first && !last) {
+      return splitName(dto.playerName!);
+    }
+    throw missingFieldError([...(first ? [] : ['parentFirstName']), ...(last ? [] : ['parentLastName'])]);
   }
 
   /**
@@ -283,29 +311,35 @@ export class ShareLinkRedemptionService {
       throw missingFieldError(['subjectProfileIds']);
     }
 
-    const results: AssociatedProfileResultDto[] = [];
+    // Validate ownership of every profile first (generic 404, no disclosure),
+    // then associate them all and count ONE use of the link atomically.
     for (const playerProfileId of dto.subjectProfileIds) {
       const profile = await this.associationsRepository.findOwnedPlayerProfile(playerProfileId, ctx.userId);
       if (!profile) {
-        // Generic — does not distinguish "no such profile" from "exists but
+        // Generic - does not distinguish "no such profile" from "exists but
         // isn't yours" (existence-disclosure posture, see method comment).
         throw new NotFoundException({ message: 'Player profile not found', errorCode: 'NOT_FOUND' });
       }
-
-      const existing = await this.associationsRepository.findActive(link.trainerId, playerProfileId);
-      const association = await this.associationsRepository.associate({
-        trainerId: link.trainerId,
-        playerProfileId,
-        shareLinkId: link.id,
-      });
-
-      results.push({
-        playerProfileId,
-        status: 'ACTIVE',
-        connectedAt: association.connectedAt,
-        alreadyConnected: existing !== null,
-      });
     }
+
+    const results: AssociatedProfileResultDto[] = await this.prisma.$transaction(async (tx) => {
+      const rows: AssociatedProfileResultDto[] = [];
+      for (const playerProfileId of dto.subjectProfileIds!) {
+        const existing = await this.associationsRepository.findActive(link.trainerId, playerProfileId, tx);
+        const association = await this.associationsRepository.associate(
+          { trainerId: link.trainerId, playerProfileId, shareLinkId: link.id },
+          tx,
+        );
+        rows.push({
+          playerProfileId,
+          status: 'ACTIVE',
+          connectedAt: association.connectedAt,
+          alreadyConnected: existing !== null,
+        });
+      }
+      await this.shareLinksRepository.incrementUseCount(link.id, tx);
+      return rows;
+    });
 
     return results;
   }
@@ -322,7 +356,7 @@ export class ShareLinkRedemptionService {
    * commit atomically with it here. Always throws — the return type is
    * `never` so `redeem()`'s dispatcher needs no `return` after calling this.
    */
-  private async redeemChildBlocked(ctx: AuthContext, shareLinkCode: string): Promise<never> {
+  private async redeemChildBlocked(ctx: AuthContext, shareLinkCode: string, trainerBusinessName: string): Promise<never> {
     if (ctx.guardianUserId) {
       const [child, guardian] = await Promise.all([
         this.usersRepository.findById(ctx.userId),
@@ -336,7 +370,9 @@ export class ShareLinkRedemptionService {
             JOB_TYPES.EMAIL_CHILD_BLOCKED_SHARELINK,
             buildChildBlockedShareLinkEmailPayload(guardian.email, {
               guardianFirstName: guardian.firstName,
-              childFirstName: child?.firstName ?? '',
+              // The child's full display name ("[Child Name] wants to join [Trainer]'s program").
+              childFirstName: child ? `${child.firstName} ${child.lastName}`.trim() : '',
+              trainerBusinessName,
               shareLinkCode,
             }) as unknown as Prisma.InputJsonValue,
           );
@@ -369,41 +405,46 @@ export class ShareLinkRedemptionService {
     dto: RedeemShareLinkDto,
     res: Response,
   ): Promise<AuthSessionResponseDto> {
+    // A used/expired/revoked unique link must be reported as unavailable (409) BEFORE any account is
+    // provisioned - otherwise a second use collides with the already-created coach's email and surfaces as a 500.
+    if (resolveShareLinkInvalidReason(link) !== null) {
+      throw new ShareLinkUnavailableError();
+    }
     if (!link.targetEmail) {
       // Structurally unreachable (COACH_UNIQUE always has a targetEmail,
       // CreateShareLinkDto's own validation) — narrows the type below.
       throw new NotFoundException({ message: 'Unknown ShareLink code', errorCode: 'NOT_FOUND' });
     }
-    if (!dto.password) {
-      throw missingFieldError(['password']);
+    const missingCoachFields = (['password', 'firstName', 'lastName'] as const).filter((field) => !dto[field]?.trim());
+    if (missingCoachFields.length > 0) {
+      throw missingFieldError([...missingCoachFields]);
     }
 
     const targetEmail = link.targetEmail;
     const trainerId = link.trainerId;
     const code = link.code;
-    const passwordHash = await this.passwordService.hash(dto.password);
-
-    // Same unresolved-spec-gap category as `splitName` above: this branch's
-    // body carries no name field at all for the new coach. Falls back to
-    // the email's local-part, flagged for product sign-off.
-    const firstName = targetEmail.split('@')[0] ?? targetEmail;
+    const passwordHash = await this.passwordService.hash(dto.password!);
+    const firstName = dto.firstName!.trim();
+    const lastName = dto.lastName!.trim();
 
     const user = await this.accountProvisioningService.createUserWithProfile({
       role: 'COACH',
       email: targetEmail,
       passwordHash,
       firstName,
-      lastName: '',
+      lastName,
       createProfile: async (tx, userId) => {
         await tx.coachProfile.create({ data: { userId, trainerId, status: 'ACTIVE' } });
       },
-      afterCreate: async (tx) => {
+      afterCreate: async (tx, createdUser) => {
         const claimed = await this.shareLinksRepository.claimSingleUse(code, tx);
         if (claimed.count === 0) {
           throw new ShareLinkUnavailableError();
         }
+        await this.authService.enqueueEmailVerification(tx, createdUser);
       },
     });
+    this.outboxService.nudge();
 
     return this.authService.issueSession(user, res);
   }

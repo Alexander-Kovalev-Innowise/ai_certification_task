@@ -175,10 +175,12 @@ describe('AssociationsController (e2e, Task 5.7)', () => {
   });
 
   describe('POST /player-profiles/:id/trainers (Task 5.8)', () => {
-    it('by trainerId -> 201, creates the association', async () => {
+    it('by trainerId -> 201, creates the association (parent already connected to that trainer)', async () => {
       const parent = await insertParent();
       const trainer = await insertTrainer();
       const profile = await insertProfile(parent.userId);
+      const siblingProfile = await insertProfile(parent.userId, { name: 'Sibling' });
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.trainerId, playerProfileId: siblingProfile.id } });
 
       const res = await request(app.getHttpServer())
         .post(`/player-profiles/${profile.id}/trainers`)
@@ -204,6 +206,39 @@ describe('AssociationsController (e2e, Task 5.7)', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.trainerId).toBe(trainer.trainerId);
+
+      const after = await db.prisma.shareLink.findUniqueOrThrow({ where: { id: link.id } });
+      expect(after.useCount).toBe(1);
+    });
+
+    it('by trainerId the parent is NOT connected to -> 404 and nothing is created (authorization)', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const profile = await insertProfile(parent.userId);
+
+      const res = await request(app.getHttpServer())
+        .post(`/player-profiles/${profile.id}/trainers`)
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send({ trainerId: trainer.trainerId });
+
+      expect(res.status).toBe(404);
+      expect(await db.prisma.playerTrainerAssociation.count({ where: { playerProfileId: profile.id } })).toBe(0);
+    });
+
+    it('by trainerId where the only association belongs to ANOTHER account -> 404', async () => {
+      const parent = await insertParent();
+      const stranger = await insertParent();
+      const trainer = await insertTrainer();
+      const profile = await insertProfile(parent.userId);
+      const strangerProfile = await insertProfile(stranger.userId);
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.trainerId, playerProfileId: strangerProfile.id } });
+
+      const res = await request(app.getHttpServer())
+        .post(`/player-profiles/${profile.id}/trainers`)
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send({ trainerId: trainer.trainerId });
+
+      expect(res.status).toBe(404);
     });
 
     it('neither field -> 400', async () => {
@@ -424,6 +459,150 @@ describe('AssociationsController (e2e, Task 5.7)', () => {
         .get(`/trainers/${trainer.trainerId}/players`)
         .set('Authorization', `Bearer ${trainer.accessToken}`);
       expect(after.body.items).toHaveLength(0);
+    });
+
+    it('returns availableCount/totalCount for the active day/time filter (US-01.09)', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const names = ['A', 'B', 'C'];
+      const profiles = [];
+      for (const name of names) {
+        const profile = await insertProfile(parent.userId, { name });
+        await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.trainerId, playerProfileId: profile.id } });
+        profiles.push(profile);
+      }
+      // A: Mon 17-20 available; B: Mon 17-20 but explicitly unavailable; C: Tue only.
+      await db.prisma.availability.create({
+        data: { subjectType: 'PLAYER', playerProfileId: profiles[0].id, dayOfWeek: 1, startTime: 17 * 60, endTime: 20 * 60, isAvailable: true },
+      });
+      await db.prisma.availability.create({
+        data: { subjectType: 'PLAYER', playerProfileId: profiles[1].id, dayOfWeek: 1, startTime: 17 * 60, endTime: 20 * 60, isAvailable: false },
+      });
+      await db.prisma.availability.create({
+        data: { subjectType: 'PLAYER', playerProfileId: profiles[2].id, dayOfWeek: 2, startTime: 17 * 60, endTime: 20 * 60, isAvailable: true },
+      });
+
+      const unfiltered = await request(app.getHttpServer())
+        .get(`/trainers/${trainer.trainerId}/players`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+      expect(unfiltered.body).toMatchObject({ totalCount: 3, availableCount: 3 });
+
+      const filtered = await request(app.getHttpServer())
+        .get(`/trainers/${trainer.trainerId}/players`)
+        .query({ dayOfWeek: 1, startTime: 18 * 60, endTime: 19 * 60 })
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+      expect(filtered.body).toMatchObject({ totalCount: 3, availableCount: 1 });
+      expect(filtered.body.items).toHaveLength(1);
+      expect(filtered.body.items[0].playerProfileId).toBe(profiles[0].id);
+
+      const outsideWindow = await request(app.getHttpServer())
+        .get(`/trainers/${trainer.trainerId}/players`)
+        .query({ dayOfWeek: 1, startTime: 8 * 60, endTime: 9 * 60 })
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+      expect(outsideWindow.body).toMatchObject({ totalCount: 3, availableCount: 0, items: [] });
+    });
+
+    it('paginates in the database with a real keyset cursor (counts span all pages)', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      for (let i = 0; i < 5; i += 1) {
+        const profile = await insertProfile(parent.userId, { name: `Kid ${i}` });
+        await db.prisma.playerTrainerAssociation.create({
+          data: { trainerId: trainer.trainerId, playerProfileId: profile.id, connectedAt: new Date(Date.now() - i * 1000) },
+        });
+        await db.prisma.availability.create({
+          data: { subjectType: 'PLAYER', playerProfileId: profile.id, dayOfWeek: 4, startTime: 600, endTime: 900, isAvailable: true },
+        });
+      }
+
+      const seen: string[] = [];
+      let cursor: string | null = null;
+      let pages = 0;
+      do {
+        const res: request.Response = await request(app.getHttpServer())
+          .get(`/trainers/${trainer.trainerId}/players`)
+          .query({ limit: 2, dayOfWeek: 4, ...(cursor ? { cursor } : {}) })
+          .set('Authorization', `Bearer ${trainer.accessToken}`);
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ totalCount: 5, availableCount: 5 });
+        seen.push(...res.body.items.map((r: { playerProfileId: string }) => r.playerProfileId));
+        cursor = res.body.nextCursor;
+        expect(res.body.hasMore).toBe(cursor !== null);
+        pages += 1;
+      } while (cursor && pages < 10);
+
+      expect(pages).toBe(3);
+      expect(new Set(seen).size).toBe(5);
+    });
+
+    it('a malformed cursor -> 400 VALIDATION_ERROR', async () => {
+      const trainer = await insertTrainer();
+      const res = await request(app.getHttpServer())
+        .get(`/trainers/${trainer.trainerId}/players`)
+        .query({ cursor: 'garbage' })
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+      expect(res.status).toBe(400);
+      expect(res.body.errorCode).toBe('VALIDATION_ERROR');
+    });
+  });
+
+  describe('DELETE /trainers/:id/players/:playerProfileId (trainer removes a player)', () => {
+    it('soft-removes the association (INACTIVE + disconnectedAt, row kept) and the roster refreshes', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      const profile = await insertProfile(parent.userId);
+      const assoc = await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.trainerId, playerProfileId: profile.id } });
+
+      await request(app.getHttpServer())
+        .delete(`/trainers/${trainer.trainerId}/players/${profile.id}`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`)
+        .expect(204);
+
+      const row = await db.prisma.playerTrainerAssociation.findUnique({ where: { id: assoc.id } });
+      expect(row?.status).toBe('INACTIVE');
+      expect(row?.disconnectedAt).not.toBeNull();
+
+      const roster = await request(app.getHttpServer())
+        .get(`/trainers/${trainer.trainerId}/players`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`);
+      expect(roster.body.items).toHaveLength(0);
+      expect(roster.body.totalCount).toBe(0);
+
+      // Already removed -> 404.
+      await request(app.getHttpServer())
+        .delete(`/trainers/${trainer.trainerId}/players/${profile.id}`)
+        .set('Authorization', `Bearer ${trainer.accessToken}`)
+        .expect(404);
+    });
+
+    it("another trainer's roster -> 404 (never 403) and nothing changes", async () => {
+      const parent = await insertParent();
+      const trainerA = await insertTrainer();
+      const trainerB = await insertTrainer();
+      const profile = await insertProfile(parent.userId);
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainerA.trainerId, playerProfileId: profile.id } });
+
+      const res = await request(app.getHttpServer())
+        .delete(`/trainers/${trainerA.trainerId}/players/${profile.id}`)
+        .set('Authorization', `Bearer ${trainerB.accessToken}`);
+      expect(res.status).toBe(404);
+      expect(res.body.errorCode).toBe('NOT_FOUND');
+
+      const own = await request(app.getHttpServer())
+        .delete(`/trainers/${trainerB.trainerId}/players/${profile.id}`)
+        .set('Authorization', `Bearer ${trainerB.accessToken}`);
+      expect(own.status).toBe(404);
+
+      expect(await db.prisma.playerTrainerAssociation.count({ where: { status: 'ACTIVE' } })).toBe(1);
+    });
+
+    it('a parent token cannot use it -> 403', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+      await request(app.getHttpServer())
+        .delete(`/trainers/${trainer.trainerId}/players/${randomUUID()}`)
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .expect(403);
     });
   });
 

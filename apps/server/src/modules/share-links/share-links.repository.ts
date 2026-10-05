@@ -104,18 +104,55 @@ export class ShareLinksRepository {
   }
 
   /**
-   * Task 4.12 (api §4.2 "GET /trainers/:id/coaches" roster). All `COACH_UNIQUE`
-   * links for this trainer that are not `REVOKED` — the roster derives
-   * `invitationStatus: 'Pending'|'Expired'` from these (arch §9.1's
-   * single-use claim marks a link `EXPIRED` on both a successful accept AND
-   * genuine time-expiry, so `CoachService.listCoaches` cross-references
-   * `targetEmail` against accepted `CoachProfile` rows to tell the two
-   * apart — see that method's own comment).
+   * Task 4.12 (api §4.2 "GET /trainers/:id/coaches" roster), now a real DB
+   * keyset page. Outstanding `COACH_UNIQUE` invites for this trainer: not
+   * `REVOKED` (a resent/replaced invite is revoked, so it never produces a
+   * duplicate roster row) and never claimed (`useCount: 0` — arch §9.1's
+   * single-use claim flips the link to `EXPIRED` with `useCount: 1` on a
+   * successful accept, which is what distinguishes "accepted" from "expired
+   * unused" without any email cross-referencing). `excludeEmails` is a
+   * belt-and-braces filter for emails that already have a live CoachProfile
+   * row on this roster. Ordered `(createdAt, id)` DESC; fetches `limit + 1`.
    */
-  async listCoachInvitesByTrainer(trainerId: string): Promise<ShareLink[]> {
+  async listCoachInvitesPage(
+    trainerId: string,
+    params: { limit: number; cursor?: KeysetCursor; excludeEmails?: string[] },
+  ): Promise<ShareLink[]> {
     return this.prisma.extended.shareLink.findMany({
-      where: { trainerId, type: 'COACH_UNIQUE', status: { not: 'REVOKED' } },
-      orderBy: { createdAt: 'desc' },
+      where: {
+        trainerId,
+        type: 'COACH_UNIQUE',
+        status: { not: 'REVOKED' },
+        useCount: 0,
+        ...(params.excludeEmails && params.excludeEmails.length > 0 ? { targetEmail: { notIn: params.excludeEmails } } : {}),
+        ...(params.cursor
+          ? {
+              OR: [
+                { createdAt: { lt: new Date(params.cursor.createdAt) } },
+                { createdAt: new Date(params.cursor.createdAt), id: { lt: params.cursor.id } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: params.limit + 1,
+    });
+  }
+
+  /**
+   * Revokes every still-`ACTIVE` `COACH_UNIQUE` invite this trainer has for
+   * `email` (case-insensitive) — called before issuing a replacement invite
+   * so one email never has two live links / two roster rows.
+   */
+  async revokeActiveCoachInvitesForEmail(
+    trainerId: string,
+    email: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ count: number }> {
+    const client = tx ?? this.prisma;
+    return client.shareLink.updateMany({
+      where: { trainerId, type: 'COACH_UNIQUE', status: 'ACTIVE', targetEmail: { equals: email, mode: 'insensitive' } },
+      data: { status: 'REVOKED' },
     });
   }
 

@@ -7,6 +7,7 @@ import { ApprovalExpiryJob } from './approval-expiry.job';
 import { ChildApprovalsController } from './child-approvals.controller';
 import { ChildApprovalsRepository } from './child-approvals.repository';
 import { ChildPurchaseApprovalService } from './child-purchase-approval.service';
+import { ChildPurchaseRequestsController } from './child-purchase-requests.controller';
 
 // Task 5.12, extended in Task 5.13 with `approve`/`deny`
 // (ChildPurchaseApprovalService, needs `JobsModule` for `OutboxService`) and
@@ -15,7 +16,7 @@ import { ChildPurchaseApprovalService } from './child-purchase-approval.service'
 // (`ScheduleModule.forRoot()` itself is registered once, by `JobsModule`).
 @Module({
   imports: [JobsModule],
-  controllers: [ChildApprovalsController],
+  controllers: [ChildApprovalsController, ChildPurchaseRequestsController],
   providers: [
     ChildApprovalsRepository,
     ChildPurchaseApprovalService,

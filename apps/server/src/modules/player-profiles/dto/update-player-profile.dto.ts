@@ -1,4 +1,6 @@
-import { IsBoolean, IsObject, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
+import { IsBoolean, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
+
+import { IsAssetUrl } from '../../../shared/http/asset-url.decorator';
 
 // Task 5.4 (api §4.3 "PATCH /player-profiles/:id"). Basics only — no
 // `skillLevel` (trainer-set, per-association concept, Gap G-02, still
@@ -23,8 +25,8 @@ export class UpdatePlayerProfileDto {
   jerseyNumber?: string;
 
   @IsOptional()
-  @IsUrl()
-  photoUrl?: string;
+  @IsAssetUrl()
+  photoUrl?: string | null; // null clears the photo
 
   @IsOptional()
   @IsObject()

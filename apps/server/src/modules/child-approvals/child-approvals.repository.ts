@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { ApprovalStatus, ChildPurchaseApproval, Prisma, User } from '@prisma/client';
+import type { ApprovalStatus, ChildPurchaseApproval, PlayerProfile, Prisma, User } from '@prisma/client';
 
 import type { KeysetCursor } from '../../shared/http/pagination.dto';
 import { PrismaService } from '../../shared/prisma/prisma.service';
@@ -13,6 +13,15 @@ export type ApprovalWithNotifyTargets = ChildPurchaseApproval & {
   parent: User;
   playerProfile: { name: string; childLogin: User | null };
 };
+
+export type ChildProfileWithGuardian = PlayerProfile & { accountOwner: User };
+
+export interface ListForChildParams {
+  playerProfileId: string;
+  status?: ApprovalStatus;
+  limit: number;
+  cursor?: KeysetCursor;
+}
 
 export interface ListForParentParams {
   parentUserId: string;
@@ -78,6 +87,32 @@ export class ChildApprovalsRepository {
       select: { id: true },
     });
     return rows.map((row) => row.id);
+  }
+
+  /** A CHILD login's own profile plus the guardian account that owns it — the context a child-initiated purchase request needs. */
+  async findChildProfileWithGuardian(childUserId: string): Promise<ChildProfileWithGuardian | null> {
+    return this.prisma.extended.playerProfile.findFirst({ where: { childUserId }, include: { accountOwner: true } });
+  }
+
+  /** `GET /me/purchase-requests` — the child's own requests only (scoped by their profile), keyset-paginated like `listForParent`. */
+  async listForChildProfile(params: ListForChildParams): Promise<ApprovalWithPlayerName[]> {
+    const where: Prisma.ChildPurchaseApprovalWhereInput = { playerProfileId: params.playerProfileId };
+    if (params.status) {
+      where.status = params.status;
+    }
+    if (params.cursor) {
+      where.OR = [
+        { requestedAt: { lt: new Date(params.cursor.createdAt) } },
+        { requestedAt: new Date(params.cursor.createdAt), id: { lt: params.cursor.id } },
+      ];
+    }
+
+    return this.prisma.childPurchaseApproval.findMany({
+      where,
+      include: { playerProfile: { select: { name: true } } },
+      orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
+      take: params.limit + 1,
+    });
   }
 
   /**

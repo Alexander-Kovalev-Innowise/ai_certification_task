@@ -392,6 +392,8 @@ describe('ShareLinksController (e2e, Task 4.2)', () => {
         email: `${randomUUID()}@example.com`,
         password: 'Password1',
         phone: '+14155552671',
+        parentFirstName: 'Pat',
+        parentLastName: 'Doe',
         playerName: 'Jamie Doe',
         dateOfBirth: '2015-01-01',
         gender: 'OTHER',
@@ -417,6 +419,8 @@ describe('ShareLinksController (e2e, Task 4.2)', () => {
       const profile = await db.prisma.playerProfile.findFirst({ where: { accountUserId: user!.id } });
       expect(profile).not.toBeNull();
       expect(profile?.name).toBe(dto.playerName);
+      // the account holder's name is the parent's, not the child's
+      expect(user).toMatchObject({ firstName: 'Pat', lastName: 'Doe' });
 
       const association = await db.prisma.playerTrainerAssociation.findFirst({
         where: { trainerId: link.trainerId, playerProfileId: profile!.id },
@@ -428,6 +432,17 @@ describe('ShareLinksController (e2e, Task 4.2)', () => {
 
       const jobs = await db.prisma.outboxJob.findMany({ where: { type: 'EMAIL_SHARELINK_CONFIRMATION' } });
       expect(jobs).toHaveLength(1);
+    });
+
+    it('registering a child (isSelf: false) without the parent name -> 400 naming the missing fields', async () => {
+      const link = await seedPlayerStaticLink();
+      const dto = redeemDto({ parentFirstName: undefined, parentLastName: undefined });
+
+      const res = await request(app.getHttpServer()).post(`/share-links/${link.code}/redeem`).send(dto);
+
+      expect(res.status).toBe(400);
+      expect(res.body.errorCode).toBe('VALIDATION_ERROR');
+      expect(JSON.stringify(res.body)).toContain('parentFirstName');
     });
 
     it('missing a required field -> 400 VALIDATION_ERROR', async () => {
@@ -490,6 +505,9 @@ describe('ShareLinksController (e2e, Task 4.2)', () => {
         where: { trainerId: link.trainerId, playerProfileId: parent.profileId },
       });
       expect(association?.status).toBe('ACTIVE');
+
+      const refreshedLink = await db.prisma.shareLink.findUnique({ where: { code: link.code } });
+      expect(refreshedLink?.useCount).toBe(1);
     });
 
     it('associating an already-connected profile is idempotent -> 200, alreadyConnected:true, no duplicate row', async () => {
@@ -573,11 +591,11 @@ describe('ShareLinksController (e2e, Task 4.2)', () => {
 
       const res = await request(app.getHttpServer())
         .post(`/share-links/${link.code}/redeem`)
-        .send({ password: 'Password1' });
+        .send({ password: 'Password1', firstName: 'Casey', lastName: 'Coach' });
 
       expect(res.status).toBe(201);
       expect(res.body.accessToken).toEqual(expect.any(String));
-      expect(res.body.user).toMatchObject({ email: targetEmail, role: 'COACH' });
+      expect(res.body.user).toMatchObject({ email: targetEmail, role: 'COACH', firstName: 'Casey', lastName: 'Coach' });
 
       const user = await db.prisma.user.findUnique({ where: { email: targetEmail } });
       const coachProfile = await db.prisma.coachProfile.findUnique({ where: { userId: user!.id } });
@@ -586,6 +604,16 @@ describe('ShareLinksController (e2e, Task 4.2)', () => {
       const refreshedLink = await db.prisma.shareLink.findUnique({ where: { code: link.code } });
       expect(refreshedLink?.useCount).toBe(1);
       expect(refreshedLink?.status).toBe('EXPIRED');
+    });
+
+    it('anonymous without first/last name -> 400 VALIDATION_ERROR', async () => {
+      const link = await seedCoachUniqueLink(`${randomUUID()}@example.com`);
+
+      const res = await request(app.getHttpServer()).post(`/share-links/${link.code}/redeem`).send({ password: 'Password1' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errorCode).toBe('VALIDATION_ERROR');
+      expect(JSON.stringify(res.body)).toContain('firstName');
     });
 
     it('anonymous without a password -> 400 VALIDATION_ERROR', async () => {

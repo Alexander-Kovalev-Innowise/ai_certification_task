@@ -10,6 +10,7 @@ import { RequiresCapability } from '../../shared/security/decorators/requires-ca
 import { ChildPurchaseApprovalService } from './child-purchase-approval.service';
 import { ApprovalRowDto } from './dto/approval-row.dto';
 import { ListApprovalsQueryDto } from './dto/list-approvals-query.dto';
+import { RequestInfoDto } from './dto/request-info.dto';
 import { ResolveApprovalDto } from './dto/resolve-approval.dto';
 
 // Task 5.12, first endpoint — extended in Task 5.13
@@ -70,5 +71,23 @@ export class ChildApprovalsController {
     @Body() dto: ResolveApprovalDto,
   ): Promise<ApprovalRowDto> {
     return this.childPurchaseApprovalService.deny(ctx, id, dto.notes);
+  }
+
+  // "Request more info" — the request stays PENDING, the message is recorded
+  // and emailed to the child.
+  @RequiresCapability(Capability.APPROVE_CHILD_PURCHASE)
+  @Post(':id/request-info')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Ask the child for more information; the request stays PENDING' })
+  @ApiResponse({ status: 200, type: ApprovalRowDto })
+  @ApiResponse({ status: 403, description: 'Denied for typ: CHILD tokens', schema: { example: { errorCode: 'CHILD_CAPABILITY_DENIED' } } })
+  @ApiResponse({ status: 404, description: 'Not found, or not the caller\'s child' })
+  @ApiResponse({ status: 409, description: 'Already resolved or expired', schema: { example: { errorCode: 'CONFLICT' } } })
+  async requestInfo(
+    @CurrentUser() ctx: AuthContext,
+    @Param('id') id: string,
+    @Body() dto: RequestInfoDto,
+  ): Promise<ApprovalRowDto> {
+    return this.childPurchaseApprovalService.requestInfo(ctx, id, dto.message);
   }
 }

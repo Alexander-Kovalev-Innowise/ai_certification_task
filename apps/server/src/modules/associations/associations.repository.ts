@@ -1,9 +1,37 @@
 import { Injectable } from '@nestjs/common';
 import type { Availability, PlayerProfile, PlayerTrainerAssociation, Prisma } from '@prisma/client';
 
+import type { KeysetCursor } from '../../shared/http/pagination.dto';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 
 export type PlayerProfileWithAvailability = PlayerProfile & { availability: Availability[] };
+export type RosterAssociationRow = PlayerTrainerAssociation & { playerProfile: PlayerProfileWithAvailability };
+
+/** `dayOfWeek` is the gate; `startTime`/`endTime` only narrow once both are present (same semantics as the original in-memory filter). */
+export interface RosterAvailabilityFilter {
+  dayOfWeek?: number;
+  startTime?: number;
+  endTime?: number;
+}
+
+function activeRosterWhere(trainerId: string, filter?: RosterAvailabilityFilter): Prisma.PlayerTrainerAssociationWhereInput {
+  const availabilityFilter: Prisma.AvailabilityWhereInput | undefined =
+    filter?.dayOfWeek === undefined
+      ? undefined
+      : {
+          subjectType: 'PLAYER',
+          isAvailable: true,
+          dayOfWeek: filter.dayOfWeek,
+          ...(filter.startTime !== undefined && filter.endTime !== undefined
+            ? { startTime: { lt: filter.endTime }, endTime: { gt: filter.startTime } }
+            : {}),
+        };
+  return {
+    trainerId,
+    status: 'ACTIVE',
+    playerProfile: { deletedAt: null, ...(availabilityFilter ? { availability: { some: availabilityFilter } } : {}) },
+  };
+}
 
 export interface CreateAssociationInput {
   trainerId: string;
@@ -128,24 +156,45 @@ export class AssociationsRepository {
    * (soft-delete.extension.ts covers `PlayerProfile`).
    */
   /**
-   * Task 5.10 (api §4.3 "GET /trainers/:id/players", gap-fill §8.8). Every
-   * `ACTIVE` player on this trainer's roster, with their saved availability
-   * slots included — `AssociationsService.listRosterForTrainer` applies the
-   * optional day/time filter and pagination slice in-memory, same
-   * deliberate-simplification convention `CoachService.listCoaches`
-   * documents for its own bounded roster (arch §18: no CRM-scale dataset
-   * here). Goes through `.extended` for the tenant-guard runtime net —
+   * Task 5.10 (api §4.3 "GET /trainers/:id/players", gap-fill §8.8), now a
+   * real DB keyset page. `ACTIVE` associations for this trainer with the
+   * player and their saved availability included, optionally narrowed to
+   * players with an available slot on `filter.dayOfWeek` (overlapping
+   * `[startTime, endTime)` when both are given). Ordered `(connectedAt, id)`
+   * DESC on the ASSOCIATION row; fetches `limit + 1` for the `hasMore` trick.
+   * Goes through `.extended` for the tenant-guard runtime net —
    * `where.trainerId` is always present, satisfied by the caller's own
-   * `tid`/`:id` ownership check upstream (`AssociationsService`'s own
-   * `assertOwnershipOrNotFound`, mirroring `CoachService`'s).
+   * `AssociationsService.assertOwnershipOrNotFound`.
    */
-  async listActivePlayersForTrainer(trainerId: string): Promise<PlayerProfileWithAvailability[]> {
-    const rows = await this.prisma.extended.playerTrainerAssociation.findMany({
-      where: { trainerId, status: 'ACTIVE' },
+  async listActivePlayersPage(
+    trainerId: string,
+    params: { filter?: RosterAvailabilityFilter; limit: number; cursor?: KeysetCursor },
+  ): Promise<RosterAssociationRow[]> {
+    return this.prisma.extended.playerTrainerAssociation.findMany({
+      where: {
+        ...activeRosterWhere(trainerId, params.filter),
+        ...(params.cursor
+          ? {
+              AND: [
+                {
+                  OR: [
+                    { connectedAt: { lt: new Date(params.cursor.createdAt) } },
+                    { connectedAt: new Date(params.cursor.createdAt), id: { lt: params.cursor.id } },
+                  ],
+                },
+              ],
+            }
+          : {}),
+      },
       include: { playerProfile: { include: { availability: true } } },
-      orderBy: { connectedAt: 'desc' },
+      orderBy: [{ connectedAt: 'desc' }, { id: 'desc' }],
+      take: params.limit + 1,
     });
-    return rows.map((row) => row.playerProfile);
+  }
+
+  /** US-01.09 — "X out of Y": players on the roster, optionally only those available for the filter. */
+  async countActivePlayers(trainerId: string, filter?: RosterAvailabilityFilter): Promise<number> {
+    return this.prisma.extended.playerTrainerAssociation.count({ where: activeRosterWhere(trainerId, filter) });
   }
 
   /**
@@ -160,6 +209,21 @@ export class AssociationsRepository {
    */
   async countActiveForTrainer(trainerId: string): Promise<number> {
     return this.prisma.extended.playerTrainerAssociation.count({ where: { trainerId, status: 'ACTIVE' } });
+  }
+
+  /**
+   * Authorization backstop for "add trainer by id" / child-profile
+   * `trainerIds`: does ANY profile this account owns have an ACTIVE
+   * association with the trainer? (A parent may only attach a child to a
+   * trainer they are already connected to, or redeem a ShareLink code for.)
+   */
+  async accountHasActiveAssociation(accountUserId: string, trainerId: string, tx?: Prisma.TransactionClient): Promise<boolean> {
+    const client = tx ?? this.prisma;
+    const found = await client.playerTrainerAssociation.findFirst({
+      where: { trainerId, status: 'ACTIVE', playerProfile: { accountUserId, deletedAt: null } },
+      select: { id: true },
+    });
+    return found !== null;
   }
 
   /** Task 5.8 — validates a bare `trainerId` (the "pick from My Trainers" branch, no ShareLink code involved). */

@@ -152,9 +152,44 @@ describe('PlayerProfilesController (e2e, Task 5.1)', () => {
       expect(res.body.errorCode).toBe('CHILD_CAPABILITY_DENIED');
     });
 
+    it('trainerIds the parent is not connected to -> 404 and no profile is created (authorization)', async () => {
+      const parent = await insertParent();
+      const trainer = await insertTrainer();
+
+      const res = await request(app.getHttpServer())
+        .post('/player-profiles')
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send(validChildBody({ trainerIds: [trainer.trainerId] }));
+
+      expect(res.status).toBe(404);
+      expect(await db.prisma.playerProfile.count({ where: { accountUserId: parent.userId } })).toBe(0);
+    });
+
+    it('creates the parent\'s own self profile via isSelf: true (once)', async () => {
+      const parent = await insertParent();
+      const body = { name: 'Pat Parent', dateOfBirth: '1985-05-05', gender: 'MALE', isSelf: true };
+
+      const first = await request(app.getHttpServer())
+        .post('/player-profiles')
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send(body);
+      expect(first.status).toBe(201);
+      expect(first.body.isSelf).toBe(true);
+
+      const second = await request(app.getHttpServer())
+        .post('/player-profiles')
+        .set('Authorization', `Bearer ${parent.accessToken}`)
+        .send(body);
+      expect(second.status).toBe(409);
+    });
+
     it('providing trainerIds creates associations atomically with the profile', async () => {
       const parent = await insertParent();
       const trainer = await insertTrainer();
+      const existingProfile = await db.prisma.playerProfile.create({
+        data: { accountUserId: parent.userId, name: 'Existing', dateOfBirth: new Date('2015-01-01'), gender: 'MALE', isSelf: false },
+      });
+      await db.prisma.playerTrainerAssociation.create({ data: { trainerId: trainer.trainerId, playerProfileId: existingProfile.id } });
 
       const res = await request(app.getHttpServer())
         .post('/player-profiles')
