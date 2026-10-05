@@ -3,6 +3,7 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
+import { PageHeader, PageLayout } from '../../../src/components/shared/PageLayout';
 import { ShareLinkTableSkeleton } from '../../../src/components/shared/RouteSkeletons';
 import { GenerateShareLinkModal, type GenerateShareLinkResult } from '../../../src/components/trainer/GenerateShareLinkModal';
 import { ShareLinkTable, type ShareLinkRow } from '../../../src/components/trainer/ShareLinkTable';
@@ -55,7 +56,7 @@ export default function ShareLinksPage() {
   const { data: bootstrap } = useBootstrap();
   const trainerId = hasTrainerProfileId(bootstrap) ? bootstrap.trainerProfile.id : null;
 
-  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+  const { data, isLoading, isFetching, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ['share-links', trainerId],
     queryFn: ({ pageParam }) => fetchShareLinks(trainerId as string, pageParam),
     initialPageParam: null as string | null,
@@ -82,17 +83,15 @@ export default function ShareLinksPage() {
   const items = data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
-    <section className="flex flex-col gap-lg p-lg">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-text-primary">Share Links</h1>
-        <button
-          type="button"
-          onClick={() => setIsGenerateModalOpen(true)}
-          className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary"
-        >
-          Generate Link
-        </button>
-      </div>
+    <PageLayout>
+      <PageHeader
+        title="Share Links"
+        actions={
+          <button type="button" onClick={() => setIsGenerateModalOpen(true)} className="btn btn-primary">
+            Generate Link
+          </button>
+        }
+      />
 
       {isLoading && <ShareLinkTableSkeleton />}
 
@@ -108,6 +107,7 @@ export default function ShareLinksPage() {
           hasMore={!!hasNextPage}
           isFetchingNextPage={isFetchingNextPage}
           onLoadMore={() => void fetchNextPage()}
+          isRefreshing={isFetching && !isFetchingNextPage && !isLoading}
           onRevoke={(id) => revokeMutation.mutate(id)}
           pendingRevokeIds={pendingRevokeIds}
         />
@@ -119,6 +119,6 @@ export default function ShareLinksPage() {
         onClose={() => setIsGenerateModalOpen(false)}
         onGenerated={(_result: GenerateShareLinkResult) => void queryClient.invalidateQueries({ queryKey: ['share-links', trainerId] })}
       />
-    </section>
+    </PageLayout>
   );
 }

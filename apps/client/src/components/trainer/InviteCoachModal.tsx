@@ -1,53 +1,43 @@
 'use client';
 
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { apiRequest } from '../../lib/api/apiClient';
 import { parseApiErrorBody } from '../../lib/api/apiError';
-
-import type { ResendTarget } from './CoachRosterTable';
+import { inviteCoachSchema, type InviteCoachFormValues } from '../../lib/schemas/inviteCoachSchema';
 
 // api §4.2 POST /coaches/invite — `201 InviteCoachResponseDto`.
 export interface InviteCoachResult {
+  id?: string;
   shareLinkCode: string;
   expiresAt: string | null;
   status: 'PENDING';
-}
-
-interface InviteCoachFormValues {
-  email: string;
-  name: string;
-  message: string;
 }
 
 export interface InviteCoachModalProps {
   isOpen: boolean;
   onClose: () => void;
   onInvited?: (result: InviteCoachResult) => void;
-  /** Pre-fills email/name for the roster's "resend invite" action (Task 13.2's Do line). */
-  resendTarget?: ResendTarget;
 }
 
 const GENERIC_ERROR_MESSAGE = 'Something went wrong sending the invite. Please try again.';
 
+// POST /coaches/invite 409s (BR-003 enforced at INVITE time).
+const ERROR_MESSAGES: Record<string, string> = {
+  COACH_ALREADY_ASSIGNED: 'This coach is already assigned to another trainer, so they cannot be invited.',
+  COACH_ALREADY_ON_ROSTER: 'This coach is already on your roster.',
+};
+
 const INPUT_CLASSNAME =
-  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
+  'w-full min-w-0';
 
 // fe §4.4 — InviteCoachModal: `POST /coaches/invite`
 // `{ email: string, name?: string, message?: string }` (api §4.2, FR-060).
-// Doubles as the roster's resend-on-expiry entry point via `resendTarget`
-// (regenerates a fresh COACH_UNIQUE ShareLink for the same email/name — there
-// is no dedicated resend endpoint, api §4.2's table lists exactly these
-// three coach routes). Task 13.2.
-//
-// `resendTarget`-driven prefill deliberately relies on the caller
-// remounting this component on open (`key={...}` at the `/coaches` page's
-// call site) rather than an internal `useEffect` that calls `reset()` on
-// `isOpen` — `react-hooks/set-state-in-effect` flags synchronizing state
-// from a prop inside an Effect; a fresh mount via `key` gets the same
-// prefill-on-open behavior from `useForm`'s own `defaultValues` alone.
-export function InviteCoachModal({ isOpen, onClose, onInvited, resendTarget }: InviteCoachModalProps) {
+// Resending an existing invite is NOT done here any more - the roster calls
+// `POST /coaches/invites/:id/resend` directly. Task 13.2.
+export function InviteCoachModal({ isOpen, onClose, onInvited }: InviteCoachModalProps) {
   const [formError, setFormError] = useState<string | null>(null);
 
   const {
@@ -56,7 +46,9 @@ export function InviteCoachModal({ isOpen, onClose, onInvited, resendTarget }: I
     reset,
     formState: { errors, isSubmitting },
   } = useForm<InviteCoachFormValues>({
-    defaultValues: { email: resendTarget?.email ?? '', name: resendTarget?.name ?? '', message: '' },
+    resolver: zodResolver(inviteCoachSchema),
+    mode: 'onTouched',
+    defaultValues: { email: '', name: '', message: '' },
   });
 
   if (!isOpen) {
@@ -87,8 +79,8 @@ export function InviteCoachModal({ isOpen, onClose, onInvited, resendTarget }: I
     });
 
     if (!res.ok) {
-      await parseApiErrorBody(res);
-      setFormError(GENERIC_ERROR_MESSAGE);
+      const body = await parseApiErrorBody(res);
+      setFormError((res.status === 409 && body && ERROR_MESSAGES[body.errorCode]) || GENERIC_ERROR_MESSAGE);
       return;
     }
 
@@ -108,19 +100,18 @@ export function InviteCoachModal({ isOpen, onClose, onInvited, resendTarget }: I
 
         <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="invite-coach-email" className="text-body text-text-secondary">
+            <label htmlFor="invite-coach-email" className="field-label">
               Email
             </label>
             <input
               id="invite-coach-email"
               type="email"
+              placeholder="coach@example.com"
+              autoComplete="off"
               className={INPUT_CLASSNAME}
               aria-invalid={!!errors.email}
               aria-describedby={errors.email ? 'invite-coach-email-error' : undefined}
-              {...register('email', {
-                required: 'Email is required.',
-                pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'Enter a valid email address.' },
-              })}
+              {...register('email')}
             />
             {errors.email && (
               <p id="invite-coach-email-error" role="alert" className="text-caption text-danger">
@@ -130,17 +121,44 @@ export function InviteCoachModal({ isOpen, onClose, onInvited, resendTarget }: I
           </div>
 
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="invite-coach-name" className="text-body text-text-secondary">
+            <label htmlFor="invite-coach-name" className="field-label">
               Name (optional)
             </label>
-            <input id="invite-coach-name" className={INPUT_CLASSNAME} {...register('name')} />
+            <input
+              id="invite-coach-name"
+              placeholder="Cam Coach"
+              autoComplete="off"
+              className={INPUT_CLASSNAME}
+              aria-invalid={!!errors.name}
+              aria-describedby={errors.name ? 'invite-coach-name-error' : undefined}
+              {...register('name')}
+            />
+            {errors.name && (
+              <p id="invite-coach-name-error" role="alert" className="text-caption text-danger">
+                {errors.name.message}
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="invite-coach-message" className="text-body text-text-secondary">
+            <label htmlFor="invite-coach-message" className="field-label">
               Message (optional)
             </label>
-            <textarea id="invite-coach-message" className={INPUT_CLASSNAME} {...register('message')} />
+            <textarea
+              id="invite-coach-message"
+              rows={3}
+              placeholder="Hi Cam, I'd love for you to join our team as a coach."
+              autoComplete="off"
+              className={INPUT_CLASSNAME}
+              aria-invalid={!!errors.message}
+              aria-describedby={errors.message ? 'invite-coach-message-error' : undefined}
+              {...register('message')}
+            />
+            {errors.message && (
+              <p id="invite-coach-message-error" role="alert" className="text-caption text-danger">
+                {errors.message.message}
+              </p>
+            )}
           </div>
 
           {formError && (
@@ -150,13 +168,13 @@ export function InviteCoachModal({ isOpen, onClose, onInvited, resendTarget }: I
           )}
 
           <div className="mt-sm flex justify-end gap-sm">
-            <button type="button" onClick={handleClose} className="rounded-sm p-sm text-body text-text-secondary">
+            <button type="button" onClick={handleClose} className="btn btn-ghost">
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+              className="btn btn-primary"
             >
               {isSubmitting ? 'Sending…' : 'Send invite'}
             </button>

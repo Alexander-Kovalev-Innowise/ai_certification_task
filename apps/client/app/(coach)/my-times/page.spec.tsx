@@ -22,6 +22,16 @@ function bootstrapBody() {
   };
 }
 
+// URL-routed fetch mock: the page now issues an extra, order-independent
+// GET .../availability/overrides (US-01.10) next to the grid requests.
+function routeFetch(routes: { method?: string; match: string; response: Response }[]) {
+  (global.fetch as jest.Mock).mockImplementation(async (url: string, init?: RequestInit) => {
+    const method = init?.method ?? 'GET';
+    const route = routes.find((r) => url.includes(r.match) && (r.method ?? 'GET') === method);
+    return route ? route.response : mockResponse(404);
+  });
+}
+
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -48,23 +58,27 @@ describe('MyTimesPage (coach)', () => {
   });
 
   it('loads the grid from GET /coaches/:id/availability using the coachProfileId off bootstrap', async () => {
-    (global.fetch as jest.Mock)
-      .mockResolvedValueOnce(mockResponse(200, bootstrapBody()))
-      .mockResolvedValueOnce(mockResponse(200, { coachProfileId: 'coach-1', slots: [{ dayOfWeek: 2, startTime: 16 * 60, endTime: 18 * 60, isAvailable: true }] }));
+    routeFetch([
+      { match: '/me/bootstrap', response: mockResponse(200, bootstrapBody()) },
+      { match: '/coaches/coach-1/availability/overrides', response: mockResponse(200, []) },
+      { match: '/coaches/coach-1/availability', response: mockResponse(200, { coachProfileId: 'coach-1', slots: [{ dayOfWeek: 2, startTime: 16 * 60, endTime: 18 * 60, isAvailable: true }] }) },
+    ]);
 
     renderPage();
 
     await waitFor(() => expect(screen.getByLabelText(/tue start/i)).toHaveValue('16:00'));
 
-    const [url] = (global.fetch as jest.Mock).mock.calls[1] as [string];
-    expect(url).toContain('/coaches/coach-1/availability');
+    const urls = (global.fetch as jest.Mock).mock.calls.map((call) => call[0] as string);
+    expect(urls.some((url) => url.endsWith('/coaches/coach-1/availability'))).toBe(true);
   });
 
   it('saves edits via PUT /coaches/:id/availability and shows a success message', async () => {
-    (global.fetch as jest.Mock)
-      .mockResolvedValueOnce(mockResponse(200, bootstrapBody()))
-      .mockResolvedValueOnce(mockResponse(200, { coachProfileId: 'coach-1', slots: [{ dayOfWeek: 2, startTime: 16 * 60, endTime: 18 * 60, isAvailable: true }] }))
-      .mockResolvedValueOnce(mockResponse(200, { coachProfileId: 'coach-1', slots: [{ dayOfWeek: 2, startTime: 15 * 60, endTime: 18 * 60, isAvailable: true }] }));
+    routeFetch([
+      { match: '/me/bootstrap', response: mockResponse(200, bootstrapBody()) },
+      { match: '/coaches/coach-1/availability/overrides', response: mockResponse(200, []) },
+      { match: '/coaches/coach-1/availability', response: mockResponse(200, { coachProfileId: 'coach-1', slots: [{ dayOfWeek: 2, startTime: 16 * 60, endTime: 18 * 60, isAvailable: true }] }) },
+      { method: 'PUT', match: '/coaches/coach-1/availability', response: mockResponse(200, { coachProfileId: 'coach-1', slots: [{ dayOfWeek: 2, startTime: 15 * 60, endTime: 18 * 60, isAvailable: true }] }) },
+    ]);
 
     renderPage();
     await waitFor(() => expect(screen.getByLabelText(/tue start/i)).toHaveValue('16:00'));
@@ -74,10 +88,43 @@ describe('MyTimesPage (coach)', () => {
 
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/saved/i));
 
-    const [url, init] = (global.fetch as jest.Mock).mock.calls[2] as [string, RequestInit];
+    const putCall = (global.fetch as jest.Mock).mock.calls.find((call) => (call[1] as RequestInit | undefined)?.method === 'PUT') as [string, RequestInit];
+    const [url, init] = putCall;
     expect(url).toContain('/coaches/coach-1/availability');
     expect(init.method).toBe('PUT');
     expect(JSON.parse(init.body as string)).toEqual({ slots: [{ dayOfWeek: 2, startTime: 15 * 60, endTime: 18 * 60, isAvailable: true }] });
+  });
+
+  it('lists trainer overrides and lets the coach acknowledge one (US-01.10)', async () => {
+    const notice = {
+      id: 'ov-1',
+      eventId: 'e-1',
+      reason: 'Emergency cover',
+      sessionLabel: 'U12 drill',
+      trainerBusinessName: 'Ace Tennis Academy',
+      createdAt: '2026-10-01T10:00:00.000Z',
+      acknowledgedAt: null,
+    };
+    routeFetch([
+      { match: '/me/bootstrap', response: mockResponse(200, bootstrapBody()) },
+      { match: '/coaches/coach-1/availability/overrides/ov-1/acknowledge', method: 'POST', response: mockResponse(204) },
+      { match: '/coaches/coach-1/availability/overrides', response: mockResponse(200, [notice]) },
+      { match: '/coaches/coach-1/availability', response: mockResponse(200, { coachProfileId: 'coach-1', slots: [] }) },
+    ]);
+
+    renderPage();
+
+    expect(await screen.findByText('U12 drill')).toBeInTheDocument();
+    expect(screen.getByText(/Emergency cover/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Acknowledge' }));
+
+    await waitFor(() =>
+      expect(
+        (global.fetch as jest.Mock).mock.calls.some(
+          (call) => (call[0] as string).endsWith('/overrides/ov-1/acknowledge') && (call[1] as RequestInit).method === 'POST',
+        ),
+      ).toBe(true),
+    );
   });
 
   it('shows an error state when the availability request fails', async () => {

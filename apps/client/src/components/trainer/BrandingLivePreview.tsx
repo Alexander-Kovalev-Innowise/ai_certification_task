@@ -42,7 +42,7 @@ export function BrandingLivePreview({ primaryColorHex, logoUrl }: BrandingLivePr
           type="button"
           disabled
           style={{ backgroundColor: branding.primaryColorHex }}
-          className="rounded-sm p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary"
+          className="btn btn-primary"
         >
           Preview button
         </button>

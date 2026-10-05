@@ -36,6 +36,6 @@ describe('BrandingLivePreview', () => {
     render(<BrandingLivePreview primaryColorHex="not-a-hex" logoUrl={null} />);
 
     const button = screen.getByRole('button', { name: /preview/i });
-    expect(button).toHaveStyle({ backgroundColor: '#6EE7B7' });
+    expect(button).toHaveStyle({ backgroundColor: '#00B300' });
   });
 });

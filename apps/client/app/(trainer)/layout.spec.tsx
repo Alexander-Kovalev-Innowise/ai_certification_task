@@ -10,6 +10,7 @@ const replaceMock = jest.fn();
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ replace: replaceMock }),
+  usePathname: () => '/',
 }));
 
 function userWithRole(role: UserSummaryDto['role']): UserSummaryDto {
@@ -44,9 +45,8 @@ function renderLayout() {
   );
 }
 
-// fe §3/§4.4 — `(trainer)/layout.tsx`: RoleGuard(TRAINER), trainer nav shell,
-// BrandingProvider reads own trainerProfile/branding from GET /me/bootstrap.
-// Task 13.1.
+// fe §3 — `app/(trainer)/layout.tsx` is now ONLY RoleGuard(TRAINER) + a loading
+// skeleton; the nav shell/branding live in AuthenticatedShell (see its spec).
 describe('TrainerLayout', () => {
   beforeEach(() => {
     useAuthStore.getState().clear();
@@ -58,31 +58,29 @@ describe('TrainerLayout', () => {
     jest.restoreAllMocks();
   });
 
-  it('renders the trainer nav shell with Coaches/Share Links links, applies branding from bootstrap, and renders children for a TRAINER session', async () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: userWithRole('TRAINER'), expiresAt: Date.now() + 60_000 });
-    (global.fetch as jest.Mock).mockResolvedValueOnce(
-      mockResponse(200, {
-        role: 'TRAINER',
-        user: userWithRole('TRAINER'),
-        trainerProfile: { id: 'trainer-1', businessName: 'Ace Tennis' },
-        branding: { logoUrl: 'https://cdn.example.com/logo.png', primaryColorHex: '#112233' },
-        coachCount: 2,
-        activePlayerCount: 10,
-      }),
-    );
+  it('shows a loading skeleton while bootstrap loads, then renders children for a TRAINER session', async () => {
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWithRole('TRAINER'), expiresAt: Date.now() + 60_000 });
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, { role: 'TRAINER', user: userWithRole('TRAINER') }));
+
+    renderLayout();
+
+    expect(screen.getByLabelText(/loading trainer portal/i)).toHaveAttribute('aria-busy', 'true');
+    expect(screen.queryByText('page content')).not.toBeInTheDocument();
+
+    await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
+    expect(screen.queryByLabelText(/loading trainer portal/i)).not.toBeInTheDocument();
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  it('does not render an app shell of its own', async () => {
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWithRole('TRAINER'), expiresAt: Date.now() + 60_000 });
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, { role: 'TRAINER', user: userWithRole('TRAINER') }));
 
     const { container } = renderLayout();
 
-    expect(screen.getByRole('link', { name: /coaches/i })).toHaveAttribute('href', '/coaches');
-    expect(screen.getByRole('link', { name: /^players$/i })).toHaveAttribute('href', '/players');
-    expect(screen.getByRole('link', { name: /share links/i })).toHaveAttribute('href', '/share-links');
-    expect(screen.getByRole('link', { name: /^account$/i })).toHaveAttribute('href', '/account/profile');
-
     await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
-    expect(replaceMock).not.toHaveBeenCalled();
-
-    const brandingEl = container.querySelector('[data-branding]');
-    expect(brandingEl).toHaveStyle({ '--brand-primary': '#112233' });
+    expect(container.querySelector('nav')).toBeNull();
+    expect(container.querySelector('[data-branding]')).toBeNull();
   });
 
   it('redirects to /login and renders nothing when there is no session', () => {
@@ -93,7 +91,7 @@ describe('TrainerLayout', () => {
   });
 
   it('redirects to /dashboard and renders nothing for a non-TRAINER session', () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: userWithRole('COACH'), expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWithRole('COACH'), expiresAt: Date.now() + 60_000 });
 
     renderLayout();
 

@@ -27,7 +27,7 @@ export interface GenerateShareLinkModalProps {
 const GENERIC_ERROR_MESSAGE = 'Something went wrong generating the link. Please try again.';
 
 const INPUT_CLASSNAME =
-  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
+  'w-full min-w-0';
 
 // fe §4.4 — GenerateShareLinkModal: type toggle Player-Static/Coach-Unique,
 // conditional `targetEmail` field (mirrors `CreateShareLinkDto`'s
@@ -46,6 +46,7 @@ export function GenerateShareLinkModal({ isOpen, onClose, onGenerated }: Generat
     formState: { errors, isSubmitting },
   } = useForm<CreateShareLinkFormValues>({
     resolver: zodResolver(createShareLinkSchema),
+    mode: 'onTouched',
     defaultValues: { type: 'PLAYER_STATIC', targetEmail: '' },
   });
 
@@ -110,12 +111,14 @@ export function GenerateShareLinkModal({ isOpen, onClose, onGenerated }: Generat
 
           {type === 'COACH_UNIQUE' && (
             <div className="flex flex-col gap-xxs">
-              <label htmlFor="generate-share-link-email" className="text-body text-text-secondary">
+              <label htmlFor="generate-share-link-email" className="field-label">
                 Coach email
               </label>
               <input
                 id="generate-share-link-email"
                 type="email"
+                placeholder="coach@example.com"
+                autoComplete="off"
                 className={INPUT_CLASSNAME}
                 aria-invalid={!!errors.targetEmail}
                 aria-describedby={errors.targetEmail ? 'generate-share-link-email-error' : undefined}
@@ -136,13 +139,13 @@ export function GenerateShareLinkModal({ isOpen, onClose, onGenerated }: Generat
           )}
 
           <div className="mt-sm flex justify-end gap-sm">
-            <button type="button" onClick={handleClose} className="rounded-sm p-sm text-body text-text-secondary">
+            <button type="button" onClick={handleClose} className="btn btn-ghost">
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+              className="btn btn-primary"
             >
               {isSubmitting ? 'Generating…' : 'Generate'}
             </button>

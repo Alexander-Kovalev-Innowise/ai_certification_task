@@ -1,82 +1,32 @@
 'use client';
 
-import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { RoleGuard } from '../../src/components/RoleGuard';
 import { SkeletonCard } from '../../src/components/shared/Skeleton';
 import { useBootstrap } from '../../src/hooks/useBootstrap';
-import { BrandingProvider, type BrandingInput } from '../../src/lib/branding/BrandingProvider';
 
-const NAV_LINKS = [
-  { href: '/my-times', label: 'My Times' },
-  { href: '/profile', label: 'Profile' },
-] as const;
-
-// fe §3/§4.7 — `/account/profile` (Task 18.1, the shared GET/PATCH /me
-// editor), rendered separately from NAV_LINKS (pushed to the far end of the
-// bar via `ml-auto`) as a persistent account/settings link — distinct from
-// this role's own `/profile` above, which is the coach-specific self-fields
-// editor (PATCH /coaches/:id, FR-064), not the shared account page.
-const ACCOUNT_LINK = { href: '/account/profile', label: 'Account' } as const;
-
-function hasCoachBranding(data: unknown): data is { employingTrainer: BrandingInput } {
-  return typeof data === 'object' && data !== null && 'employingTrainer' in data;
-}
-
-function CoachNav() {
-  return (
-    <nav aria-label="Coach navigation" className="flex items-center gap-lg border-b border-border-soft bg-surface-1 px-lg py-sm">
-      {NAV_LINKS.map((link) => (
-        <Link key={link.href} href={link.href} className="text-body text-text-primary hover:text-brand-primary">
-          {link.label}
-        </Link>
-      ))}
-      <Link href={ACCOUNT_LINK.href} className="ml-auto text-body text-text-primary hover:text-brand-primary">
-        {ACCOUNT_LINK.label}
-      </Link>
-    </nav>
-  );
-}
-
-// fe §3/§4.5 — CoachLayout's inner content: reads GET /me/bootstrap (the
-// COACH shape's `employingTrainer` block — BrandingProvider.tsx's own doc
-// comment lists `CoachBootstrapDto.employingTrainer` as one of the real
-// shapes it's fed) so BrandingProvider applies the coach's employing
-// trainer's own accent to every route this layout wraps. Split from
-// CoachLayout itself so RoleGuard's "no session at all" branch never
-// triggers a bootstrap fetch (same reasoning as TrainerLayoutContent/
-// PlayerLayoutContent, RoleGuard returns null before this ever mounts).
+// The nav shell and BrandingProvider live in the root-level
+// <AuthenticatedShell> (src/components/shell/AuthenticatedShell.tsx) so they
+// persist across navigation; this layout only gates the role and holds the
+// content area on a skeleton until GET /me/bootstrap resolves. Split from
+// CoachLayout so RoleGuard's "no session" branch never reaches this hook.
 function CoachLayoutContent({ children }: { children: ReactNode }) {
-  const { data, isLoading } = useBootstrap();
+  const { isLoading } = useBootstrap();
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return (
-      <div className="flex min-h-screen flex-col">
-        <CoachNav />
-        <main className="flex-1 p-lg" aria-busy="true" aria-label="Loading coach portal">
-          <SkeletonCard />
-        </main>
+      <div className="p-lg" aria-busy="true" aria-label="Loading coach portal">
+        <SkeletonCard />
       </div>
     );
   }
 
-  const branding = hasCoachBranding(data) ? data.employingTrainer : null;
-
-  return (
-    <BrandingProvider branding={branding}>
-      <div className="flex min-h-screen flex-col">
-        <CoachNav />
-        <main className="flex-1">{children}</main>
-      </div>
-    </BrandingProvider>
-  );
+  return <>{children}</>;
 }
 
-// fe §3 route map — `(coach)/layout.tsx`: RoleGuard(COACH) + coach nav shell
-// (My Times, Profile — the two routes Tasks 15.3-15.4 add) + BrandingProvider
-// reading the coach's employing trainer's branding off `GET /me/bootstrap`.
-// NOT `/dashboard`, which is the single unified route living outside every
+// fe §3 route map — `(coach)/layout.tsx`: RoleGuard(COACH). NOT
+// `/dashboard`, which is the single unified route living outside every
 // `(role)` group. Task 15.1.
 export default function CoachLayout({ children }: { children: ReactNode }) {
   return (

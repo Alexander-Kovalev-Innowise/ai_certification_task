@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 
+import { PageHeader, PageLayout } from '../../../src/components/shared/PageLayout';
 import { SkeletonCard } from '../../../src/components/shared/Skeleton';
 import { BrandingLivePreview } from '../../../src/components/trainer/BrandingLivePreview';
 import { ColorPicker } from '../../../src/components/trainer/ColorPicker';
@@ -14,13 +15,14 @@ import { useBootstrap } from '../../../src/hooks/useBootstrap';
 import { apiRequest } from '../../../src/lib/api/apiClient';
 import { parseApiErrorBody } from '../../../src/lib/api/apiError';
 import { updateBrandingSchema, type UpdateBrandingFormValues } from '../../../src/lib/schemas/updateBrandingSchema';
+import { toast } from '../../../src/lib/toast/toast';
 
 // fe §1.2/§8 — mirrors BrandingProvider.tsx's own (private) platform-default
 // mint, used here only as this form's starting value for a trainer who has
 // never saved branding (`primaryColorHex: null` off bootstrap) — not
 // re-exported from BrandingProvider.tsx to avoid touching that module's
 // already-settled Phase 10 internals for a one-constant reuse.
-const PLATFORM_DEFAULT_PRIMARY_COLOR_HEX = '#6EE7B7';
+const PLATFORM_DEFAULT_PRIMARY_COLOR_HEX = '#00B300';
 
 const GENERIC_ERROR_MESSAGE = 'Something went wrong saving your branding. Please try again.';
 
@@ -53,8 +55,10 @@ interface BrandingResponse {
 }
 
 interface BrandingPatchBody {
-  primaryColorHex: string;
+  primaryColorHex?: string;
   logoUrl?: string;
+  /** Server clears logo + colour back to the platform default. */
+  resetToDefault?: boolean;
 }
 
 async function patchBranding(trainerId: string, body: BrandingPatchBody): Promise<BrandingResponse> {
@@ -99,9 +103,12 @@ function BrandingForm({ trainerId, initialLogoUrl, initialPrimaryColorHex }: Bra
     handleSubmit,
     watch,
     setValue,
+    reset,
+    trigger,
     formState: { errors, isSubmitting },
   } = useForm<UpdateBrandingFormValues>({
     resolver: zodResolver(updateBrandingSchema),
+    mode: 'onTouched',
     defaultValues: {
       primaryColorHex: initialPrimaryColorHex ?? PLATFORM_DEFAULT_PRIMARY_COLOR_HEX,
       logoUrl: initialLogoUrl ?? '',
@@ -134,6 +141,25 @@ function BrandingForm({ trainerId, initialLogoUrl, initialPrimaryColorHex }: Bra
     },
   });
 
+  // US-01.14 — "Reset to default": no confirm step by design (the change is
+  // trivially re-doable), feedback is a toast. The server clears logoUrl +
+  // primaryColorHex; the form snaps back to the platform defaults and the
+  // bootstrap refetch re-skins the shell (logo + accent) straight away.
+  const resetMutation = useMutation({
+    mutationFn: () => patchBranding(trainerId, { resetToDefault: true }),
+    onSuccess: () => {
+      reset({ primaryColorHex: PLATFORM_DEFAULT_PRIMARY_COLOR_HEX, logoUrl: '' });
+      setSaveError(null);
+      setSaveSuccess(false);
+      setContrastWarning(null);
+      void queryClient.invalidateQueries({ queryKey: ['me', 'bootstrap'], exact: true });
+      toast.success('Branding reset to the default.');
+    },
+    onError: () => {
+      toast.error('Could not reset your branding. Please try again.');
+    },
+  });
+
   const onSubmit = handleSubmit((values) => {
     setSaveSuccess(false);
     setSaveError(null);
@@ -152,6 +178,7 @@ function BrandingForm({ trainerId, initialLogoUrl, initialPrimaryColorHex }: Bra
       <ColorPicker
         value={primaryColorHex}
         onChange={(hex) => setValue('primaryColorHex', hex, { shouldDirty: true, shouldValidate: true })}
+        onBlur={() => void trigger('primaryColorHex')}
         error={errors.primaryColorHex?.message}
       />
 
@@ -172,13 +199,21 @@ function BrandingForm({ trainerId, initialLogoUrl, initialPrimaryColorHex }: Bra
         </p>
       )}
 
-      <div>
+      <div className="flex flex-wrap gap-sm">
         <button
           type="submit"
-          disabled={isSubmitting || mutation.isPending}
-          className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+          disabled={isSubmitting || mutation.isPending || resetMutation.isPending}
+          className="btn btn-primary"
         >
           {mutation.isPending ? 'Saving…' : 'Save branding'}
+        </button>
+        <button
+          type="button"
+          onClick={() => resetMutation.mutate()}
+          disabled={isSubmitting || mutation.isPending || resetMutation.isPending}
+          className="btn btn-secondary"
+        >
+          {resetMutation.isPending ? 'Resetting…' : 'Reset to default'}
         </button>
       </div>
     </form>
@@ -195,9 +230,10 @@ export default function BrandingPage() {
 
   if (isLoading || !data) {
     return (
-      <section className="p-lg" aria-busy="true" aria-label="Loading branding settings">
+      <PageLayout aria-busy="true" aria-label="Loading branding settings">
+        <PageHeader title="Branding" />
         <SkeletonCard />
-      </section>
+      </PageLayout>
     );
   }
 
@@ -206,13 +242,13 @@ export default function BrandingPage() {
   }
 
   return (
-    <section className="flex flex-col gap-lg p-lg">
-      <h1 className="text-xl font-semibold text-text-primary">Branding</h1>
+    <PageLayout>
+      <PageHeader title="Branding" />
       <BrandingForm
         trainerId={data.trainerProfile.id}
         initialLogoUrl={data.branding.logoUrl}
         initialPrimaryColorHex={data.branding.primaryColorHex}
       />
-    </section>
+    </PageLayout>
   );
 }

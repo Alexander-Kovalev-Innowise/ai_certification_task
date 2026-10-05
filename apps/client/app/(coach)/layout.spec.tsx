@@ -10,6 +10,7 @@ const replaceMock = jest.fn();
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ replace: replaceMock }),
+  usePathname: () => '/',
 }));
 
 function userWithRole(role: UserSummaryDto['role']): UserSummaryDto {
@@ -44,10 +45,8 @@ function renderLayout() {
   );
 }
 
-// fe §3/§4.5 — `(coach)/layout.tsx`: RoleGuard(COACH), coach nav shell
-// (My Times, Profile), BrandingProvider reads the employing trainer's
-// branding off `CoachBootstrapDto.employingTrainer` (BrandingProvider.tsx's
-// own doc comment lists this as one of the real shapes it's fed). Task 15.1.
+// fe §3 — `app/(coach)/layout.tsx` is now ONLY RoleGuard(COACH) + a loading
+// skeleton; the nav shell/branding live in AuthenticatedShell (see its spec).
 describe('CoachLayout', () => {
   beforeEach(() => {
     useAuthStore.getState().clear();
@@ -59,29 +58,29 @@ describe('CoachLayout', () => {
     jest.restoreAllMocks();
   });
 
-  it('renders the coach nav shell with My Times/Profile links, applies employing-trainer branding, and renders children for a COACH session', async () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: userWithRole('COACH'), expiresAt: Date.now() + 60_000 });
-    (global.fetch as jest.Mock).mockResolvedValueOnce(
-      mockResponse(200, {
-        role: 'COACH',
-        user: userWithRole('COACH'),
-        coachProfile: { id: 'coach-1', userId: 'user-1', trainerId: 'trainer-1', status: 'ACTIVE', bio: null, credentials: null, certifications: null, publicProfile: false },
-        employingTrainer: { id: 'trainer-1', businessName: 'Ace Tennis', logoUrl: 'https://cdn.example.com/logo.png', primaryColorHex: '#112233' },
-        availabilitySet: true,
-      }),
-    );
+  it('shows a loading skeleton while bootstrap loads, then renders children for a COACH session', async () => {
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWithRole('COACH'), expiresAt: Date.now() + 60_000 });
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, { role: 'COACH', user: userWithRole('COACH') }));
+
+    renderLayout();
+
+    expect(screen.getByLabelText(/loading coach portal/i)).toHaveAttribute('aria-busy', 'true');
+    expect(screen.queryByText('page content')).not.toBeInTheDocument();
+
+    await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
+    expect(screen.queryByLabelText(/loading coach portal/i)).not.toBeInTheDocument();
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  it('does not render an app shell of its own', async () => {
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWithRole('COACH'), expiresAt: Date.now() + 60_000 });
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, { role: 'COACH', user: userWithRole('COACH') }));
 
     const { container } = renderLayout();
 
-    expect(screen.getByRole('link', { name: /my times/i })).toHaveAttribute('href', '/my-times');
-    expect(screen.getByRole('link', { name: /^profile$/i })).toHaveAttribute('href', '/profile');
-    expect(screen.getByRole('link', { name: /^account$/i })).toHaveAttribute('href', '/account/profile');
-
     await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
-    expect(replaceMock).not.toHaveBeenCalled();
-
-    const brandingEl = container.querySelector('[data-branding]');
-    expect(brandingEl).toHaveStyle({ '--brand-primary': '#112233' });
+    expect(container.querySelector('nav')).toBeNull();
+    expect(container.querySelector('[data-branding]')).toBeNull();
   });
 
   it('redirects to /login and renders nothing when there is no session', () => {
@@ -92,7 +91,7 @@ describe('CoachLayout', () => {
   });
 
   it('redirects to /dashboard and renders nothing for a non-COACH session', () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: userWithRole('TRAINER'), expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWithRole('TRAINER'), expiresAt: Date.now() + 60_000 });
 
     renderLayout();
 

@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { CoachProfileForm, type CoachProfileDetail } from '../../../src/components/coach/CoachProfileForm';
+import { PageHeader, PageLayout } from '../../../src/components/shared/PageLayout';
 import { SkeletonCard } from '../../../src/components/shared/Skeleton';
 import { useBootstrap } from '../../../src/hooks/useBootstrap';
 import type { MeBootstrapResponse } from '../../../src/types/bootstrap';
@@ -41,23 +42,27 @@ export default function ProfilePage() {
 
   if (isLoading) {
     return (
-      <div className="p-lg" aria-busy="true" aria-label="Loading profile">
+      <PageLayout aria-busy="true" aria-label="Loading profile">
+        <PageHeader title="Profile" />
         <SkeletonCard />
-      </div>
+      </PageLayout>
     );
   }
 
   if (isError || !data || !hasCoachProfile(data)) {
     return (
-      <p role="alert" className="p-lg text-body text-danger">
-        Something went wrong loading your profile. Please try again.
-      </p>
+      <PageLayout>
+        <PageHeader title="Profile" />
+        <p role="alert" className="text-body text-danger">
+          Something went wrong loading your profile. Please try again.
+        </p>
+      </PageLayout>
     );
   }
 
   return (
-    <section className="flex flex-col gap-lg p-lg">
-      <h1 className="text-xl font-semibold text-text-primary">Profile</h1>
+    <PageLayout>
+      <PageHeader title="Profile" />
 
       {savedMessage && (
         <p role="status" className="text-body text-success">
@@ -66,6 +71,6 @@ export default function ProfilePage() {
       )}
 
       <CoachProfileForm key={data.coachProfile.id} profile={data.coachProfile} onSaved={handleSaved} />
-    </section>
+    </PageLayout>
   );
 }

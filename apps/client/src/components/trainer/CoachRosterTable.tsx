@@ -1,5 +1,11 @@
 'use client';
 
+import { createColumnHelper } from '@tanstack/react-table';
+
+import { ActionIconButton } from '../shared/ActionIcon';
+import { DataTable } from '../shared/DataTable';
+import { EmptyState } from '../shared/EmptyState';
+
 import { CoachStatusBadge, type CoachInvitationStatus } from './CoachStatusBadge';
 
 // api §4.2 GET /trainers/:id/coaches — `PaginatedResponseDto<CoachRosterRowDto>`
@@ -16,12 +22,9 @@ export interface CoachRosterRow {
   status: string;
   bio?: string | null;
   joinedAt: string | null;
+  /** Invite-only rows: when the link expires (Pending) / expired (Expired). */
+  expiresAt?: string | null;
   invitationStatus: CoachInvitationStatus;
-}
-
-export interface ResendTarget {
-  email: string;
-  name: string | null;
 }
 
 export interface CoachRosterTableProps {
@@ -31,82 +34,131 @@ export interface CoachRosterTableProps {
   onLoadMore: () => void;
   /** PATCH /coaches/:id { status } — trainer's own allowed field (api §4.2). */
   onStatusChange: (coachId: string, nextStatus: 'ACTIVE' | 'PENDING') => void;
-  /** Re-runs POST /coaches/invite for an expired, not-yet-accepted invite. */
-  onResend: (target: ResendTarget) => void;
+  /** POST /coaches/invites/:id/resend for a not-yet-accepted invite row (Pending or Expired). */
+  onResend: (row: CoachRosterRow) => void;
+  /** Opens the "Check availability / Assign to session" flow for an ACTIVE coach. */
+  onAssign?: (row: CoachRosterRow) => void;
+  /** Opens the "Remove coach" confirmation for a coach with an account. */
+  onRemove?: (row: CoachRosterRow) => void;
+  /** A refetch is in flight: dims rows + shows a progress bar without unmounting them. */
+  isRefreshing?: boolean;
 }
+
+const columnHelper = createColumnHelper<CoachRosterRow>();
 
 // fe §4.4 — CoachRosterTable: `GET /trainers/:id/coaches` roster, a
 // CoachStatusBadge per row, an ACTIVE/PENDING status toggle for accepted
 // coaches (PATCH /coaches/:id, trainer's allowed field only), and a
-// resend-on-expiry action for invites with no CoachProfile yet. Task 13.2.
-export function CoachRosterTable({ items, hasMore, isFetchingNextPage = false, onLoadMore, onStatusChange, onResend }: CoachRosterTableProps) {
-  if (items.length === 0) {
-    return (
-      <p role="status" className="p-lg text-body text-text-secondary">
-        No coaches yet — invite one to get started.
-      </p>
-    );
-  }
-
-  return (
-    <div role="table" aria-label="Coach roster" className="rounded-md border border-border-soft">
-      {items.map((row) => {
-        const displayName = row.name ?? row.email;
-        const canToggleStatus = row.userId !== null && row.invitationStatus === 'Accepted';
-        const nextStatus = row.status === 'ACTIVE' ? 'PENDING' : 'ACTIVE';
-        const canResend = row.userId === null && row.invitationStatus === 'Expired';
+// resend action for invites with no CoachProfile yet (Pending or Expired),
+// an availability-check/assign action and a remove action for coaches that
+// have an account. Task 13.2 + Epic-01 audit (US-01.08/01.10, Epic §3).
+// Actions render as labelled icon buttons in the actions column; there is no
+// coach edit route, so there is no edit link.
+export function CoachRosterTable({
+  items,
+  hasMore,
+  isFetchingNextPage = false,
+  onLoadMore,
+  onStatusChange,
+  onResend,
+  onAssign,
+  onRemove,
+  isRefreshing = false,
+}: CoachRosterTableProps) {
+  const columns = [
+    columnHelper.display({
+      id: 'name',
+      header: 'Name',
+      size: 220,
+      minSize: 140,
+      cell: ({ row }) => <span className="truncate">{row.original.name ?? row.original.email}</span>,
+    }),
+    columnHelper.accessor('email', {
+      header: 'Email',
+      size: 300,
+      minSize: 160,
+      cell: (info) => <span className="truncate">{info.getValue()}</span>,
+    }),
+    columnHelper.accessor('invitationStatus', {
+      header: 'Status',
+      size: 180,
+      minSize: 120,
+      cell: ({ row }) => {
+        const { invitationStatus, expiresAt } = row.original;
+        const caption =
+          invitationStatus === 'Pending' && expiresAt
+            ? `Expires ${new Date(expiresAt).toLocaleDateString()}`
+            : invitationStatus === 'Expired' && expiresAt
+              ? `Expired ${new Date(expiresAt).toLocaleDateString()}`
+              : null;
+        return (
+          <span className="flex flex-col items-start gap-xxs">
+            <CoachStatusBadge status={invitationStatus} />
+            {caption && <span className="text-caption text-text-secondary">{caption}</span>}
+          </span>
+        );
+      },
+    }),
+    columnHelper.accessor('joinedAt', {
+      header: 'Joined',
+      size: 140,
+      minSize: 100,
+      cell: (info) => {
+        const joinedAt = info.getValue();
+        return <span className="text-caption text-text-secondary">{joinedAt ? new Date(joinedAt).toLocaleDateString() : '—'}</span>;
+      },
+    }),
+    columnHelper.display({
+      id: 'actions',
+      header: 'Actions',
+      size: 156,
+      enableResizing: false,
+      meta: { align: 'right' },
+      cell: ({ row }) => {
+        const coach = row.original;
+        const canToggleStatus = coach.userId !== null && coach.invitationStatus === 'Accepted';
+        const nextStatus = coach.status === 'ACTIVE' ? 'PENDING' : 'ACTIVE';
+        // Any not-yet-accepted invite row (no account yet) can be resent: the
+        // server revokes the old link and issues a fresh 7-day one.
+        const canResend = coach.userId === null && coach.invitationStatus !== 'Accepted';
+        const canAssign = coach.userId !== null && coach.status === 'ACTIVE' && !!onAssign;
+        const canRemove = coach.userId !== null && !!onRemove;
+        const displayName = coach.name ?? coach.email;
 
         return (
-          <div
-            key={row.id}
-            role="row"
-            aria-label={displayName}
-            className="flex items-center gap-md border-b border-border-soft/40 p-md text-body text-text-primary last:border-b-0"
-          >
-            <span className="w-1/4 truncate">{displayName}</span>
-            <span className="w-1/4 truncate">{row.email}</span>
-            <span className="w-1/6">
-              <CoachStatusBadge status={row.invitationStatus} />
-            </span>
-            <span className="w-1/6 text-caption text-text-secondary">
-              {row.joinedAt ? new Date(row.joinedAt).toLocaleDateString() : '—'}
-            </span>
-            <span className="flex flex-1 justify-end gap-sm">
-              {canToggleStatus && (
-                <button
-                  type="button"
-                  onClick={() => onStatusChange(row.id, nextStatus)}
-                  className="rounded-sm border border-border-soft p-xxs text-caption text-text-primary hover:border-brand-primary"
-                >
-                  Set to {nextStatus === 'ACTIVE' ? 'Active' : 'Pending'}
-                </button>
-              )}
-              {canResend && (
-                <button
-                  type="button"
-                  onClick={() => onResend({ email: row.email, name: row.name })}
-                  className="rounded-sm border border-border-soft p-xxs text-caption text-text-primary hover:border-brand-primary"
-                >
-                  Resend invite
-                </button>
-              )}
-            </span>
-          </div>
+          <span className="flex justify-end gap-xs">
+            {canToggleStatus && (
+              <ActionIconButton
+                icon="toggle"
+                label={`Set to ${nextStatus === 'ACTIVE' ? 'Active' : 'Pending'}`}
+                onClick={() => onStatusChange(coach.id, nextStatus)}
+              />
+            )}
+            {canAssign && (
+              <ActionIconButton icon="calendar" label={`Check availability / Assign ${displayName} to session`} onClick={() => onAssign?.(coach)} />
+            )}
+            {canResend && <ActionIconButton icon="refresh" label="Resend invite" onClick={() => onResend(coach)} />}
+            {canRemove && (
+              <ActionIconButton icon="user-x" tone="danger" label={`Remove ${displayName}`} onClick={() => onRemove?.(coach)} />
+            )}
+          </span>
         );
-      })}
+      },
+    }),
+  ];
 
-      {hasMore && (
-        <div className="p-sm text-center">
-          <button
-            type="button"
-            onClick={onLoadMore}
-            disabled={isFetchingNextPage}
-            className="rounded-sm p-sm text-body text-brand-primary disabled:opacity-60"
-          >
-            {isFetchingNextPage ? 'Loading…' : 'Load more'}
-          </button>
-        </div>
-      )}
-    </div>
+  return (
+    <DataTable
+      columns={columns}
+      data={items}
+      ariaLabel="Coach roster"
+      getRowId={(row) => row.id}
+      rowAriaLabel={(row) => row.name ?? row.email}
+      isRefreshing={isRefreshing}
+      pagination={{ hasMore, isFetchingNextPage, onLoadMore }}
+      emptyState={
+        <EmptyState icon="inbox" title="No coaches yet — invite one to get started." description="Invited coaches will show up here once you send an invite." />
+      }
+    />
   );
 }

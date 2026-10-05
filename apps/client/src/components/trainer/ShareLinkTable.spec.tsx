@@ -23,7 +23,36 @@ describe('ShareLinkTable', () => {
   it('shows an empty state when there are no links', () => {
     render(<ShareLinkTable items={[]} hasMore={false} onLoadMore={jest.fn()} onRevoke={jest.fn()} />);
 
-    expect(screen.getByText(/no share links/i)).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/no share links yet/i);
+    expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument();
+  });
+
+  it('marks the table busy while refreshing', () => {
+    render(<ShareLinkTable items={[makeRow()]} hasMore={false} onLoadMore={jest.fn()} onRevoke={jest.fn()} isRefreshing />);
+
+    expect(screen.getByRole('table', { name: 'Share links' })).toHaveAttribute('aria-busy', 'true');
+  });
+
+  it('renders a header row with the column names, ending in an Actions column', () => {
+    render(<ShareLinkTable items={[makeRow()]} hasMore={false} onLoadMore={jest.fn()} onRevoke={jest.fn()} />);
+
+    expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
+      'Code',
+      'Type',
+      'Target email',
+      'Uses',
+      'Expires',
+      'Status',
+      'Actions',
+    ]);
+  });
+
+  it('fades a row whose revoke is pending', () => {
+    const items = [makeRow({ id: 'link-p', code: 'pend1' })];
+
+    render(<ShareLinkTable items={items} hasMore={false} onLoadMore={jest.fn()} onRevoke={jest.fn()} pendingRevokeIds={['link-p']} />);
+
+    expect(screen.getByRole('row', { name: 'pend1' })).toHaveClass('opacity-40');
   });
 
   it('renders code, type, usage and status for a PLAYER_STATIC row (unlimited uses, no expiry)', () => {
@@ -66,11 +95,11 @@ describe('ShareLinkTable', () => {
     expect(screen.queryByRole('button', { name: /^revoke$/i })).not.toBeInTheDocument();
   });
 
-  it('shows a "Load more" affordance and calls onLoadMore when there are more rows', () => {
+  it('calls onLoadMore from "Next" on the last loaded page when there are more rows', () => {
     const onLoadMore = jest.fn();
     render(<ShareLinkTable items={[makeRow()]} hasMore onLoadMore={onLoadMore} onRevoke={jest.fn()} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /load more/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
 
     expect(onLoadMore).toHaveBeenCalled();
   });

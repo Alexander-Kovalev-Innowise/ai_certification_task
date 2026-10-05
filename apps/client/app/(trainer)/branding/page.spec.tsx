@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { useAuthStore } from '../../../src/stores/useAuthStore';
+import { useToastStore } from '../../../src/stores/useToastStore';
 import type { UserSummaryDto } from '../../../src/types/auth';
 
 import BrandingPage from './page';
@@ -52,7 +53,7 @@ function renderPage() {
 describe('BrandingPage', () => {
   beforeEach(() => {
     useAuthStore.getState().clear();
-    useAuthStore.getState().setSession({ accessToken: 't', user: trainerUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: trainerUser, expiresAt: Date.now() + 60_000 });
     global.fetch = jest.fn();
   });
 
@@ -73,7 +74,7 @@ describe('BrandingPage', () => {
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByLabelText(/hex/i)).toHaveValue('#6EE7B7'));
+    await waitFor(() => expect(screen.getByLabelText(/hex/i)).toHaveValue('#00B300'));
   });
 
   it('saves the branding via PATCH /trainers/:id/branding and shows a success message', async () => {
@@ -94,6 +95,25 @@ describe('BrandingPage', () => {
     expect(patchUrl).toContain('/trainers/trainer-1/branding');
     expect(patchOptions.method).toBe('PATCH');
     expect(JSON.parse(patchOptions.body as string)).toEqual({ primaryColorHex: '#000000' });
+  });
+
+  it('"Reset to default" PATCHes resetToDefault without a confirm step, restores the default colour/logo and toasts', async () => {
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(mockResponse(200, bootstrapBody({ logoUrl: 'http://localhost:3000/uploads/logo-a.png', primaryColorHex: '#123ABC' })))
+      .mockResolvedValueOnce(mockResponse(200, { logoUrl: null, primaryColorHex: null, derivedPalette: null }))
+      .mockResolvedValueOnce(mockResponse(200, bootstrapBody({ logoUrl: null, primaryColorHex: null })));
+
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText(/hex/i)).toHaveValue('#123ABC'));
+
+    fireEvent.click(screen.getByRole('button', { name: /reset to default/i }));
+
+    await waitFor(() => expect(screen.getByLabelText(/hex/i)).toHaveValue('#00B300'));
+    const [patchUrl, patchOptions] = (global.fetch as jest.Mock).mock.calls[1] as [string, RequestInit];
+    expect(patchUrl).toContain('/trainers/trainer-1/branding');
+    expect(JSON.parse(patchOptions.body as string)).toEqual({ resetToDefault: true });
+    expect(useToastStore.getState().toasts.some((t) => /reset/i.test(t.message))).toBe(true);
+    expect(document.querySelector('img[src*="logo-a.png"]')).toBeNull();
   });
 
   it('renders a dismissible ContrastWarningBanner when the PATCH response carries contrastWarning, after the save already succeeded', async () => {

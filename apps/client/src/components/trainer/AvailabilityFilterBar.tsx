@@ -1,5 +1,7 @@
 'use client';
 
+import { FILTER_CARD_CLASSNAME } from '../shared/filterCard';
+
 // api §4.3 GET /trainers/:id/players — `?dayOfWeek?&startTime?&endTime?`
 // (ListRosterQueryDto). `dayOfWeek` follows `Date.getDay()`'s convention
 // (0 = Sunday ... 6 = Saturday), same as AvailabilityGrid/the formatter.
@@ -28,7 +30,7 @@ function hhmmToMinutes(value: string): number {
 }
 
 const INPUT_CLASSNAME =
-  'rounded-sm border border-border-soft bg-surface-0 p-xxs text-body text-text-primary outline-none focus:border-brand-primary';
+  'min-w-0';
 
 // fe §4.4 — AvailabilityFilterBar: `/players`' day/time filter, narrows the
 // roster to players with a saved available slot on that day (optionally
@@ -37,9 +39,9 @@ const INPUT_CLASSNAME =
 // conversion anywhere (OQ-5). Task 14.9.
 export function AvailabilityFilterBar({ value, onChange }: AvailabilityFilterBarProps) {
   return (
-    <div className="flex flex-wrap items-end gap-md">
+    <div className={`flex flex-wrap items-end gap-md ${FILTER_CARD_CLASSNAME}`}>
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="availability-filter-day" className="text-caption text-text-secondary">
+        <label htmlFor="availability-filter-day" className="field-label">
           Day
         </label>
         <select
@@ -58,7 +60,7 @@ export function AvailabilityFilterBar({ value, onChange }: AvailabilityFilterBar
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="availability-filter-from" className="text-caption text-text-secondary">
+        <label htmlFor="availability-filter-from" className="field-label">
           From
         </label>
         <input
@@ -71,7 +73,7 @@ export function AvailabilityFilterBar({ value, onChange }: AvailabilityFilterBar
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="availability-filter-to" className="text-caption text-text-secondary">
+        <label htmlFor="availability-filter-to" className="field-label">
           To
         </label>
         <input
@@ -83,7 +85,7 @@ export function AvailabilityFilterBar({ value, onChange }: AvailabilityFilterBar
         />
       </div>
 
-      <button type="button" onClick={() => onChange({})} className="rounded-sm p-xxs text-caption text-text-secondary">
+      <button type="button" onClick={() => onChange({})} className="btn btn-ghost btn-sm">
         Clear
       </button>
     </div>

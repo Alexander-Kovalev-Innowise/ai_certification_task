@@ -52,4 +52,18 @@ describe('RevokeConfirmPopover', () => {
 
     expect(screen.getByRole('button', { name: /^revoke$/i })).toBeDisabled();
   });
+
+  it('renders an icon trigger (labelled "Revoke") in the icon variant and still confirms', () => {
+    const onConfirm = jest.fn();
+    render(<RevokeConfirmPopover onConfirm={onConfirm} variant="icon" />);
+
+    const trigger = screen.getByRole('button', { name: /^revoke$/i });
+    expect(trigger).toHaveAttribute('title', 'Revoke');
+    expect(trigger.querySelector('svg')).not.toBeNull();
+
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('button', { name: /yes, revoke/i }));
+
+    expect(onConfirm).toHaveBeenCalled();
+  });
 });

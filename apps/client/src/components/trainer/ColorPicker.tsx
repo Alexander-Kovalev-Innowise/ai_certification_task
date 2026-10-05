@@ -1,5 +1,7 @@
 'use client';
 
+import { normalizeHexColor } from '../../lib/schemas/updateBrandingSchema';
+
 // fe §8 "`/trainer/branding` settings form specifics": "ColorPicker: native
 // color input + hex text field kept in sync, live-previews against
 // BrandingLivePreview (a miniature rendering of the nav bar + a primary
@@ -11,14 +13,16 @@
 export interface ColorPickerProps {
   value: string;
   onChange: (hex: string) => void;
+  /** Fired after the hex field loses focus (and after normalization), so the owning form can mark it touched/validate. */
+  onBlur?: () => void;
   error?: string;
   id?: string;
 }
 
 const INPUT_CLASSNAME =
-  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
+  'w-full min-w-0';
 
-export function ColorPicker({ value, onChange, error, id = 'branding-primary-color' }: ColorPickerProps) {
+export function ColorPicker({ value, onChange, onBlur, error, id = 'branding-primary-color' }: ColorPickerProps) {
   const swatchId = `${id}-swatch`;
   const hexId = `${id}-hex`;
   const errorId = `${id}-error`;
@@ -29,9 +33,19 @@ export function ColorPicker({ value, onChange, error, id = 'branding-primary-col
   // fed to the swatch, which would just reject/normalize it silently.
   const swatchValue = /^#[0-9A-Fa-f]{6}$/.test(value) ? value : '#000000';
 
+  // `6ee7b7` / `#6e7` -> `#6ee7b7` once the user leaves the field; anything
+  // still malformed is left as typed so the schema can explain what's wrong.
+  function handleHexBlur() {
+    const normalized = normalizeHexColor(value);
+    if (normalized !== value) {
+      onChange(normalized);
+    }
+    onBlur?.();
+  }
+
   return (
     <div className="flex flex-col gap-xxs">
-      <div className="flex items-center gap-sm">
+      <div className="flex flex-wrap items-center gap-sm">
         <label htmlFor={swatchId} className="sr-only">
           Color swatch
         </label>
@@ -40,10 +54,10 @@ export function ColorPicker({ value, onChange, error, id = 'branding-primary-col
           type="color"
           value={swatchValue}
           onChange={(event) => onChange(event.target.value)}
-          className="h-10 w-12 cursor-pointer rounded-sm border border-border-soft bg-surface-0"
+          className="h-10 w-12 cursor-pointer"
         />
-        <div className="flex flex-1 flex-col gap-xxs">
-          <label htmlFor={hexId} className="text-body text-text-secondary">
+        <div className="flex min-w-0 flex-[1_1_11rem] flex-col gap-xxs">
+          <label htmlFor={hexId} className="field-label">
             Hex color
           </label>
           <input
@@ -51,9 +65,13 @@ export function ColorPicker({ value, onChange, error, id = 'branding-primary-col
             type="text"
             value={value}
             onChange={(event) => onChange(event.target.value)}
+            onBlur={handleHexBlur}
+            autoComplete="off"
+            spellCheck={false}
+            autoCapitalize="off"
             aria-invalid={!!error}
             aria-describedby={error ? errorId : undefined}
-            placeholder="#6EE7B7"
+            placeholder="#00B300"
             className={INPUT_CLASSNAME}
           />
         </div>

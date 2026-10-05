@@ -54,11 +54,19 @@ describe('InviteCoachModal', () => {
     expect(JSON.parse(init.body as string)).toEqual({ email: 'cam@example.com', name: 'Cam Coach' });
   });
 
-  it('prefills email/name when a resend target is provided', () => {
-    render(<InviteCoachModal isOpen onClose={jest.fn()} resendTarget={{ email: 'cam@example.com', name: 'Cam Coach' }} />);
+  it.each([
+    ['COACH_ALREADY_ASSIGNED', /already assigned to another trainer/i],
+    ['COACH_ALREADY_ON_ROSTER', /already on your roster/i],
+  ])('maps a 409 %s to a specific message and stays open', async (errorCode, message) => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(409, { errorCode }));
+    const onClose = jest.fn();
 
-    expect(screen.getByLabelText(/^email/i)).toHaveValue('cam@example.com');
-    expect(screen.getByLabelText(/name/i)).toHaveValue('Cam Coach');
+    render(<InviteCoachModal isOpen onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText(/^email/i), { target: { value: 'cam@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /send invite/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('shows a generic error message on failure without closing', async () => {

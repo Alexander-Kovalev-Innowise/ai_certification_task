@@ -51,7 +51,7 @@ function renderPage() {
 describe('ShareLinksPage', () => {
   beforeEach(() => {
     useAuthStore.getState().clear();
-    useAuthStore.getState().setSession({ accessToken: 't', user: trainerUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: trainerUser, expiresAt: Date.now() + 60_000 });
     global.fetch = jest.fn();
   });
 

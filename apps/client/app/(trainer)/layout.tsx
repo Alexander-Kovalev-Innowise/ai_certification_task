@@ -1,88 +1,33 @@
 'use client';
 
-import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { RoleGuard } from '../../src/components/RoleGuard';
 import { SkeletonCard } from '../../src/components/shared/Skeleton';
 import { useBootstrap } from '../../src/hooks/useBootstrap';
-import { BrandingProvider, type BrandingInput } from '../../src/lib/branding/BrandingProvider';
 
-const NAV_LINKS = [
-  { href: '/coaches', label: 'Coaches' },
-  { href: '/players', label: 'Players' },
-  { href: '/share-links', label: 'Share Links' },
-  // Task 17.1 — added alongside the new `/branding` page itself so it's
-  // actually reachable via nav, same precedent as `/players` above already
-  // being listed ahead of its own comment about "later phases".
-  { href: '/branding', label: 'Branding' },
-] as const;
-
-// fe §3/§4.7 — `/account/profile` (Task 18.1), rendered separately from
-// NAV_LINKS (pushed to the far end of the bar via `ml-auto`) since it's a
-// persistent account/settings link, not one of this role's feature routes.
-const ACCOUNT_LINK = { href: '/account/profile', label: 'Account' } as const;
-
-function hasTrainerBranding(data: unknown): data is { branding: BrandingInput } {
-  return typeof data === 'object' && data !== null && 'branding' in data;
-}
-
-function TrainerNav() {
-  return (
-    <nav
-      aria-label="Trainer navigation"
-      className="flex items-center gap-lg border-b border-border-soft bg-surface-1 px-lg py-sm"
-    >
-      {NAV_LINKS.map((link) => (
-        <Link key={link.href} href={link.href} className="text-body text-text-primary hover:text-brand-primary">
-          {link.label}
-        </Link>
-      ))}
-      <Link href={ACCOUNT_LINK.href} className="ml-auto text-body text-text-primary hover:text-brand-primary">
-        {ACCOUNT_LINK.label}
-      </Link>
-    </nav>
-  );
-}
-
-// fe §3/§4.4 — TrainerLayout's inner content: reads GET /me/bootstrap (the
-// TRAINER shape's `branding` block) so BrandingProvider can apply this
-// trainer's own accent to every route this layout wraps, not just the
-// branding-preview leaf a later phase adds. Split from TrainerLayout itself
-// so RoleGuard's "no session at all" branch never triggers a bootstrap fetch
-// (RoleGuard returns null before this ever mounts).
+// The nav shell and BrandingProvider live in the root-level
+// <AuthenticatedShell> (src/components/shell/AuthenticatedShell.tsx) so they
+// persist across navigation; this layout only gates the role and holds the
+// content area on a skeleton until GET /me/bootstrap resolves. Split from
+// TrainerLayout so RoleGuard's "no session" branch never reaches this hook.
 function TrainerLayoutContent({ children }: { children: ReactNode }) {
-  const { data, isLoading } = useBootstrap();
+  const { isLoading } = useBootstrap();
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return (
-      <div className="flex min-h-screen flex-col">
-        <TrainerNav />
-        <main className="flex-1 p-lg" aria-busy="true" aria-label="Loading trainer portal">
-          <SkeletonCard />
-        </main>
+      <div className="p-lg" aria-busy="true" aria-label="Loading trainer portal">
+        <SkeletonCard />
       </div>
     );
   }
 
-  const branding = hasTrainerBranding(data) ? data.branding : null;
-
-  return (
-    <BrandingProvider branding={branding}>
-      <div className="flex min-h-screen flex-col">
-        <TrainerNav />
-        <main className="flex-1">{children}</main>
-      </div>
-    </BrandingProvider>
-  );
+  return <>{children}</>;
 }
 
-// fe §3 route map — `(trainer)/layout.tsx`: RoleGuard(TRAINER) + trainer nav
-// shell (Coaches, Share Links — the two routes this phase adds; `/players`
-// and `/branding` are later phases per the plan's file lists) +
-// BrandingProvider reading the caller's own `trainerProfile`/`branding` off
-// `GET /me/bootstrap`. NOT `/dashboard`, which is the single unified route
-// living outside every `(role)` group. Task 13.1.
+// fe §3 route map — `(trainer)/layout.tsx`: RoleGuard(TRAINER). NOT
+// `/dashboard`, which is the single unified route living outside every
+// `(role)` group. Task 13.1.
 export default function TrainerLayout({ children }: { children: ReactNode }) {
   return (
     <RoleGuard allow="TRAINER">

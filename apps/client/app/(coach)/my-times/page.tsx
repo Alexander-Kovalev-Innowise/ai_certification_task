@@ -3,7 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
+import { CoachOverrideNotices } from '../../../src/components/coach/CoachOverrideNotices';
 import { AvailabilityGrid, type AvailabilityGridSlot } from '../../../src/components/shared/AvailabilityGrid';
+import { PageHeader, PageLayout } from '../../../src/components/shared/PageLayout';
 import { AvailabilityGridSkeleton } from '../../../src/components/shared/RouteSkeletons';
 import { useBootstrap } from '../../../src/hooks/useBootstrap';
 import { apiRequest } from '../../../src/lib/api/apiClient';
@@ -69,23 +71,27 @@ export default function MyTimesPage() {
 
   if (isBootstrapLoading || isLoading) {
     return (
-      <div className="p-lg">
+      <PageLayout>
+        <PageHeader title="My Times" />
         <AvailabilityGridSkeleton />
-      </div>
+      </PageLayout>
     );
   }
 
   if (isError || !data) {
     return (
-      <p role="alert" className="p-lg text-body text-danger">
-        Something went wrong loading your availability. Please try again.
-      </p>
+      <PageLayout>
+        <PageHeader title="My Times" />
+        <p role="alert" className="text-body text-danger">
+          Something went wrong loading your availability. Please try again.
+        </p>
+      </PageLayout>
     );
   }
 
   return (
-    <section className="flex flex-col gap-lg p-lg">
-      <h1 className="text-xl font-semibold text-text-primary">My Times</h1>
+    <PageLayout>
+      <PageHeader title="My Times" />
 
       {savedMessage && (
         <p role="status" className="text-body text-success">
@@ -109,6 +115,9 @@ export default function MyTimesPage() {
           mutation.mutate(slots);
         }}
       />
-    </section>
+
+      {/* US-01.10: overrides a trainer logged against this coach, with acknowledge. */}
+      {coachProfileId && <CoachOverrideNotices coachProfileId={coachProfileId} />}
+    </PageLayout>
   );
 }

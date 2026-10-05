@@ -49,19 +49,29 @@ describe('LogoUploadField', () => {
     expect(options.method).toBe('POST');
   });
 
-  it('shows a processing placeholder immediately after a successful upload, using the pre-resize URL optimistically', async () => {
-    (global.fetch as jest.Mock).mockResolvedValueOnce(
-      mockResponse(201, { logoUrl: 'https://cdn.example.com/logo-abc.png' }),
-    );
+  it('accepts an SVG and reports the returned (rasterised) logoUrl', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(201, { logoUrl: 'http://localhost:3000/uploads/logo-abc.png' }));
+    const onUploaded = jest.fn();
 
-    render(<LogoUploadField currentLogoUrl={null} onUploaded={jest.fn()} />);
+    render(<LogoUploadField currentLogoUrl={null} onUploaded={onUploaded} />);
 
-    fireEvent.change(screen.getByLabelText(/logo/i), { target: { files: [makeFile()] } });
+    fireEvent.change(screen.getByLabelText(/logo/i), { target: { files: [makeFile('logo.svg', 'image/svg+xml')] } });
 
-    await waitFor(() =>
-      expect(screen.getByRole('img', { name: /logo/i })).toHaveAttribute('src', 'https://cdn.example.com/logo-abc.png'),
-    );
-    expect(screen.getByRole('status')).toHaveTextContent(/processing/i);
+    await waitFor(() => expect(onUploaded).toHaveBeenCalledWith('http://localhost:3000/uploads/logo-abc.png'));
+  });
+
+  it('rejects an unsupported type or an oversize file client-side without calling the API', () => {
+    const onUploaded = jest.fn();
+    render(<LogoUploadField currentLogoUrl={null} onUploaded={onUploaded} />);
+
+    fireEvent.change(screen.getByLabelText(/logo/i), { target: { files: [makeFile('logo.gif', 'image/gif')] } });
+    expect(screen.getByRole('alert')).toHaveTextContent(/unsupported file type/i);
+
+    fireEvent.change(screen.getByLabelText(/logo/i), { target: { files: [makeFile('big.png', 'image/png', 2 * 1024 * 1024 + 1)] } });
+    expect(screen.getByRole('alert')).toHaveTextContent(/2MB/);
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(onUploaded).not.toHaveBeenCalled();
   });
 
   it('shows an inline error and does not call onUploaded when the upload fails', async () => {
