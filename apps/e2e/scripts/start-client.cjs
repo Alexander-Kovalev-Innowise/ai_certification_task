@@ -14,12 +14,16 @@ const fs = require('node:fs');
 const path = require('node:path');
 const env = require('./e2e-env.cjs');
 
+// The strict stack (support/strict-stack.ts) runs a second client on another port, against another API, in its own snapshot.
+const API_URL = process.env.E2E_CLIENT_API_URL ?? env.API_URL;
+const SNAPSHOT_DIR = process.env.E2E_CLIENT_SNAPSHOT ?? env.CLIENT_SNAPSHOT_DIR;
+
 const log = (msg) => console.log(`[e2e:client] ${msg}`);
 const SYNC = ['app', 'src', 'public'];
 const FILES = ['package.json', 'tsconfig.json', 'postcss.config.mjs', 'next.config.mjs'];
 
 function sync() {
-  const dest = env.CLIENT_SNAPSHOT_DIR;
+  const dest = SNAPSHOT_DIR;
   fs.mkdirSync(dest, { recursive: true });
   for (const dir of SYNC) {
     const from = path.join(env.CLIENT_DIR, dir);
@@ -39,10 +43,10 @@ log('snapshotting apps/client sources');
 sync();
 
 const nextBin = env.serverRequire.resolve('next/dist/bin/next', { paths: [env.CLIENT_DIR] });
-log(`next dev -p ${env.CLIENT_PORT} --webpack (API -> ${env.API_URL})`);
+log(`next dev -p ${env.CLIENT_PORT} --webpack (API -> ${API_URL})`);
 const child = spawn(process.execPath, [nextBin, 'dev', '-p', String(env.CLIENT_PORT), '--webpack'], {
-  cwd: env.CLIENT_SNAPSHOT_DIR,
-  env: { ...process.env, NEXT_PUBLIC_API_URL: env.API_URL, NEXT_TELEMETRY_DISABLED: '1' },
+  cwd: SNAPSHOT_DIR,
+  env: { ...process.env, NEXT_PUBLIC_API_URL: API_URL, NEXT_TELEMETRY_DISABLED: '1' },
   stdio: 'inherit',
 });
 const stop = () => child.kill();

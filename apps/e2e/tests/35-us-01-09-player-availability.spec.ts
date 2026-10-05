@@ -18,7 +18,7 @@ import {
  * US-01.09 - Player / parent sets availability ("Best Times").
  * Parent: profile -> Best Times grid (several slots per day, validation, exact confirmation text, separate per child).
  * Trainer: roster shows each player's summary, can filter by day / time window with a "Players available at this time: X out of Y" count.
- * (There is no profile-switcher dropdown on the grid page: each child has their own Best Times page, opened from the profile.)
+ * (The grid page also has a profile-switcher dropdown - "Me" + each child - above the grid.)
  */
 test.describe('US-01.09: Player/Parent sets availability (Best Times)', () => {
   const DAY = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 } as const;

@@ -187,9 +187,9 @@ test.describe('US-01.10: Coach sets My Times and the trainer assignment conflict
     await expect(page.getByText(`${trainer.businessName}: ${reason}`)).toBeVisible();
     await highlight(page.getByText(`${trainer.businessName}: ${reason}`));
 
-    await narrate('The coach acknowledges the assignment');
-    await page.getByRole('button', { name: 'Acknowledge' }).click();
-    await expect(page.getByText('Acknowledged', { exact: true })).toBeVisible();
-    await highlight(page.getByText('Acknowledged', { exact: true }));
+    await narrate('The coach accepts the assignment');
+    await page.getByRole('button', { name: 'Accept' }).click();
+    await expect(page.getByText('Accepted', { exact: true })).toBeVisible();
+    await highlight(page.getByText('Accepted', { exact: true }));
   });
 });

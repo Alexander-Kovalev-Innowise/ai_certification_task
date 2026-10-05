@@ -40,7 +40,33 @@ export default defineConfig({
     navigationTimeout: 60_000, // first hit of each route compiles in `next dev`
   },
 
-  projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
+  // `chromium` = the desktop suite (1280x720). `phone` and `tablet` re-run only the responsive specs (51-53) at a phone
+  // (375x812, touch) and a tablet (768x1024, touch) viewport, with the video recorded at that size (spec "Mobile Requirements").
+  projects: [
+    { name: 'chromium', use: { browserName: 'chromium' }, testIgnore: /\/5[123]-responsive-/ },
+    {
+      name: 'phone',
+      testMatch: /\/5[12]-responsive-/,
+      use: {
+        browserName: 'chromium',
+        viewport: { width: 375, height: 812 },
+        isMobile: true,
+        hasTouch: true,
+        video: { mode: 'on', size: { width: 375, height: 812 } },
+      },
+    },
+    {
+      name: 'tablet',
+      testMatch: /\/5[13]-responsive-/,
+      use: {
+        browserName: 'chromium',
+        viewport: { width: 768, height: 1024 },
+        isMobile: true,
+        hasTouch: true,
+        video: { mode: 'on', size: { width: 768, height: 1024 } },
+      },
+    },
+  ],
 
   webServer: [
     {

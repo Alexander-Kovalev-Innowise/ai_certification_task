@@ -39,3 +39,6 @@ apps/e2e/videos/
 apps/e2e/.uploads/
 apps/e2e/.client-snapshot/
 apps/server/.e2e-dist/
+apps/server/.perf-dist/
+apps/server/.perf-uploads/
+apps/e2e/.client-snapshot-strict/

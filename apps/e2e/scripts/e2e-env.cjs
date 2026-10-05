@@ -27,6 +27,20 @@ const SERVER_OUT_DIR = path.join(SERVER_DIR, '.e2e-dist');
 /** A throwaway snapshot of apps/client so `next dev` gets its own .next + lock. */
 const CLIENT_SNAPSHOT_DIR = path.join(E2E_DIR, '.client-snapshot');
 
+/**
+ * The "strict" stack: a second API + client pair (ports 3102 / 3103, same e2e database) for the few
+ * specs that need the production behaviour the main stack switches off - rate limits ON and a SHORT
+ * impersonation lifetime. Started lazily by the `strictStack` fixture (support/strict-stack.ts), never by
+ * Playwright's webServer, so it only exists for runs that include a `*.strict.spec.ts`.
+ */
+const STRICT_API_PORT = Number(process.env.E2E_STRICT_API_PORT ?? 3102);
+const STRICT_CLIENT_PORT = Number(process.env.E2E_STRICT_CLIENT_PORT ?? 3103);
+const STRICT_API_URL = `http://localhost:${STRICT_API_PORT}`;
+const STRICT_CLIENT_URL = `http://localhost:${STRICT_CLIENT_PORT}`;
+const STRICT_CLIENT_SNAPSHOT_DIR = path.join(E2E_DIR, '.client-snapshot-strict');
+/** Impersonation lifetime on the strict API, in seconds (the spec'd 1 hour is 3600). */
+const STRICT_IMPERSONATION_TTL_SECONDS = 45;
+
 // Resolve tooling from apps/server's dependency tree (pg, dotenv, prisma, ts-node, typescript).
 const serverRequire = createRequire(path.join(SERVER_DIR, 'package.json'));
 
@@ -74,6 +88,23 @@ function apiEnv() {
   };
 }
 
+/**
+ * Env for the strict API: the main stack's env, but with rate limits ON (RATE_LIMITS_DISABLED=false - the
+ * production default), a short impersonation lifetime, its own port/client origin, and the background jobs OFF
+ * (a second outbox pump on the shared database would steal e-mails from the main API's dev mailbox).
+ */
+function strictApiEnv() {
+  return {
+    ...apiEnv(),
+    PORT: String(STRICT_API_PORT),
+    CLIENT_URL: STRICT_CLIENT_URL,
+    PUBLIC_API_URL: STRICT_API_URL,
+    RATE_LIMITS_DISABLED: 'false',
+    IMPERSONATION_TTL_SECONDS: String(STRICT_IMPERSONATION_TTL_SECONDS),
+    SCHEDULER_ENABLED: 'false',
+  };
+}
+
 /** Seeded Super Admin credentials (from SEED_SUPER_ADMIN_* in the root .env / process env). */
 function seedCredentials() {
   const rootEnv = loadRootEnv();
@@ -100,5 +131,12 @@ module.exports = {
   loadRootEnv,
   databaseUrls,
   apiEnv,
+  strictApiEnv,
+  STRICT_API_PORT,
+  STRICT_CLIENT_PORT,
+  STRICT_API_URL,
+  STRICT_CLIENT_URL,
+  STRICT_CLIENT_SNAPSHOT_DIR,
+  STRICT_IMPERSONATION_TTL_SECONDS,
   seedCredentials,
 };

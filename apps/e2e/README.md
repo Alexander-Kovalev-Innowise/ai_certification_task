@@ -43,6 +43,16 @@ Playwright starts `webServer`s before `global-setup.ts`, so DB preparation lives
 The API needs `MAIL_PROVIDER=dev`: `GET /__dev/mailbox?to=<email>` -> `[{to,subject,templateId,html,text,links[],sentAt}]`,
 `DELETE /__dev/mailbox`.
 
+### Extra stacks / projects
+
+- **Projects** (`playwright.config.ts`): `chromium` = the desktop suite (1280x720). `phone` (375x812, touch) and `tablet` (768x1024, touch) re-run only the
+  responsive specs `51-53` with the video recorded at that size (`npx playwright test --project=phone`). Their videos get a `-phone` / `-tablet` suffix.
+- **Strict stack** (`support/strict-stack.ts`, specs named `*.strict.spec.ts`): a second API (`:3102`) + client (`:3103`) on the SAME e2e database with
+  `RATE_LIMITS_DISABLED=false`, `IMPERSONATION_TTL_SECONDS=45` (non-production override of the spec'd 1 hour) and `SCHEDULER_ENABLED=false` (a second outbox pump
+  would steal e-mails from the main API's dev mailbox). The spec starts it in `beforeAll` (`startStrictStack()`) and kills it in `afterAll`, so throttle counters
+  start empty on every run and no port stays occupied. Arrange users/e-mails through the main `api` / `mailbox` fixtures, only the browser talks to the strict pair.
+  Logs: `test-results/strict-api.log`, `strict-client.log`. Ports: `E2E_STRICT_API_PORT`, `E2E_STRICT_CLIENT_PORT`.
+
 ## Support library (`support/`)
 
 Import everything from `../support/test`:
@@ -68,9 +78,14 @@ directory, `21` dashboards.
 Player / parent / child side: `30` US-01.02 player registers via ShareLink (+ second trainer, family picker, context switcher, coach link),
 `31` US-01.03 parent creates a child profile, `32` US-01.04 parent manages child-trainer associations, `33` US-01.05 child purchase approval
 (incl. the real 5-minute ApprovalExpiryJob run - that one test waits up to ~5 min), `34` US-01.06 child login constraints, `35` US-01.09 Best Times,
-`36` business rules (under-18 parent-managed, e-mail uniqueness / single role, multi-trainer isolation). Family arrange helpers live in
+`36` business rules (under-18 parent-managed, e-mail uniqueness / single role, multi-trainer isolation). `46` client-approved extras (suggested session times on the roster, trainer-set skill level, profile photo by https URL, welcome e-mail). Family arrange helpers live in
 `support/family.ts` (`registerParent`, `addChildProfile`, `createChildLogin`, `connectProfilesViaLink`, `setPlayerAvailability`, ...);
 `support/db.ts` also has `expirePendingApprovals`.
+Coverage-gap specs: `47` Super Admin edits another user (PATCH /users/:id) and a trainer's business profile (PATCH /trainers/:id, via impersonation), trainer removes a coach / player,
+"Resend setup email", the TrainerCreationLog audit row, player/parent edits school / jersey number / emergency contact; `48` (strict stack) login rate limiting (429, per-e-mail and per-IP)
+and the impersonation session expiring by itself; `49` axe (both themes) on every trainer / coach / player / Super Admin / public page and dialog + keyboard-only walk-throughs of the
+approval dialog and the availability grid (helpers `tabUntilFocused`, `dropDevToolsPortal` in `support/a11y.ts`); `51-53` mobile / tablet layout (no sideways scroll, tables scroll inside
+their container, 40px touch targets, navigation strip / collapsible sidebar, grid + dialogs fit the screen).
 
 ## Adding a spec for a user story
 

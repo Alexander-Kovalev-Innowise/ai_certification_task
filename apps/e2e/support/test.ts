@@ -61,7 +61,9 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     // Videos are finalised when their page closes. Close, then copy to a stable path.
     const specName = path.basename(testInfo.file).replace(/\.spec\.[jt]sx?$/, '');
     const title = testInfo.titlePath.slice(1).join(' - ');
-    const fileBase = slug(title) + (testInfo.retry > 0 ? `-retry${testInfo.retry}` : '');
+    // The responsive specs run once per viewport project (phone / tablet): keep their videos apart.
+    const projectSuffix = testInfo.project.name === 'chromium' ? '' : `-${testInfo.project.name}`;
+    const fileBase = slug(title) + projectSuffix + (testInfo.retry > 0 ? `-retry${testInfo.retry}` : '');
     const dir = path.join(VIDEOS_DIR, specName);
     fs.mkdirSync(dir, { recursive: true });
 
@@ -92,3 +94,5 @@ export { Mailbox } from './mailbox';
 export * from './arrange';
 export * from './db';
 export * from './family';
+export { startStrictStack } from './strict-stack';
+export type { StrictStack } from './strict-stack';

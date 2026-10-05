@@ -94,9 +94,11 @@ test.describe('US-01.03: Parent creates a child profile', () => {
     await expect(preview).toBeVisible();
     await highlight(preview);
 
-    await narrate('The parent has one trainer, offered as an optional connection; leave it unticked');
-    await expect(dialog.getByText('Connect with trainers (optional)')).toBeVisible();
-    await expect(dialog.getByLabel(trainer.businessName)).not.toBeChecked();
+    await narrate('The parent has one trainer, so the form asks "Will <child> also train with <trainer>?"; leave the answer at No');
+    const prompt = dialog.getByRole('group', { name: `Will ${childName} also train with ${trainer.businessName}?` });
+    await expect(prompt).toBeVisible();
+    await expect(prompt.getByRole('radio', { name: 'No' })).toBeChecked();
+    await expect(dialog.getByText('Connect with trainers (optional)')).toHaveCount(0);
     await dialog.getByRole('button', { name: 'Add child' }).click();
     await expect(dialog).toBeHidden();
 

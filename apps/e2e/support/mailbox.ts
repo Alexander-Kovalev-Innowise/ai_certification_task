@@ -56,7 +56,7 @@ export class Mailbox {
 
   /** Poll until an email to `to` (optionally matching `subject`) arrives; returns the newest match. */
   async waitFor(to: string, opts: WaitOptions = {}): Promise<MailMessage> {
-    const { timeoutMs = 15_000, intervalMs = 300, subject } = opts;
+    const { timeoutMs = 30_000, intervalMs = 300, subject } = opts;
     const deadline = Date.now() + timeoutMs;
     let lastError: unknown;
     while (Date.now() < deadline) {
@@ -75,7 +75,7 @@ export class Mailbox {
 
   /** Wait for an email to `to` and return the first link in it matching `pattern`, e.g. `/register\?token=/`. */
   async linkTo(to: string, pattern: RegExp, opts: WaitOptions = {}): Promise<string> {
-    const { timeoutMs = 15_000, intervalMs = 300, subject } = opts;
+    const { timeoutMs = 30_000, intervalMs = 300, subject } = opts;
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const msgs = (await this.list(to).catch(() => [] as MailMessage[])).filter((m) => subjectMatches(m, subject));

@@ -1,4 +1,4 @@
-import { API_URL, SEED } from './seed';
+import { API_URL, CLIENT_URL, SEED } from './seed';
 
 export type Role = 'SUPER_ADMIN' | 'TRAINER' | 'COACH' | 'PLAYER_PARENT';
 
@@ -70,6 +70,9 @@ export class ApiClient {
     const res = await fetch(url, {
       method,
       headers: {
+        // A real browser always sends Origin on these cross-origin calls; the API's CSRF check
+        // (spec 13) requires it on the cookie-authenticated /auth/refresh and /auth/logout.
+        Origin: new URL(CLIENT_URL).origin,
         ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...opts.headers,
@@ -99,10 +102,10 @@ export class ApiClient {
     return { ...res.body, cookie: cookieHeaderFrom(res.headers), obtainedAt: Date.now() };
   }
 
-  /** POST /auth/refresh - cookie-only; needs the csrf double-submit header. Rotates the cookie. */
+  /** POST /auth/refresh - cookie-only; the API checks Origin (sent by default), no csrf header needed. Rotates the cookie. */
   async refresh(session: ApiSession): Promise<ApiSession> {
     const res = await this.post<Session>('/auth/refresh', {
-      headers: { Cookie: session.cookie, 'X-CSRF-Token': session.csrfToken },
+      headers: { Cookie: session.cookie },
     });
     if (!res.ok) throw new Error(`refresh failed: ${res.status} ${JSON.stringify(res.body)}`);
     return { ...res.body, cookie: cookieHeaderFrom(res.headers) || session.cookie, obtainedAt: Date.now() };
