@@ -80,4 +80,21 @@ describe('ProfileEditForm', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't be saved/i);
   });
+
+  it('replaces the photo URL text input with an upload field, and removing the photo PATCHes photoUrl: null', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, profile({ photoUrl: null })));
+
+    render(
+      <ProfileEditForm profile={profile({ photoUrl: 'http://localhost:3000/uploads/photo-abc.webp' })} canEditGuardianFields onSaved={jest.fn()} />,
+    );
+
+    expect(screen.queryByLabelText(/photo url/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /remove photo/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/player-profiles/profile-2');
+    expect(JSON.parse(init.body as string).photoUrl).toBeNull();
+  });
 });

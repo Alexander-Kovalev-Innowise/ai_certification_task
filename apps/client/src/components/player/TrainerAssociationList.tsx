@@ -33,7 +33,7 @@ export function TrainerAssociationList({ trainers, canManage, onAddTrainer, onRe
           <button
             type="button"
             onClick={onAddTrainer}
-            className="rounded-sm border border-border-soft p-xxs text-caption text-text-primary hover:border-brand-primary"
+            className="btn btn-secondary btn-sm"
           >
             Add Trainer
           </button>
@@ -60,7 +60,7 @@ export function TrainerAssociationList({ trainers, canManage, onAddTrainer, onRe
                 <button
                   type="button"
                   onClick={() => onRemoveTrainer(trainer)}
-                  className="rounded-sm border border-border-soft p-xxs text-caption text-danger hover:border-danger"
+                  className="btn btn-secondary btn-danger-outline btn-sm"
                 >
                   Remove
                 </button>

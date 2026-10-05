@@ -246,6 +246,7 @@ export function ShareLinkDispatcher({ code }: ShareLinkDispatcherProps) {
           onSubmit={handleAnonymousSubmit}
           isSubmitting={isSubmitting}
           submitError={submitError}
+          signInHref={`/login?next=/join/${encodeURIComponent(code)}`}
         />
       )}
       {branch === 'family-picker' && (
@@ -264,7 +265,7 @@ export function ShareLinkDispatcher({ code }: ShareLinkDispatcherProps) {
           submitError={submitError}
         />
       )}
-      {branch === 'child-blocked' && <ChildBlockedNotice />}
+      {branch === 'child-blocked' && <ChildBlockedNotice code={code} />}
       {branch === 'role-cannot-join' && <RoleCannotJoinNotice />}
       {branch === 'unsupported' && <RoleCannotJoinNotice />}
     </ShareLinkPreview>

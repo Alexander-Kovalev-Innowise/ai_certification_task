@@ -1,15 +1,18 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
 
 import type { AddTrainerAssociationResult } from '../../../../src/components/player/AddTrainerModal';
 import { AddTrainerModal } from '../../../../src/components/player/AddTrainerModal';
+import { ChildLoginForm } from '../../../../src/components/player/ChildLoginForm';
 import type { AvailableTrainerOption } from '../../../../src/components/player/ChildProfileForm';
 import { ProfileEditForm, type PlayerProfileDetail } from '../../../../src/components/player/ProfileEditForm';
 import { RemoveTrainerConfirmModal } from '../../../../src/components/player/RemoveTrainerConfirmModal';
 import { TrainerAssociationList, type TrainerAssociationRow } from '../../../../src/components/player/TrainerAssociationList';
+import { PageHeader, PageHeaderPlaceholder, PageLayout } from '../../../../src/components/shared/PageLayout';
 import { SkeletonCard } from '../../../../src/components/shared/Skeleton';
 import { useBootstrap } from '../../../../src/hooks/useBootstrap';
 import { apiRequest } from '../../../../src/lib/api/apiClient';
@@ -103,6 +106,10 @@ export default function ProfileDetailPage() {
     void queryClient.invalidateQueries({ queryKey: ['player-profiles'], exact: true });
   }
 
+  function handleChildLoginCreated() {
+    void queryClient.invalidateQueries({ queryKey: ['player-profiles', id], exact: true });
+  }
+
   function handleAdded(_result: AddTrainerAssociationResult) {
     // AddTrainerAssociationResult carries no businessName (verified against
     // the real AssociationsService response, AddTrainerModal.tsx's own
@@ -110,6 +117,9 @@ export default function ProfileDetailPage() {
     // from the mutation response.
     void queryClient.invalidateQueries({ queryKey: ['player-profiles', id, 'trainers'] });
     void queryClient.invalidateQueries({ queryKey: ['me', 'contexts'] });
+    // The context switcher and the profile cards read GET /me/bootstrap + GET /player-profiles.
+    void queryClient.invalidateQueries({ queryKey: ['me', 'bootstrap'] });
+    void queryClient.invalidateQueries({ queryKey: ['player-profiles'], exact: true });
   }
 
   function handleRemoved(trainerId: string) {
@@ -117,29 +127,52 @@ export default function ProfileDetailPage() {
       (rows ?? []).filter((row) => row.trainerId !== trainerId),
     );
     setRemoveTarget(null);
+    void queryClient.invalidateQueries({ queryKey: ['me', 'bootstrap'] });
+    void queryClient.invalidateQueries({ queryKey: ['player-profiles'], exact: true });
   }
 
   if (profileQuery.isLoading || trainersQuery.isLoading) {
     return (
-      <div className="p-lg" aria-busy="true" aria-label="Loading profile">
+      <PageLayout aria-busy="true" aria-label="Loading profile">
+        <PageHeaderPlaceholder />
         <SkeletonCard />
-      </div>
+      </PageLayout>
     );
   }
 
   if (profileQuery.isError || !profileQuery.data) {
     return (
-      <p role="alert" className="p-lg text-body text-danger">
-        Something went wrong loading this profile. Please try again.
-      </p>
+      <PageLayout>
+        <PageHeaderPlaceholder />
+        <p role="alert" className="text-body text-danger">
+          Something went wrong loading this profile. Please try again.
+        </p>
+      </PageLayout>
     );
   }
 
   return (
-    <section className="flex flex-col gap-lg p-lg">
-      <h1 className="text-xl font-semibold text-text-primary">{profileQuery.data.name}</h1>
+    <PageLayout>
+      <PageHeader
+        title={profileQuery.data.name}
+        actions={
+          <Link href={`/profiles/${id}/availability`} className="btn btn-secondary">
+            Best Times
+          </Link>
+        }
+      />
 
       <ProfileEditForm key={id} profile={profileQuery.data} canEditGuardianFields={canManage} onSaved={handleSaved} />
+
+      {canManage && !profileQuery.data.isSelf && (
+        <ChildLoginForm
+          key={`child-login-${id}`}
+          profileId={id}
+          childName={profileQuery.data.name}
+          hasLogin={!!(profileQuery.data as PlayerProfileDetail & { childUserId?: string | null }).childUserId}
+          onCreated={handleChildLoginCreated}
+        />
+      )}
 
       <TrainerAssociationList
         trainers={trainersQuery.data ?? []}
@@ -164,6 +197,6 @@ export default function ProfileDetailPage() {
         onClose={() => setRemoveTarget(null)}
         onRemoved={handleRemoved}
       />
-    </section>
+    </PageLayout>
   );
 }

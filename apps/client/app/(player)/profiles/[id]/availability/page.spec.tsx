@@ -64,7 +64,7 @@ describe('AvailabilityPage (player)', () => {
     fireEvent.change(screen.getByLabelText(/mon start/i), { target: { value: '18:00' } });
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
 
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/saved/i));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Availability saved. Trainers can see these preferences when planning sessions.'));
 
     const [url, init] = (global.fetch as jest.Mock).mock.calls[1] as [string, RequestInit];
     expect(url).toContain('/player-profiles/profile-2/availability');

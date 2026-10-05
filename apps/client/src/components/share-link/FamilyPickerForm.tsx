@@ -99,7 +99,7 @@ export function FamilyPickerForm({ trainerDisplayName, onSubmit, isSubmitting = 
       <button
         type="submit"
         disabled={isSubmitting || selectedIds.length === 0}
-        className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+        className="btn btn-primary"
       >
         {isSubmitting ? 'Connecting…' : 'Connect'}
       </button>

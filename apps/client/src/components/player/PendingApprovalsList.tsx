@@ -8,6 +8,7 @@ export interface PendingApprovalsListProps {
   approvals: ApprovalRow[];
   onApprove: (approvalId: string) => void;
   onDeny: (approvalId: string) => void;
+  onRequestInfo?: (approvalId: string) => void;
 }
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -28,7 +29,7 @@ function resolvedRecently(approval: ApprovalRow, now: number): boolean {
  * it, so the page isn't a dead end the one time a parent has nothing to
  * decide. Task 14.8.
  */
-export function PendingApprovalsList({ approvals, onApprove, onDeny }: PendingApprovalsListProps) {
+export function PendingApprovalsList({ approvals, onApprove, onDeny, onRequestInfo }: PendingApprovalsListProps) {
   // `lib/api/authSession.ts`'s pattern: `Date.now()` read once via
   // `useState`'s lazy initializer (evaluated at mount, not on every render)
   // rather than called directly in the component body, which
@@ -48,7 +49,13 @@ export function PendingApprovalsList({ approvals, onApprove, onDeny }: PendingAp
       ) : (
         <div className="flex flex-col gap-sm">
           {pending.map((approval) => (
-            <ApprovalCard key={approval.id} approval={approval} onApprove={() => onApprove(approval.id)} onDeny={() => onDeny(approval.id)} />
+            <ApprovalCard
+              key={approval.id}
+              approval={approval}
+              onApprove={() => onApprove(approval.id)}
+              onDeny={() => onDeny(approval.id)}
+              onRequestInfo={onRequestInfo ? () => onRequestInfo(approval.id) : undefined}
+            />
           ))}
         </div>
       )}

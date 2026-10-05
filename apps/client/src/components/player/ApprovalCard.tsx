@@ -7,7 +7,8 @@ export interface ApprovalRow {
   id: string;
   playerProfileId: string;
   playerName: string;
-  eventId: string;
+  eventId?: string | null;
+  title?: string | null;
   amount: string;
   paymentType: 'USD' | 'TOKEN';
   status: 'PENDING' | 'APPROVED' | 'DENIED' | 'EXPIRED';
@@ -15,12 +16,16 @@ export interface ApprovalRow {
   expiresAt: string;
   respondedAt?: string | null;
   parentNotes?: string | null;
+  /** Guardian's "request more info" question — the request stays PENDING while it is open. */
+  infoRequestMessage?: string | null;
+  infoRequestedAt?: string | null;
 }
 
 export interface ApprovalCardProps {
   approval: ApprovalRow;
   onApprove?: () => void;
   onDeny?: () => void;
+  onRequestInfo?: () => void;
 }
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -63,7 +68,7 @@ const CARD_CLASSNAME = 'flex flex-col gap-xxs rounded-md border border-border-so
  *   system-generated (`ApprovalExpiryJob`), not a parent decision, and must not read as an active denial.
  * Task 14.8.
  */
-export function ApprovalCard({ approval, onApprove, onDeny }: ApprovalCardProps) {
+export function ApprovalCard({ approval, onApprove, onDeny, onRequestInfo }: ApprovalCardProps) {
   const now = useNow(TICK_MS);
 
   if (approval.status === 'PENDING') {
@@ -75,6 +80,10 @@ export function ApprovalCard({ approval, onApprove, onDeny }: ApprovalCardProps)
         <p className="text-body-lg font-semibold text-text-primary">
           {approval.playerName} — {approval.amount} {approval.paymentType}
         </p>
+        {approval.title && <p className="text-body text-text-secondary">{approval.title}</p>}
+        {approval.infoRequestMessage && (
+          <p className="text-caption text-text-secondary">You asked: {approval.infoRequestMessage}</p>
+        )}
         <p data-testid="approval-countdown" className="font-numeric text-caption" style={{ color }}>
           {formatRemaining(remainingMs)}
         </p>
@@ -82,14 +91,21 @@ export function ApprovalCard({ approval, onApprove, onDeny }: ApprovalCardProps)
           <button
             type="button"
             onClick={onApprove}
-            className="rounded-sm bg-success p-xxs text-caption font-semibold text-[#0D0D0D]"
+            className="btn btn-primary btn-sm"
           >
             Approve
           </button>
           <button
             type="button"
+            onClick={onRequestInfo}
+            className="btn btn-secondary btn-sm"
+          >
+            Request info
+          </button>
+          <button
+            type="button"
             onClick={onDeny}
-            className="rounded-sm border border-border-soft p-xxs text-caption text-danger hover:border-danger"
+            className="btn btn-secondary btn-danger-outline btn-sm"
           >
             Deny
           </button>

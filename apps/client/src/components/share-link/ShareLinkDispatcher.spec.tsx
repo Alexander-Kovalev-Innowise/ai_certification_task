@@ -108,8 +108,16 @@ describe('ShareLinkDispatcher', () => {
       expect(screen.queryByLabelText('Email')).not.toBeInTheDocument();
     });
 
+    it('anonymous join form links to /login?next=/join/<code>', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')));
+
+      render(<ShareLinkDispatcher code="abc123" />);
+
+      expect(await screen.findByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login?next=/join/abc123');
+    });
+
     it('PLAYER_PARENT ADULT session -> FamilyPickerForm', async () => {
-      useAuthStore.getState().setSession({ accessToken: 't', user: userWith({ role: 'PLAYER_PARENT', accountType: 'ADULT' }), expiresAt: Date.now() + 60_000 });
+      useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith({ role: 'PLAYER_PARENT', accountType: 'ADULT' }), expiresAt: Date.now() + 60_000 });
       (global.fetch as jest.Mock)
         .mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')))
         .mockResolvedValueOnce(mockResponse(200, [{ id: 'p-self', name: 'A', isSelf: true }]));
@@ -119,18 +127,23 @@ describe('ShareLinkDispatcher', () => {
       expect(await screen.findByText('Who will train with Coach Lisa?')).toBeInTheDocument();
     });
 
-    it('CHILD accountType session -> ChildBlockedNotice, never calls redeem or /player-profiles', async () => {
-      useAuthStore.getState().setSession({ accessToken: 't', user: userWith({ role: 'PLAYER_PARENT', accountType: 'CHILD' }), expiresAt: Date.now() + 60_000 });
-      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')));
+    it('CHILD accountType session -> ChildBlockedNotice, which calls redeem once so the server emails the guardian (never /player-profiles)', async () => {
+      useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith({ role: 'PLAYER_PARENT', accountType: 'CHILD' }), expiresAt: Date.now() + 60_000 });
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')))
+        .mockResolvedValueOnce(mockResponse(403, { errorCode: 'CHILD_SHARE_LINK_BLOCKED' }));
 
-      render(<ShareLinkDispatcher code="abc123" />);
+      render(<ShareLinkDispatcher code="child-blocked-code" />);
 
       expect(await screen.findByText('Ask your parent to register you with this trainer.')).toBeInTheDocument();
-      expect(global.fetch).toHaveBeenCalledTimes(1); // only the stage-1 GET — no redeem, no /player-profiles
+      await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2)); // stage-1 GET + one redeem call
+      const [redeemUrl, redeemOptions] = (global.fetch as jest.Mock).mock.calls[1];
+      expect(redeemUrl).toContain('/share-links/child-blocked-code/redeem');
+      expect(redeemOptions.method).toBe('POST');
     });
 
     it('TRAINER session -> RoleCannotJoinNotice, never calls redeem', async () => {
-      useAuthStore.getState().setSession({ accessToken: 't', user: userWith({ role: 'TRAINER' }), expiresAt: Date.now() + 60_000 });
+      useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith({ role: 'TRAINER' }), expiresAt: Date.now() + 60_000 });
       (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')));
 
       render(<ShareLinkDispatcher code="abc123" />);
@@ -140,7 +153,7 @@ describe('ShareLinkDispatcher', () => {
     });
 
     it('SUPER_ADMIN session -> RoleCannotJoinNotice, never calls redeem', async () => {
-      useAuthStore.getState().setSession({ accessToken: 't', user: userWith({ role: 'SUPER_ADMIN' }), expiresAt: Date.now() + 60_000 });
+      useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith({ role: 'SUPER_ADMIN' }), expiresAt: Date.now() + 60_000 });
       (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')));
 
       render(<ShareLinkDispatcher code="abc123" />);
@@ -150,7 +163,7 @@ describe('ShareLinkDispatcher', () => {
     });
 
     it('COACH session + COACH_UNIQUE link -> CoachAcceptForm', async () => {
-      useAuthStore.getState().setSession({ accessToken: 't', user: userWith({ role: 'COACH' }), expiresAt: Date.now() + 60_000 });
+      useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith({ role: 'COACH' }), expiresAt: Date.now() + 60_000 });
       (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, validPreview('COACH_UNIQUE')));
 
       render(<ShareLinkDispatcher code="abc123" />);
@@ -159,7 +172,7 @@ describe('ShareLinkDispatcher', () => {
     });
 
     it('COACH session + PLAYER_STATIC link -> unsupported fallback, never calls redeem', async () => {
-      useAuthStore.getState().setSession({ accessToken: 't', user: userWith({ role: 'COACH' }), expiresAt: Date.now() + 60_000 });
+      useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith({ role: 'COACH' }), expiresAt: Date.now() + 60_000 });
       (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')));
 
       render(<ShareLinkDispatcher code="abc123" />);
@@ -184,11 +197,13 @@ describe('ShareLinkDispatcher', () => {
       render(<ShareLinkDispatcher code="abc123" />);
       await screen.findByLabelText('Email');
 
+      fireEvent.change(screen.getByLabelText('Your first name'), { target: { value: 'Pat' } });
+      fireEvent.change(screen.getByLabelText('Your last name'), { target: { value: 'Parent' } });
       fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'parent@example.com' } });
       fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'Password1' } });
-      fireEvent.change(screen.getByLabelText('Phone number'), { target: { value: '+15551234567' } });
+      fireEvent.change(screen.getByLabelText('Phone number'), { target: { value: '+14155552671' } });
       fireEvent.change(screen.getByLabelText("Player's name"), { target: { value: 'Alex' } });
-      fireEvent.change(screen.getByLabelText('Date of birth'), { target: { value: '2015-01-01' } });
+      fireEvent.change(screen.getByLabelText('Date of birth'), { target: { value: '1990-01-01' } });
       fireEvent.change(screen.getByLabelText('Gender'), { target: { value: 'MALE' } });
       fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
@@ -198,11 +213,13 @@ describe('ShareLinkDispatcher', () => {
       const [redeemUrl, redeemOptions] = (global.fetch as jest.Mock).mock.calls[1];
       expect(redeemUrl).toContain('/share-links/abc123/redeem');
       expect(JSON.parse(redeemOptions.body)).toEqual({
+        parentFirstName: 'Pat',
+        parentLastName: 'Parent',
         email: 'parent@example.com',
         password: 'Password1',
-        phone: '+15551234567',
+        phone: '+14155552671',
         playerName: 'Alex',
-        dateOfBirth: '2015-01-01',
+        dateOfBirth: '1990-01-01',
         gender: 'MALE',
         isSelf: true,
       });
@@ -222,7 +239,7 @@ describe('ShareLinkDispatcher', () => {
     // `ShareLinkDispatcher.tsx`'s own "both auto-login" comment) are both
     // distinct enough from the PLAYER_STATIC path above to warrant their
     // own assertion.
-    it('anonymous COACH_ACCEPT: 201 AuthSessionResponseDto populates useAuthStore and redirects, with a password-only redeem body', async () => {
+    it('anonymous COACH_ACCEPT: 201 AuthSessionResponseDto populates useAuthStore and redirects, with a name + password redeem body', async () => {
       (global.fetch as jest.Mock)
         .mockResolvedValueOnce(mockResponse(200, validPreview('COACH_UNIQUE')))
         .mockResolvedValueOnce(
@@ -236,6 +253,8 @@ describe('ShareLinkDispatcher', () => {
       render(<ShareLinkDispatcher code="abc123" />);
       await screen.findByLabelText('Choose a password');
 
+      fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Cory' } });
+      fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Coach' } });
       fireEvent.change(screen.getByLabelText('Choose a password'), { target: { value: 'Password1' } });
       fireEvent.click(screen.getByRole('button', { name: /accept invitation/i }));
 
@@ -244,13 +263,13 @@ describe('ShareLinkDispatcher', () => {
 
       const [redeemUrl, redeemOptions] = (global.fetch as jest.Mock).mock.calls[1];
       expect(redeemUrl).toContain('/share-links/abc123/redeem');
-      expect(JSON.parse(redeemOptions.body)).toEqual({ password: 'Password1' });
+      expect(JSON.parse(redeemOptions.body)).toEqual({ firstName: 'Cory', lastName: 'Coach', password: 'Password1' });
 
       await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/dashboard'), { timeout: 2000 });
     });
 
     it('ASSOCIATE_EXISTING: 200 array shows a connected message and redirects to /dashboard', async () => {
-      useAuthStore.getState().setSession({ accessToken: 't', user: userWith({ role: 'PLAYER_PARENT', accountType: 'ADULT' }), expiresAt: Date.now() + 60_000 });
+      useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith({ role: 'PLAYER_PARENT', accountType: 'ADULT' }), expiresAt: Date.now() + 60_000 });
       (global.fetch as jest.Mock)
         .mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')))
         .mockResolvedValueOnce(mockResponse(200, [{ id: 'p-self', name: 'A', isSelf: true }]))
@@ -273,7 +292,7 @@ describe('ShareLinkDispatcher', () => {
     });
 
     it('COACH_ACCEPT (authenticated): 200 {trainerId,status} shows a connected message and redirects', async () => {
-      useAuthStore.getState().setSession({ accessToken: 't', user: userWith({ role: 'COACH' }), expiresAt: Date.now() + 60_000 });
+      useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith({ role: 'COACH' }), expiresAt: Date.now() + 60_000 });
       (global.fetch as jest.Mock)
         .mockResolvedValueOnce(mockResponse(200, validPreview('COACH_UNIQUE')))
         .mockResolvedValueOnce(mockResponse(200, { trainerId: 'trainer-1', status: 'ACTIVE' }));
@@ -296,6 +315,8 @@ describe('ShareLinkDispatcher', () => {
       render(<ShareLinkDispatcher code="abc123" />);
       await screen.findByLabelText('Choose a password');
 
+      fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Cory' } });
+      fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Coach' } });
       fireEvent.change(screen.getByLabelText('Choose a password'), { target: { value: 'Password1' } });
       fireEvent.click(screen.getByRole('button', { name: /accept invitation/i }));
 
@@ -312,6 +333,8 @@ describe('ShareLinkDispatcher', () => {
       render(<ShareLinkDispatcher code="abc123" />);
       await screen.findByLabelText('Choose a password');
 
+      fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Cory' } });
+      fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Coach' } });
       fireEvent.change(screen.getByLabelText('Choose a password'), { target: { value: 'Password1' } });
       fireEvent.click(screen.getByRole('button', { name: /accept invitation/i }));
 

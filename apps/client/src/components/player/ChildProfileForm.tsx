@@ -2,11 +2,12 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 
 import { apiRequest } from '../../lib/api/apiClient';
 import { parseApiErrorBody } from '../../lib/api/apiError';
 import { createChildProfileSchema, GENDERS, type CreateChildProfileFormValues } from '../../lib/schemas/createChildProfileSchema';
+import { PhotoUploadField } from '../shared/PhotoUploadField';
 
 // api §4.3 POST /player-profiles — `201 PlayerProfileResponseDto` (or `200`
 // with the same shape plus `warning` on the FR-030 non-blocking duplicate
@@ -39,7 +40,7 @@ export interface ChildProfileFormProps {
 const GENERIC_ERROR_MESSAGE = 'Something went wrong adding this profile. Please try again.';
 
 const INPUT_CLASSNAME =
-  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
+  'w-full min-w-0';
 
 // fe §4.6 — ChildProfileForm: `/profiles`' "+Add Child" modal, posts
 // `POST /player-profiles` (api §4.3, FR-030/FR-031). Create only — a
@@ -55,11 +56,15 @@ export function ChildProfileForm({ isOpen, onClose, onCreated, availableTrainers
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<CreateChildProfileFormValues>({
     resolver: zodResolver(createChildProfileSchema),
+    mode: 'onTouched',
     defaultValues: { name: '', dateOfBirth: '', gender: undefined, school: '', photoUrl: '', trainerIds: [] },
   });
+
+  const childName = useWatch({ control, name: 'name' });
 
   if (!isOpen) {
     return null;
@@ -113,11 +118,13 @@ export function ChildProfileForm({ isOpen, onClose, onCreated, availableTrainers
 
         <form onSubmit={onSubmit} noValidate className="mt-md flex flex-col gap-md">
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="child-profile-name" className="text-body text-text-secondary">
+            <label htmlFor="child-profile-name" className="field-label">
               Name
             </label>
             <input
               id="child-profile-name"
+              placeholder="Alex Johnson"
+              autoComplete="off"
               className={INPUT_CLASSNAME}
               aria-invalid={!!errors.name}
               aria-describedby={errors.name ? 'child-profile-name-error' : undefined}
@@ -131,12 +138,14 @@ export function ChildProfileForm({ isOpen, onClose, onCreated, availableTrainers
           </div>
 
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="child-profile-dob" className="text-body text-text-secondary">
+            <label htmlFor="child-profile-dob" className="field-label">
               Date of birth
             </label>
             <input
               id="child-profile-dob"
               type="date"
+              max={new Date().toISOString().slice(0, 10)}
+              autoComplete="off"
               className={INPUT_CLASSNAME}
               aria-invalid={!!errors.dateOfBirth}
               aria-describedby={errors.dateOfBirth ? 'child-profile-dob-error' : undefined}
@@ -150,7 +159,7 @@ export function ChildProfileForm({ isOpen, onClose, onCreated, availableTrainers
           </div>
 
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="child-profile-gender" className="text-body text-text-secondary">
+            <label htmlFor="child-profile-gender" className="field-label">
               Gender
             </label>
             <select
@@ -178,18 +187,44 @@ export function ChildProfileForm({ isOpen, onClose, onCreated, availableTrainers
           </div>
 
           <div className="flex flex-col gap-xxs">
-            <label htmlFor="child-profile-school" className="text-body text-text-secondary">
+            <label htmlFor="child-profile-school" className="field-label">
               School (optional)
             </label>
-            <input id="child-profile-school" className={INPUT_CLASSNAME} {...register('school')} />
+            <input
+              id="child-profile-school"
+              placeholder="Lincoln Elementary School"
+              autoComplete="off"
+              className={INPUT_CLASSNAME}
+              aria-invalid={!!errors.school}
+              aria-describedby={errors.school ? 'child-profile-school-error' : undefined}
+              {...register('school')}
+            />
+            {errors.school && (
+              <p id="child-profile-school-error" role="alert" className="text-caption text-danger">
+                {errors.school.message}
+              </p>
+            )}
           </div>
 
-          <div className="flex flex-col gap-xxs">
-            <label htmlFor="child-profile-photo" className="text-body text-text-secondary">
-              Photo URL (optional)
-            </label>
-            <input id="child-profile-photo" className={INPUT_CLASSNAME} {...register('photoUrl')} />
-          </div>
+          <Controller
+            control={control}
+            name="photoUrl"
+            render={({ field }) => (
+              <PhotoUploadField
+                id="child-profile-photo"
+                label="Photo (optional)"
+                value={field.value ?? ''}
+                onChange={(url) => field.onChange(url)}
+                initials={(childName ?? '').trim().charAt(0).toUpperCase()}
+                disabled={isSubmitting}
+              />
+            )}
+          />
+          {errors.photoUrl && (
+            <p id="child-profile-photo-error" role="alert" className="text-caption text-danger">
+              {errors.photoUrl.message}
+            </p>
+          )}
 
           {availableTrainers.length > 0 && (
             <fieldset className="flex flex-col gap-xxs">
@@ -210,13 +245,13 @@ export function ChildProfileForm({ isOpen, onClose, onCreated, availableTrainers
           )}
 
           <div className="mt-sm flex justify-end gap-sm">
-            <button type="button" onClick={handleClose} className="rounded-sm p-sm text-body text-text-secondary">
+            <button type="button" onClick={handleClose} className="btn btn-ghost">
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+              className="btn btn-primary"
             >
               {isSubmitting ? 'Adding…' : 'Add child'}
             </button>

@@ -73,7 +73,7 @@ describe('ProfilesPage', () => {
   });
 
   it('loads bootstrap then GET /player-profiles, and renders the profile grid', async () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock)
       .mockResolvedValueOnce(mockResponse(200, bootstrapBody(adultUser)))
       .mockResolvedValueOnce(
@@ -91,7 +91,7 @@ describe('ProfilesPage', () => {
   });
 
   it('hides "Add Child" for a CHILD session', async () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: childUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: childUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock)
       .mockResolvedValueOnce(mockResponse(200, bootstrapBody(childUser)))
       .mockResolvedValueOnce(mockResponse(200, [{ id: 'profile-2', name: 'Alex', isSelf: false, trainerCount: 1 }]));
@@ -103,7 +103,7 @@ describe('ProfilesPage', () => {
   });
 
   it('opens ChildProfileForm from "Add Child", refetches profiles on success, and shows a non-blocking warning', async () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock)
       .mockResolvedValueOnce(mockResponse(200, bootstrapBody(adultUser)))
       .mockResolvedValueOnce(mockResponse(200, [{ id: 'profile-1', name: 'Priya', isSelf: true, trainerCount: 1 }]))
@@ -128,11 +128,47 @@ describe('ProfilesPage', () => {
   });
 
   it('shows an error state when the profiles request fails', async () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, bootstrapBody(adultUser))).mockResolvedValueOnce(mockResponse(500));
 
     renderPage();
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+  });
+  describe('Add myself as a player', () => {
+    it('is offered to an adult without a self profile and posts isSelf: true', async () => {
+      useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockResponse(200, bootstrapBody(adultUser)))
+        .mockResolvedValueOnce(mockResponse(200, [{ id: 'profile-2', name: 'Alex', isSelf: false, trainerCount: 1 }]))
+        .mockResolvedValueOnce(mockResponse(201, { id: 'profile-1', name: 'Priya Parent', isSelf: true }))
+        .mockResolvedValueOnce(mockResponse(200, [{ id: 'profile-1', name: 'Priya Parent', isSelf: true }]))
+        .mockResolvedValueOnce(mockResponse(200, bootstrapBody(adultUser)));
+
+      renderPage();
+      fireEvent.click(await screen.findByRole('button', { name: /add myself as a player/i }));
+
+      const dialog = screen.getByRole('dialog');
+      expect(within(dialog).getByLabelText(/^name/i)).toHaveValue('Priya Parent');
+      fireEvent.change(within(dialog).getByLabelText(/date of birth/i), { target: { value: '1985-05-05' } });
+      fireEvent.change(within(dialog).getByLabelText(/gender/i), { target: { value: 'FEMALE' } });
+      fireEvent.click(within(dialog).getByRole('button', { name: /add myself/i }));
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      const postCall = (global.fetch as jest.Mock).mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'POST') as [string, RequestInit];
+      expect(JSON.parse(postCall[1].body as string)).toMatchObject({ isSelf: true, name: 'Priya Parent' });
+    });
+
+    it('is hidden once a self profile exists, and for a CHILD session', async () => {
+      useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockResponse(200, bootstrapBody(adultUser)))
+        .mockResolvedValueOnce(mockResponse(200, [{ id: 'profile-1', name: 'Priya', isSelf: true, trainerCount: 1 }]));
+
+      renderPage();
+
+      await waitFor(() => expect(screen.getByRole('link', { name: /priya/i })).toBeInTheDocument());
+      expect(screen.queryByRole('button', { name: /add myself as a player/i })).not.toBeInTheDocument();
+    });
   });
 });

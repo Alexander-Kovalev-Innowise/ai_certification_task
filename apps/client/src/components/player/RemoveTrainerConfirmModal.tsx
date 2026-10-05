@@ -73,14 +73,14 @@ export function RemoveTrainerConfirmModal({ isOpen, profileId, trainer, onClose,
         )}
 
         <div className="mt-md flex justify-end gap-sm">
-          <button type="button" onClick={handleClose} disabled={isSubmitting} className="rounded-sm p-sm text-body text-text-secondary">
+          <button type="button" onClick={handleClose} disabled={isSubmitting} className="btn btn-ghost">
             Cancel
           </button>
           <button
             type="button"
             onClick={handleConfirm}
             disabled={isSubmitting}
-            className="rounded-sm bg-danger p-sm text-body font-semibold text-white disabled:opacity-60"
+            className="btn btn-danger"
           >
             {isSubmitting ? 'Removing…' : 'Yes, remove'}
           </button>

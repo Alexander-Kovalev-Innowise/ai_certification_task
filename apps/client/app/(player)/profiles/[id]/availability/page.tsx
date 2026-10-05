@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { useState } from 'react';
 
 import { AvailabilityGrid, type AvailabilityGridSlot } from '../../../../../src/components/shared/AvailabilityGrid';
+import { PageHeader, PageLayout } from '../../../../../src/components/shared/PageLayout';
 import { AvailabilityGridSkeleton } from '../../../../../src/components/shared/RouteSkeletons';
 import { apiRequest } from '../../../../../src/lib/api/apiClient';
 
@@ -60,27 +61,31 @@ export default function AvailabilityPage() {
 
   if (isLoading) {
     return (
-      <div className="p-lg">
+      <PageLayout>
+        <PageHeader title="Best Times" />
         <AvailabilityGridSkeleton />
-      </div>
+      </PageLayout>
     );
   }
 
   if (isError || !data) {
     return (
-      <p role="alert" className="p-lg text-body text-danger">
-        Something went wrong loading availability. Please try again.
-      </p>
+      <PageLayout>
+        <PageHeader title="Best Times" />
+        <p role="alert" className="text-body text-danger">
+          Something went wrong loading availability. Please try again.
+        </p>
+      </PageLayout>
     );
   }
 
   return (
-    <section className="flex flex-col gap-lg p-lg">
-      <h1 className="text-xl font-semibold text-text-primary">Best Times</h1>
+    <PageLayout>
+      <PageHeader title="Best Times" />
 
       {savedMessage && (
         <p role="status" className="text-body text-success">
-          Availability saved.
+          Availability saved. Trainers can see these preferences when planning sessions.
         </p>
       )}
       {mutation.isError && (
@@ -100,6 +105,6 @@ export default function AvailabilityPage() {
           mutation.mutate(slots);
         }}
       />
-    </section>
+    </PageLayout>
   );
 }

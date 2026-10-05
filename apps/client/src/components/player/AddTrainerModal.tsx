@@ -1,10 +1,12 @@
 'use client';
 
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { apiRequest } from '../../lib/api/apiClient';
 import { parseApiErrorBody } from '../../lib/api/apiError';
+import { addTrainerSchema, type AddTrainerFormValues } from '../../lib/schemas/addTrainerSchema';
 
 import type { AvailableTrainerOption } from './ChildProfileForm';
 
@@ -33,18 +35,10 @@ export interface AddTrainerModalProps {
   onAdded: (result: AddTrainerAssociationResult) => void;
 }
 
-type AddTrainerMode = 'code' | 'pick';
-
-interface AddTrainerFormValues {
-  mode: AddTrainerMode;
-  shareLinkCode: string;
-  trainerId: string;
-}
-
 const GENERIC_ERROR_MESSAGE = 'Something went wrong adding this trainer. Please try again.';
 
 const INPUT_CLASSNAME =
-  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
+  'w-full min-w-0';
 
 // fe §4.6 — AddTrainerModal: `/profiles/[id]`'s "Add Trainer" trigger
 // (`TrainerAssociationList`, Task 14.4). FR-032 option A (manual ShareLink
@@ -58,8 +52,12 @@ export function AddTrainerModal({ isOpen, profileId, availableTrainers, onClose,
     handleSubmit,
     reset,
     watch,
-    formState: { isSubmitting },
-  } = useForm<AddTrainerFormValues>({ defaultValues: { mode: 'code', shareLinkCode: '', trainerId: '' } });
+    formState: { errors, isSubmitting },
+  } = useForm<AddTrainerFormValues>({
+    resolver: zodResolver(addTrainerSchema),
+    mode: 'onTouched',
+    defaultValues: { mode: 'code', shareLinkCode: '', trainerId: '' },
+  });
 
   const mode = watch('mode');
 
@@ -76,7 +74,7 @@ export function AddTrainerModal({ isOpen, profileId, availableTrainers, onClose,
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
 
-    const body = values.mode === 'pick' ? { trainerId: values.trainerId } : { shareLinkCode: values.shareLinkCode.trim() };
+    const body = values.mode === 'pick' ? { trainerId: values.trainerId } : { shareLinkCode: values.shareLinkCode };
 
     const res = await apiRequest(`/player-profiles/${profileId}/trainers`, {
       method: 'POST',
@@ -121,17 +119,39 @@ export function AddTrainerModal({ isOpen, profileId, availableTrainers, onClose,
 
           {mode === 'code' ? (
             <div className="flex flex-col gap-xxs">
-              <label htmlFor="add-trainer-code" className="text-body text-text-secondary">
+              <label htmlFor="add-trainer-code" className="field-label">
                 Share link code
               </label>
-              <input id="add-trainer-code" className={INPUT_CLASSNAME} {...register('shareLinkCode', { required: mode === 'code' })} />
+              <input
+                id="add-trainer-code"
+                placeholder="e.g. aB3dE5fG7hJ9kL1m"
+                autoComplete="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                className={INPUT_CLASSNAME}
+                aria-invalid={!!errors.shareLinkCode}
+                aria-describedby={errors.shareLinkCode ? 'add-trainer-code-error' : undefined}
+                {...register('shareLinkCode')}
+              />
+              {errors.shareLinkCode && (
+                <p id="add-trainer-code-error" role="alert" className="text-caption text-danger">
+                  {errors.shareLinkCode.message}
+                </p>
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-xxs">
-              <label htmlFor="add-trainer-picker" className="text-body text-text-secondary">
+              <label htmlFor="add-trainer-picker" className="field-label">
                 Trainer
               </label>
-              <select id="add-trainer-picker" className={INPUT_CLASSNAME} defaultValue="" {...register('trainerId', { required: mode === 'pick' })}>
+              <select
+                id="add-trainer-picker"
+                className={INPUT_CLASSNAME}
+                defaultValue=""
+                aria-invalid={!!errors.trainerId}
+                aria-describedby={errors.trainerId ? 'add-trainer-picker-error' : undefined}
+                {...register('trainerId')}
+              >
                 <option value="" disabled>
                   Select…
                 </option>
@@ -141,6 +161,11 @@ export function AddTrainerModal({ isOpen, profileId, availableTrainers, onClose,
                   </option>
                 ))}
               </select>
+              {errors.trainerId && (
+                <p id="add-trainer-picker-error" role="alert" className="text-caption text-danger">
+                  {errors.trainerId.message}
+                </p>
+              )}
             </div>
           )}
 
@@ -151,13 +176,13 @@ export function AddTrainerModal({ isOpen, profileId, availableTrainers, onClose,
           )}
 
           <div className="mt-sm flex justify-end gap-sm">
-            <button type="button" onClick={handleClose} className="rounded-sm p-sm text-body text-text-secondary">
+            <button type="button" onClick={handleClose} className="btn btn-ghost">
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+              className="btn btn-primary"
             >
               {isSubmitting ? 'Adding…' : 'Add'}
             </button>

@@ -1,19 +1,40 @@
-// fe §4.2 — "access token present, accountType=CHILD → render
-// <ChildBlockedNotice> WITHOUT calling redeem at all — the client already
-// knows this will 403; pre-empting the call is a UX nicety, not a security
-// control (server still enforces CHILD_SHARE_LINK_BLOCKED independently)."
+'use client';
+
+import { useEffect } from 'react';
+
+import { apiRequest } from '../../lib/api/apiClient';
+
+// fe §4.2 / FR-052 — a signed-in CHILD opening a join link can never register
+// themselves. On mount this notice calls POST /share-links/:code/redeem once:
+// the server answers 403 CHILD_SHARE_LINK_BLOCKED and, as its side effect,
+// emails the guardian a "review this registration" link (SEC-006). The
+// response is intentionally ignored — the child just sees the message below.
 //
-// DEVIATION (verified against
-// apps/server/.../share-link-redemption.service.ts): the plan's suggested
-// copy ends with "State that the parent has already been emailed" — but
-// that guardian email (`OutboxJob(EMAIL_CHILD_BLOCKED_SHARELINK)`) is a
-// side effect of the SERVER actually processing a redeem attempt (Task
-// 4.8), which this pre-empting notice deliberately never triggers. Claiming
-// the parent "has already been emailed" here would be false. This notice
-// keeps the plan's exact mandated first sentence and replaces the second
-// with an accurate call to action instead (share the link with the parent)
-// rather than asserting a side effect that never ran.
-export function ChildBlockedNotice() {
+// De-duplicated per code for the lifetime of the page: re-renders, React
+// StrictMode's double effect run and a remount of this notice must not send
+// the guardian several identical emails.
+const notifiedCodes = new Set<string>();
+
+export interface ChildBlockedNoticeProps {
+  code: string;
+}
+
+export function ChildBlockedNotice({ code }: ChildBlockedNoticeProps) {
+  useEffect(() => {
+    if (notifiedCodes.has(code)) {
+      return;
+    }
+    notifiedCodes.add(code);
+    apiRequest(`/share-links/${encodeURIComponent(code)}/redeem`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    }).catch(() => {
+      // Best effort: the guardian email is a side effect, not something the
+      // child can act on — a network failure must not surface as an error.
+    });
+  }, [code]);
+
   return (
     <div
       role="alert"
@@ -21,7 +42,7 @@ export function ChildBlockedNotice() {
     >
       <p className="text-body text-text-primary">Ask your parent to register you with this trainer.</p>
       <p className="text-caption text-text-secondary">
-        Share this invitation link with them so they can complete your registration.
+        We&apos;ve let your parent know — they can complete your registration from the link we emailed them.
       </p>
     </div>
   );

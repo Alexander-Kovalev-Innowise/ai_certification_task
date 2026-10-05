@@ -48,6 +48,26 @@ function contextKey(entry: Pick<ContextEntry, 'playerProfileId' | 'trainerId'>):
   return `${entry.playerProfileId}::${entry.trainerId}`;
 }
 
+/**
+ * The context the portal is currently "in": the explicit selection (cookie/store) first, then the server's active
+ * context, then the first connection. Shared by the switcher and the shell's branding so the label and the accent
+ * colour always describe the SAME trainer (before the first explicit selection the server reports no active context).
+ */
+export function resolveCurrentContext(
+  contexts: ContextEntry[],
+  activeContext: ContextEntry | null,
+  activeTrainerId: string | null,
+  activeProfileId: string | null = null,
+): ContextEntry | null {
+  return (
+    contexts.find((entry) => entry.trainerId === activeTrainerId && entry.playerProfileId === activeProfileId) ??
+    contexts.find((entry) => entry.trainerId === activeTrainerId) ??
+    (activeContext && contexts.find((entry) => contextKey(entry) === contextKey(activeContext))) ??
+    contexts[0] ??
+    null
+  );
+}
+
 interface ProfileGroup {
   profileId: string;
   profileName: string;
@@ -80,7 +100,7 @@ function currentLabel(current: ContextEntry | null, accountType: AccountType): s
 }
 
 const SELECT_CLASSNAME =
-  'rounded-sm border border-border-soft bg-surface-0 p-xxs text-body text-text-primary outline-none focus:border-brand-primary';
+  'min-w-0';
 
 /**
  * fe §5.2/Epic-01 spec §US-01.04 — mounted once in `(player)/layout.tsx`.
@@ -115,7 +135,8 @@ const SELECT_CLASSNAME =
 export function ContextSwitcher({ accountType, contexts, activeContext }: ContextSwitcherProps) {
   const queryClient = useQueryClient();
   const activeTrainerId = useTrainerContextStore((state) => state.activeTrainerId);
-  const setActiveTrainerId = useTrainerContextStore((state) => state.setActiveTrainerId);
+  const activeProfileId = useTrainerContextStore((state) => state.activeProfileId);
+  const setActiveContext = useTrainerContextStore((state) => state.setActiveContext);
   const [reconnectMessage, setReconnectMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -132,11 +153,7 @@ export function ContextSwitcher({ accountType, contexts, activeContext }: Contex
     return () => window.removeEventListener(TENANT_CONTEXT_INVALID_EVENT, handleInvalid);
   }, [queryClient]);
 
-  const current =
-    contexts.find((entry) => entry.trainerId === activeTrainerId) ??
-    (activeContext && contexts.find((entry) => contextKey(entry) === contextKey(activeContext))) ??
-    contexts[0] ??
-    null;
+  const current = resolveCurrentContext(contexts, activeContext, activeTrainerId, activeProfileId);
 
   function handleSelect(key: string) {
     const next = contexts.find((entry) => contextKey(entry) === key);
@@ -144,7 +161,7 @@ export function ContextSwitcher({ accountType, contexts, activeContext }: Contex
       return;
     }
     setReconnectMessage(null);
-    setActiveTrainerId(next.trainerId);
+    setActiveContext(next.trainerId, next.playerProfileId);
     // fe §5.2 point 1/§6.3 — every subsequent request must pick up the new
     // X-Trainer-Context; invalidating the whole cache (not a hand-picked
     // list of "trainer-scoped" keys — no such registry exists) is what
@@ -167,7 +184,7 @@ export function ContextSwitcher({ accountType, contexts, activeContext }: Contex
       )}
 
       <div className="flex flex-wrap items-center gap-sm">
-        <label htmlFor="context-switcher-select" className="text-caption text-text-secondary">
+        <label htmlFor="context-switcher-select" className="field-label">
           Current:
         </label>
         <select

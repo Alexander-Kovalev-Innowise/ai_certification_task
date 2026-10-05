@@ -96,7 +96,7 @@ describe('ProfileDetailPage', () => {
   });
 
   it('loads bootstrap, the profile, and the trainer list, and renders the edit form + trainer list', async () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock)
       .mockResolvedValueOnce(mockResponse(200, bootstrapBody(adultUser)))
       .mockResolvedValueOnce(mockResponse(200, profileBody()))
@@ -107,6 +107,8 @@ describe('ProfileDetailPage', () => {
     await waitFor(() => expect(screen.getByLabelText(/^name/i)).toHaveValue('Alex'));
     expect(screen.getByText('Ace Tennis Academy')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /add trainer/i })).toBeInTheDocument();
+    // child profile without a login yet -> the Child login card offers to create one
+    expect(screen.getByRole('button', { name: /create login/i })).toBeInTheDocument();
 
     const [profileUrl] = (global.fetch as jest.Mock).mock.calls[1] as [string];
     const [trainersUrl] = (global.fetch as jest.Mock).mock.calls[2] as [string];
@@ -115,7 +117,7 @@ describe('ProfileDetailPage', () => {
   });
 
   it('hides guardian-only fields and Add Trainer/Remove for a CHILD session', async () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: childUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: childUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock)
       .mockResolvedValueOnce(mockResponse(200, bootstrapBody(childUser)))
       .mockResolvedValueOnce(mockResponse(200, profileBody()))
@@ -126,10 +128,25 @@ describe('ProfileDetailPage', () => {
     await waitFor(() => expect(screen.getByLabelText(/^name/i)).toBeInTheDocument());
     expect(screen.queryByLabelText(/spend.*without approval/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /add trainer/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /create login/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reset password/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the password reset instead of the create form once the child has a login', async () => {
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(mockResponse(200, bootstrapBody(adultUser)))
+      .mockResolvedValueOnce(mockResponse(200, { ...profileBody(), childUserId: 'child-user-1' }))
+      .mockResolvedValueOnce(mockResponse(200, trainersBody()));
+
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: /reset password/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /create login/i })).not.toBeInTheDocument();
   });
 
   it('saves edits and updates the cached profile on success', async () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock)
       .mockResolvedValueOnce(mockResponse(200, bootstrapBody(adultUser)))
       .mockResolvedValueOnce(mockResponse(200, profileBody()))
@@ -146,7 +163,7 @@ describe('ProfileDetailPage', () => {
   });
 
   it('shows an error state when the profile request fails', async () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock)
       .mockResolvedValueOnce(mockResponse(200, bootstrapBody(adultUser)))
       .mockResolvedValueOnce(mockResponse(500))
@@ -158,7 +175,7 @@ describe('ProfileDetailPage', () => {
   });
 
   it('opens AddTrainerModal from "Add Trainer" and refetches the trainer list on success', async () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock)
       .mockResolvedValueOnce(mockResponse(200, bootstrapBody(adultUser)))
       .mockResolvedValueOnce(mockResponse(200, profileBody()))
@@ -182,7 +199,7 @@ describe('ProfileDetailPage', () => {
   });
 
   it('opens RemoveTrainerConfirmModal from "Remove" and removes the trainer from the list on success', async () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: adultUser, expiresAt: Date.now() + 60_000 });
     (global.fetch as jest.Mock)
       .mockResolvedValueOnce(mockResponse(200, bootstrapBody(adultUser)))
       .mockResolvedValueOnce(mockResponse(200, profileBody()))

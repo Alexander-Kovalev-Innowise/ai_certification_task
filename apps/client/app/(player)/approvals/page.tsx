@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import type { ApprovalRow } from '../../../src/components/player/ApprovalCard';
 import { ApprovalDecisionModal } from '../../../src/components/player/ApprovalDecisionModal';
 import { PendingApprovalsList } from '../../../src/components/player/PendingApprovalsList';
+import { PageHeader, PageLayout } from '../../../src/components/shared/PageLayout';
 import { PendingApprovalsListSkeleton } from '../../../src/components/shared/RouteSkeletons';
 import { apiRequest } from '../../../src/lib/api/apiClient';
 import { parseApiErrorBody } from '../../../src/lib/api/apiError';
@@ -49,7 +50,7 @@ async function fetchApprovals(): Promise<ApprovalsResponse> {
 export default function ApprovalsPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [decisionTarget, setDecisionTarget] = useState<{ approval: ApprovalRow; decision: 'approve' | 'deny' } | null>(null);
+  const [decisionTarget, setDecisionTarget] = useState<{ approval: ApprovalRow; decision: 'approve' | 'deny' | 'request-info' } | null>(null);
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
 
   const { data, isLoading, error } = useQuery({
@@ -67,7 +68,7 @@ export default function ApprovalsPage() {
     }
   }, [isChildDenied, router]);
 
-  function openDecision(approvalId: string, decision: 'approve' | 'deny') {
+  function openDecision(approvalId: string, decision: 'approve' | 'deny' | 'request-info') {
     const approval = data?.items.find((item) => item.id === approvalId);
     if (!approval) {
       return;
@@ -90,23 +91,27 @@ export default function ApprovalsPage() {
 
   if (isLoading || isChildDenied) {
     return (
-      <div className="p-lg">
+      <PageLayout>
+        <PageHeader title="Approvals" />
         <PendingApprovalsListSkeleton />
-      </div>
+      </PageLayout>
     );
   }
 
   if (isOtherError || !data) {
     return (
-      <p role="alert" className="p-lg text-body text-danger">
-        Something went wrong loading approvals. Please try again.
-      </p>
+      <PageLayout>
+        <PageHeader title="Approvals" />
+        <p role="alert" className="text-body text-danger">
+          Something went wrong loading approvals. Please try again.
+        </p>
+      </PageLayout>
     );
   }
 
   return (
-    <section className="flex flex-col gap-lg p-lg">
-      <h1 className="text-xl font-semibold text-text-primary">Approvals</h1>
+    <PageLayout>
+      <PageHeader title="Approvals" />
 
       {conflictMessage && (
         <p role="status" className="text-body text-warning">
@@ -118,6 +123,7 @@ export default function ApprovalsPage() {
         approvals={data.items}
         onApprove={(id) => openDecision(id, 'approve')}
         onDeny={(id) => openDecision(id, 'deny')}
+        onRequestInfo={(id) => openDecision(id, 'request-info')}
       />
 
       <ApprovalDecisionModal
@@ -128,6 +134,6 @@ export default function ApprovalsPage() {
         onResolved={handleResolved}
         onConflict={handleConflict}
       />
-    </section>
+    </PageLayout>
   );
 }

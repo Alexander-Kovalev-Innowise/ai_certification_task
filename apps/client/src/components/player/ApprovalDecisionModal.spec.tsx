@@ -101,4 +101,38 @@ describe('ApprovalDecisionModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
     expect(onClose).toHaveBeenCalled();
   });
+  describe('request-info', () => {
+    it('posts { message } to /approvals/:id/request-info and keeps the row pending', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, { ...APPROVAL, infoRequestMessage: 'Which clinic?' }));
+      const onResolved = jest.fn();
+
+      render(<ApprovalDecisionModal isOpen approval={APPROVAL} decision="request-info" onClose={jest.fn()} onResolved={onResolved} onConflict={jest.fn()} />);
+      fireEvent.change(screen.getByLabelText(/your question/i), { target: { value: 'Which clinic?' } });
+      fireEvent.click(screen.getByRole('button', { name: /send question/i }));
+
+      await waitFor(() => expect(onResolved).toHaveBeenCalledWith(expect.objectContaining({ status: 'PENDING', infoRequestMessage: 'Which clinic?' })));
+      const [url, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      expect(url).toContain('/approvals/approval-1/request-info');
+      expect(JSON.parse(init.body as string)).toEqual({ message: 'Which clinic?' });
+    });
+
+    it('requires a message (unlike approve/deny notes)', async () => {
+      render(<ApprovalDecisionModal isOpen approval={APPROVAL} decision="request-info" onClose={jest.fn()} onResolved={jest.fn()} onConflict={jest.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: /send question/i }));
+
+      expect(await screen.findByText(/write a short question/i)).toBeInTheDocument();
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('409 calls onConflict', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(409));
+      const onConflict = jest.fn();
+
+      render(<ApprovalDecisionModal isOpen approval={APPROVAL} decision="request-info" onClose={jest.fn()} onResolved={jest.fn()} onConflict={onConflict} />);
+      fireEvent.change(screen.getByLabelText(/your question/i), { target: { value: 'Why?' } });
+      fireEvent.click(screen.getByRole('button', { name: /send question/i }));
+
+      await waitFor(() => expect(onConflict).toHaveBeenCalledWith('approval-1'));
+    });
+  });
 });

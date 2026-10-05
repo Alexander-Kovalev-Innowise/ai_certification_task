@@ -81,4 +81,20 @@ describe('ApprovalCard', () => {
     expect(screen.queryByText('DENIED')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument();
   });
+  it('shows a Request info action for PENDING and surfaces the open question', () => {
+    const onRequestInfo = jest.fn();
+    render(
+      <ApprovalCard
+        approval={approval({ title: 'Skills clinic', infoRequestMessage: 'Which clinic?' })}
+        onApprove={jest.fn()}
+        onDeny={jest.fn()}
+        onRequestInfo={onRequestInfo}
+      />,
+    );
+
+    expect(screen.getByText('Skills clinic')).toBeInTheDocument();
+    expect(screen.getByText(/You asked: Which clinic\?/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /request info/i }));
+    expect(onRequestInfo).toHaveBeenCalled();
+  });
 });

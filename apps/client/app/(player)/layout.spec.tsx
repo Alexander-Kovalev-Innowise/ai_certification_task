@@ -10,14 +10,15 @@ const replaceMock = jest.fn();
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ replace: replaceMock }),
+  usePathname: () => '/',
 }));
 
-function userWithRole(role: UserSummaryDto['role'], accountType: UserSummaryDto['accountType'] = 'ADULT'): UserSummaryDto {
+function userWithRole(role: UserSummaryDto['role']): UserSummaryDto {
   return {
     id: 'user-1',
     email: 'parent@example.com',
     role,
-    accountType,
+    accountType: 'ADULT',
     firstName: 'Priya',
     lastName: 'Parent',
     mustChangePassword: false,
@@ -44,9 +45,8 @@ function renderLayout() {
   );
 }
 
-// fe §3/§4.6 — `(player)/layout.tsx`: RoleGuard(PLAYER_PARENT), mounts
-// ContextSwitcher sourced from GET /me/bootstrap's contexts/activeContext.
-// Task 14.1.
+// fe §3 — `app/(player)/layout.tsx` is now ONLY RoleGuard(PLAYER_PARENT) + a loading
+// skeleton; the nav shell/branding live in AuthenticatedShell (see its spec).
 describe('PlayerLayout', () => {
   beforeEach(() => {
     useAuthStore.getState().clear();
@@ -58,73 +58,29 @@ describe('PlayerLayout', () => {
     jest.restoreAllMocks();
   });
 
-  it('mounts ContextSwitcher from bootstrap and renders children for a PLAYER_PARENT session', async () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: userWithRole('PLAYER_PARENT'), expiresAt: Date.now() + 60_000 });
-    (global.fetch as jest.Mock).mockResolvedValueOnce(
-      mockResponse(200, {
-        role: 'PLAYER_PARENT',
-        accountType: 'ADULT',
-        user: userWithRole('PLAYER_PARENT'),
-        playerProfiles: [],
-        contexts: [
-          {
-            playerProfileId: 'profile-1',
-            playerProfileName: 'Priya',
-            isSelf: true,
-            trainerId: 'trainer-1',
-            trainerDisplayName: 'Coach Lisa',
-            logoUrl: null,
-            primaryColorHex: '#112233',
-            connectedAt: '2026-01-01T00:00:00.000Z',
-          },
-        ],
-        activeContext: {
-          playerProfileId: 'profile-1',
-          playerProfileName: 'Priya',
-          isSelf: true,
-          trainerId: 'trainer-1',
-          trainerDisplayName: 'Coach Lisa',
-          logoUrl: null,
-          primaryColorHex: '#112233',
-          connectedAt: '2026-01-01T00:00:00.000Z',
-        },
-        pendingApprovalsCount: 0,
-      }),
-    );
+  it('shows a loading skeleton while bootstrap loads, then renders children for a PLAYER_PARENT session', async () => {
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWithRole('PLAYER_PARENT'), expiresAt: Date.now() + 60_000 });
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, { role: 'PLAYER_PARENT', user: userWithRole('PLAYER_PARENT') }));
+
+    renderLayout();
+
+    expect(screen.getByLabelText(/loading player portal/i)).toHaveAttribute('aria-busy', 'true');
+    expect(screen.queryByText('page content')).not.toBeInTheDocument();
+
+    await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
+    expect(screen.queryByLabelText(/loading player portal/i)).not.toBeInTheDocument();
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  it('does not render an app shell of its own', async () => {
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWithRole('PLAYER_PARENT'), expiresAt: Date.now() + 60_000 });
+    (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, { role: 'PLAYER_PARENT', user: userWithRole('PLAYER_PARENT') }));
 
     const { container } = renderLayout();
 
     await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
-    expect(replaceMock).not.toHaveBeenCalled();
-    expect(screen.getByLabelText(/active trainer context/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /approvals/i })).toHaveAttribute('href', '/approvals');
-    expect(screen.getByRole('link', { name: /^account$/i })).toHaveAttribute('href', '/account/profile');
-
-    const brandingEl = container.querySelector('[data-branding]');
-    expect(brandingEl).toHaveStyle({ '--brand-primary': '#112233' });
-  });
-
-  // fe §4.6/§9.4 — Approvals is adult-parent-only (APPROVE_CHILD_PURCHASE is
-  // CHILD-denied, api §4.6); the nav item is hidden entirely for a CHILD
-  // session, not just disabled. Task 14.8.
-  it('hides the Approvals nav item for a CHILD session', async () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: userWithRole('PLAYER_PARENT', 'CHILD'), expiresAt: Date.now() + 60_000 });
-    (global.fetch as jest.Mock).mockResolvedValueOnce(
-      mockResponse(200, {
-        role: 'PLAYER_PARENT',
-        accountType: 'CHILD',
-        user: userWithRole('PLAYER_PARENT', 'CHILD'),
-        playerProfile: { id: 'profile-2', name: 'Alex', isSelf: false, trainerCount: 1 },
-        contexts: [],
-        activeContext: null,
-      }),
-    );
-
-    renderLayout();
-
-    await waitFor(() => expect(screen.getByText('page content')).toBeInTheDocument());
-    expect(screen.queryByRole('link', { name: /approvals/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /^account$/i })).toHaveAttribute('href', '/account/profile');
+    expect(container.querySelector('nav')).toBeNull();
+    expect(container.querySelector('[data-branding]')).toBeNull();
   });
 
   it('redirects to /login and renders nothing when there is no session', () => {
@@ -135,7 +91,7 @@ describe('PlayerLayout', () => {
   });
 
   it('redirects to /dashboard and renders nothing for a non-PLAYER_PARENT session', () => {
-    useAuthStore.getState().setSession({ accessToken: 't', user: userWithRole('COACH'), expiresAt: Date.now() + 60_000 });
+    useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWithRole('COACH'), expiresAt: Date.now() + 60_000 });
 
     renderLayout();
 

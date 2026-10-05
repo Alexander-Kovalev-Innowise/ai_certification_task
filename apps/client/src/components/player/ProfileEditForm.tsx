@@ -1,10 +1,14 @@
 'use client';
 
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 
 import { apiRequest } from '../../lib/api/apiClient';
 import { parseApiErrorBody } from '../../lib/api/apiError';
+import { updatePlayerProfileSchema, type UpdatePlayerProfileFormValues } from '../../lib/schemas/updatePlayerProfileSchema';
+import { PhoneInput } from '../shared/PhoneInput';
+import { PhotoUploadField } from '../shared/PhotoUploadField';
 
 // api §4.3 PlayerProfileResponseDto — the slice ProfileEditForm reads/writes.
 export interface PlayerProfileDetail {
@@ -25,22 +29,12 @@ export interface ProfileEditFormProps {
   onSaved: (updated: PlayerProfileDetail) => void;
 }
 
-interface ProfileEditFormValues {
-  name: string;
-  school: string;
-  jerseyNumber: string;
-  photoUrl: string;
-  emergencyContactName: string;
-  emergencyContactPhone: string;
-  allowChildTokenSpendWithoutApproval: boolean;
-}
-
 const GENERIC_SAVE_ERROR = "Some changes couldn't be saved. Please try again.";
 
 const INPUT_CLASSNAME =
-  'rounded-sm border border-border-soft bg-surface-0 p-sm text-body text-text-primary outline-none focus:border-brand-primary';
+  'w-full min-w-0';
 
-function toDefaultValues(profile: PlayerProfileDetail): ProfileEditFormValues {
+function toDefaultValues(profile: PlayerProfileDetail): UpdatePlayerProfileFormValues {
   const emergencyContact = profile.emergencyContact ?? {};
   return {
     name: profile.name,
@@ -69,20 +63,26 @@ export function ProfileEditForm({ profile, canEditGuardianFields, onSaved }: Pro
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors, isSubmitting },
-  } = useForm<ProfileEditFormValues>({ defaultValues: toDefaultValues(profile) });
+  } = useForm<UpdatePlayerProfileFormValues>({
+    resolver: zodResolver(updatePlayerProfileSchema),
+    mode: 'onTouched',
+    defaultValues: toDefaultValues(profile),
+  });
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
 
     const body: Record<string, unknown> = {
-      name: values.name,
+      name: values.name.trim(),
       school: values.school.trim() || undefined,
       jerseyNumber: values.jerseyNumber.trim() || undefined,
-      photoUrl: values.photoUrl.trim() || undefined,
+      // null clears a removed photo.
+      photoUrl: values.photoUrl.trim() || null,
     };
-    if (values.emergencyContactName.trim() || values.emergencyContactPhone.trim()) {
-      body.emergencyContact = { name: values.emergencyContactName.trim(), phone: values.emergencyContactPhone.trim() };
+    if (values.emergencyContactName.trim() || values.emergencyContactPhone) {
+      body.emergencyContact = { name: values.emergencyContactName.trim(), phone: values.emergencyContactPhone };
     }
     if (canEditGuardianFields) {
       body.allowChildTokenSpendWithoutApproval = values.allowChildTokenSpendWithoutApproval;
@@ -108,53 +108,128 @@ export function ProfileEditForm({ profile, canEditGuardianFields, onSaved }: Pro
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-md">
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="profile-edit-name" className="text-body text-text-secondary">
+        <label htmlFor="profile-edit-name" className="field-label">
           Name
         </label>
         <input
           id="profile-edit-name"
+          placeholder="Alex Johnson"
+          autoComplete="name"
           className={INPUT_CLASSNAME}
           aria-invalid={!!errors.name}
-          {...register('name', { required: 'Name is required.', maxLength: { value: 100, message: 'Name must be 100 characters or fewer.' } })}
+          aria-describedby={errors.name ? 'profile-edit-name-error' : undefined}
+          {...register('name')}
         />
         {errors.name && (
-          <p role="alert" className="text-caption text-danger">
+          <p id="profile-edit-name-error" role="alert" className="text-caption text-danger">
             {errors.name.message}
           </p>
         )}
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="profile-edit-school" className="text-body text-text-secondary">
+        <label htmlFor="profile-edit-school" className="field-label">
           School
         </label>
-        <input id="profile-edit-school" className={INPUT_CLASSNAME} {...register('school')} />
+        <input
+          id="profile-edit-school"
+          placeholder="Lincoln Elementary School"
+          autoComplete="organization"
+          className={INPUT_CLASSNAME}
+          aria-invalid={!!errors.school}
+          aria-describedby={errors.school ? 'profile-edit-school-error' : undefined}
+          {...register('school')}
+        />
+        {errors.school && (
+          <p id="profile-edit-school-error" role="alert" className="text-caption text-danger">
+            {errors.school.message}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-col gap-xxs">
-        <label htmlFor="profile-edit-jersey" className="text-body text-text-secondary">
+        <label htmlFor="profile-edit-jersey" className="field-label">
           Jersey number
         </label>
-        <input id="profile-edit-jersey" className={INPUT_CLASSNAME} {...register('jerseyNumber')} />
+        <input
+          id="profile-edit-jersey"
+          placeholder="23"
+          autoComplete="off"
+          className={INPUT_CLASSNAME}
+          aria-invalid={!!errors.jerseyNumber}
+          aria-describedby={errors.jerseyNumber ? 'profile-edit-jersey-error' : undefined}
+          {...register('jerseyNumber')}
+        />
+        {errors.jerseyNumber && (
+          <p id="profile-edit-jersey-error" role="alert" className="text-caption text-danger">
+            {errors.jerseyNumber.message}
+          </p>
+        )}
       </div>
 
-      <div className="flex flex-col gap-xxs">
-        <label htmlFor="profile-edit-photo" className="text-body text-text-secondary">
-          Photo URL
-        </label>
-        <input id="profile-edit-photo" className={INPUT_CLASSNAME} {...register('photoUrl')} />
-      </div>
+      <Controller
+        control={control}
+        name="photoUrl"
+        render={({ field }) => (
+          <PhotoUploadField
+            id="profile-edit-photo"
+            label="Photo"
+            value={field.value ?? ''}
+            onChange={(url) => field.onChange(url)}
+            initials={profile.name.charAt(0).toUpperCase()}
+            disabled={isSubmitting}
+          />
+        )}
+      />
+      {errors.photoUrl && (
+        <p id="profile-edit-photo-error" role="alert" className="text-caption text-danger">
+          {errors.photoUrl.message}
+        </p>
+      )}
 
       <fieldset className="flex flex-col gap-xxs">
         <legend className="text-body text-text-secondary">Emergency contact</legend>
-        <label htmlFor="profile-edit-ec-name" className="text-caption text-text-secondary">
+        <label htmlFor="profile-edit-ec-name" className="field-label">
           Contact name
         </label>
-        <input id="profile-edit-ec-name" className={INPUT_CLASSNAME} {...register('emergencyContactName')} />
-        <label htmlFor="profile-edit-ec-phone" className="text-caption text-text-secondary">
+        <input
+          id="profile-edit-ec-name"
+          placeholder="Jordan Johnson"
+          autoComplete="off"
+          className={INPUT_CLASSNAME}
+          aria-invalid={!!errors.emergencyContactName}
+          aria-describedby={errors.emergencyContactName ? 'profile-edit-ec-name-error' : undefined}
+          {...register('emergencyContactName')}
+        />
+        {errors.emergencyContactName && (
+          <p id="profile-edit-ec-name-error" role="alert" className="text-caption text-danger">
+            {errors.emergencyContactName.message}
+          </p>
+        )}
+        <label htmlFor="profile-edit-ec-phone" className="field-label">
           Contact phone
         </label>
-        <input id="profile-edit-ec-phone" className={INPUT_CLASSNAME} {...register('emergencyContactPhone')} />
+        <Controller
+          control={control}
+          name="emergencyContactPhone"
+          render={({ field }) => (
+            <PhoneInput
+              id="profile-edit-ec-phone"
+              value={field.value ?? ''}
+              onChange={field.onChange}
+              onBlur={field.onBlur}
+              autoComplete="off"
+              className={INPUT_CLASSNAME}
+              aria-invalid={!!errors.emergencyContactPhone}
+              aria-describedby={errors.emergencyContactPhone ? 'profile-edit-ec-phone-error' : undefined}
+            />
+          )}
+        />
+        {errors.emergencyContactPhone && (
+          <p id="profile-edit-ec-phone-error" role="alert" className="text-caption text-danger">
+            {errors.emergencyContactPhone.message}
+          </p>
+        )}
       </fieldset>
 
       {canEditGuardianFields && (
@@ -174,7 +249,7 @@ export function ProfileEditForm({ profile, canEditGuardianFields, onSaved }: Pro
         <button
           type="submit"
           disabled={isSubmitting}
-          className="rounded-sm bg-brand-primary p-sm text-body font-semibold text-[#0D0D0D] shadow-button-primary disabled:opacity-60"
+          className="btn btn-primary"
         >
           {isSubmitting ? 'Saving…' : 'Save'}
         </button>

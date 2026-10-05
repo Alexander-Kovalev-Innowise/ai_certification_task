@@ -3,12 +3,15 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
+import { AddSelfProfileModal } from '../../../src/components/player/AddSelfProfileModal';
 import type { AvailableTrainerOption, CreateChildProfileResult } from '../../../src/components/player/ChildProfileForm';
 import { ChildProfileForm } from '../../../src/components/player/ChildProfileForm';
 import { ProfileCardGrid, type PlayerProfileSummary } from '../../../src/components/player/ProfileCardGrid';
+import { PageHeader, PageLayout } from '../../../src/components/shared/PageLayout';
 import { ProfileCardGridSkeleton } from '../../../src/components/shared/RouteSkeletons';
 import { useBootstrap } from '../../../src/hooks/useBootstrap';
 import { apiRequest } from '../../../src/lib/api/apiClient';
+import { useAuthStore } from '../../../src/stores/useAuthStore';
 import type { AccountType } from '../../../src/types/auth';
 
 interface PlayerParentBootstrapShape {
@@ -45,6 +48,8 @@ async function fetchProfiles(): Promise<PlayerProfileSummary[]> {
 // 14.3). Wrapped by `(player)/layout.tsx`'s RoleGuard(PLAYER_PARENT).
 export default function ProfilesPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isSelfFormOpen, setIsSelfFormOpen] = useState(false);
+  const user = useAuthStore((state) => state.user);
   const [warning, setWarning] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
@@ -64,9 +69,28 @@ export default function ProfilesPage() {
     setWarning(result.warning ?? null);
   }
 
+  function handleSelfCreated() {
+    void queryClient.invalidateQueries({ queryKey: ['player-profiles'] });
+    void queryClient.invalidateQueries({ queryKey: ['me', 'bootstrap'] });
+  }
+
+  // "Add myself as a player": offered to an ADULT parent who has no own
+  // (`isSelf`) profile yet.
+  const hasSelfProfile = (profiles ?? []).some((profile) => profile.isSelf);
+  const canAddSelf = canAddChild && !isLoading && !isError && !hasSelfProfile;
+
   return (
-    <section className="flex flex-col gap-lg p-lg">
-      <h1 className="text-xl font-semibold text-text-primary">Profiles</h1>
+    <PageLayout>
+      <PageHeader
+        title="Profiles"
+        actions={
+          canAddSelf ? (
+            <button type="button" onClick={() => setIsSelfFormOpen(true)} className="btn btn-secondary">
+              Add myself as a player
+            </button>
+          ) : undefined
+        }
+      />
 
       {warning && (
         <p role="status" className="text-body text-warning">
@@ -86,6 +110,14 @@ export default function ProfilesPage() {
         <ProfileCardGrid profiles={profiles ?? []} canAddChild={canAddChild} onAddChild={() => setIsFormOpen(true)} />
       )}
 
+      <AddSelfProfileModal
+        key={isSelfFormOpen ? 'self-open' : 'self-closed'}
+        isOpen={isSelfFormOpen}
+        defaultName={user ? `${user.firstName} ${user.lastName}`.trim() : ''}
+        onClose={() => setIsSelfFormOpen(false)}
+        onCreated={handleSelfCreated}
+      />
+
       <ChildProfileForm
         key={isFormOpen ? 'open' : 'closed'}
         isOpen={isFormOpen}
@@ -93,6 +125,6 @@ export default function ProfilesPage() {
         onCreated={handleCreated}
         availableTrainers={availableTrainers}
       />
-    </section>
+    </PageLayout>
   );
 }
