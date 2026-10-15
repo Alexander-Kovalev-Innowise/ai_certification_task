@@ -1,0 +1,256 @@
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { plainToInstance } from 'class-transformer';
+
+import { JOB_TYPES } from '../../shared/jobs/job-types.const';
+import { OutboxService } from '../../shared/jobs/outbox.service';
+import { buildTrainerInviteEmailPayload } from '../../shared/mail/templates/trainer-invite.template';
+import type { AuthContext } from '../../shared/security/auth-context.interface';
+import { generateOpaqueToken, hashOpaqueToken } from '../auth/opaque-token.util';
+import { PasswordResetTokenRepository } from '../auth/password-reset-token.repository';
+import { PasswordService } from '../auth/password.service';
+import { PrismaService } from '../../shared/prisma/prisma.service';
+import { AccountProvisioningService } from '../users/account-provisioning.service';
+
+import type { CreateTrainerDto } from './dto/create-trainer.dto';
+import { TrainerCreatedResponseDto, TrainerResponseDto } from './dto/trainer-response.dto';
+import type { UpdateTrainerDto } from './dto/update-trainer.dto';
+import { TrainersRepository } from './trainers.repository';
+
+// Postgres unique-violation code — see users.service.ts's identical constant/usage.
+const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
+
+// 7 days — not specified by api-designer-spec.md (which only says "setup-
+// link" without a TTL) or architect-architecture.md's arch §6.1 token-TTL
+// table (that table only covers PASSWORD_RESET's 1h and email-verification's
+// 24h). A Super-Admin-issued account-setup invite is a materially different
+// use case from a self-service password reset — the trainer may not act on
+// it same-day — so a longer TTL than PASSWORD_RESET's 1h is used here as an
+// implementation decision, flagged per the plan's own convention for
+// unresolved specifics (Task 1.1's plan-header note models the same
+// disclosure style for the PasswordResetToken.purpose reuse decision).
+const TRAINER_SETUP_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Task 3.8, extended in Task 3.9 (getTrainer/updateTrainer).
+@Injectable()
+export class TrainerService {
+  constructor(
+    private readonly accountProvisioningService: AccountProvisioningService,
+    private readonly trainersRepository: TrainersRepository,
+    private readonly passwordResetTokenRepository: PasswordResetTokenRepository,
+    private readonly passwordService: PasswordService,
+    private readonly outboxService: OutboxService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  /**
+   * Task 3.8 (api §4.1 "POST /trainers", FR-010/BR-005). One transaction
+   * (AccountProvisioningService.createUserWithProfile's own, extended via
+   * Task 3.8's new `afterCreate` hook): User(role=TRAINER, status=ACTIVE,
+   * mustChangePassword=true) + TrainerProfile + PasswordResetToken(purpose:
+   * 'TRAINER_SETUP') + OutboxJob(EMAIL_TRAINER_INVITE). No password is
+   * ever generated FOR THE TRAINER or emailed (OQ-8) — `passwordHash` is
+   * still a required NOT NULL column, so it's seeded with a real argon2
+   * hash of an unguessable random value nobody is ever told, purely so
+   * PasswordService.verify() never has to handle a malformed hash if
+   * someone guesses at logging in before setup completes; the trainer's
+   * actual password is set for the first time by /auth/register
+   * (completeTrainerSetup, Task 2.20), which overwrites this.
+   */
+  async createTrainer(dto: CreateTrainerDto, createdByUserId: string): Promise<TrainerCreatedResponseDto> {
+    const placeholderPasswordHash = await this.passwordService.hash(generateOpaqueToken());
+
+    let user;
+    let trainerProfileId = '';
+    try {
+      user = await this.accountProvisioningService.createUserWithProfile({
+        role: 'TRAINER',
+        email: dto.email,
+        passwordHash: placeholderPasswordHash,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        phone: dto.phone,
+        status: 'ACTIVE',
+        mustChangePassword: true,
+        createProfile: async (tx, userId) => {
+          const profile = await this.trainersRepository.create(
+            { user: { connect: { id: userId } }, businessName: dto.businessName },
+            tx,
+          );
+          trainerProfileId = profile.id;
+        },
+        afterCreate: async (tx, createdUser) => {
+          // Audit: who (the Super Admin) provisioned this trainer, when, and
+          // with which business details — same transaction as the account.
+          await this.trainersRepository.createCreationLog(
+            {
+              createdByUserId,
+              trainerUserId: createdUser.id,
+              trainerProfileId,
+              businessName: dto.businessName,
+              email: createdUser.email,
+            },
+            tx,
+          );
+          const rawSetupToken = generateOpaqueToken();
+          await this.passwordResetTokenRepository.create(
+            {
+              userId: createdUser.id,
+              token: hashOpaqueToken(rawSetupToken),
+              purpose: 'TRAINER_SETUP',
+              expiresAt: new Date(Date.now() + TRAINER_SETUP_TOKEN_TTL_MS),
+            },
+            tx,
+          );
+          await this.outboxService.enqueue(
+            tx,
+            JOB_TYPES.EMAIL_TRAINER_INVITE,
+            buildTrainerInviteEmailPayload(createdUser.email, {
+              firstName: createdUser.firstName,
+              businessName: dto.businessName,
+              setupToken: rawSetupToken,
+            }) as unknown as Prisma.InputJsonValue,
+          );
+        },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === UNIQUE_CONSTRAINT_VIOLATION) {
+        throw new ConflictException({ message: 'Email already in use', errorCode: 'CONFLICT' });
+      }
+      throw error;
+    }
+    this.outboxService.nudge();
+
+    const trainerProfile = await this.trainersRepository.findByUserId(user.id);
+    if (!trainerProfile) {
+      // Unreachable in practice (created in the same transaction above) —
+      // narrows the type for the plainToInstance call below.
+      throw new NotFoundException({ message: 'Trainer profile not found', errorCode: 'NOT_FOUND' });
+    }
+
+    return plainToInstance(
+      TrainerCreatedResponseDto,
+      {
+        id: trainerProfile.id,
+        userId: user.id,
+        businessName: trainerProfile.businessName,
+        email: user.email,
+        status: 'Active',
+        createdAt: trainerProfile.createdAt,
+      },
+      { excludeExtraneousValues: true },
+    );
+  }
+
+  /**
+   * Super Admin re-sends a trainer's account-setup invite (the original link
+   * may have expired or never arrived). Only valid while setup is still
+   * pending (`mustChangePassword`, cleared by /auth/register): every open
+   * TRAINER_SETUP token is invalidated and a fresh 7-day one is mailed, so
+   * only the newest link works.
+   */
+  async resendSetupInvite(trainerUserId: string): Promise<{ message: string }> {
+    const profile = await this.trainersRepository.findWithUserByUserId(trainerUserId);
+    if (!profile || profile.user.role !== 'TRAINER') {
+      throw new NotFoundException({ message: 'Trainer not found', errorCode: 'NOT_FOUND' });
+    }
+    if (!profile.user.mustChangePassword) {
+      throw new ConflictException({ message: 'This trainer has already completed account setup', errorCode: 'CONFLICT' });
+    }
+
+    const rawSetupToken = generateOpaqueToken();
+    await this.prisma.$transaction(async (tx) => {
+      await this.passwordResetTokenRepository.invalidateOpen(profile.user.id, 'TRAINER_SETUP', tx);
+      await this.passwordResetTokenRepository.create(
+        {
+          userId: profile.user.id,
+          token: hashOpaqueToken(rawSetupToken),
+          purpose: 'TRAINER_SETUP',
+          expiresAt: new Date(Date.now() + TRAINER_SETUP_TOKEN_TTL_MS),
+        },
+        tx,
+      );
+      await this.outboxService.enqueue(
+        tx,
+        JOB_TYPES.EMAIL_TRAINER_INVITE,
+        buildTrainerInviteEmailPayload(profile.user.email, {
+          firstName: profile.user.firstName,
+          businessName: profile.businessName,
+          setupToken: rawSetupToken,
+        }) as unknown as Prisma.InputJsonValue,
+      );
+    });
+    this.outboxService.nudge();
+
+    return { message: 'Setup invitation sent' };
+  }
+
+  /**
+   * Task 3.9 (api §4.1 "GET /trainers/:id"). `EDIT_OWN_PROFILE` +
+   * assertOwnershipOrNotFound below, not a dedicated capability (api §4.1
+   * footnote). Stripe/subscription/fee columns (Epic-05 stubs) are omitted
+   * from TrainerResponseDto entirely, not exposed as null.
+   */
+  async getTrainer(ctx: AuthContext, id: string): Promise<TrainerResponseDto> {
+    this.assertOwnershipOrNotFound(ctx, id);
+
+    const trainer = await this.trainersRepository.findById(id);
+    if (!trainer) {
+      throw new NotFoundException({ message: 'Trainer not found', errorCode: 'NOT_FOUND' });
+    }
+
+    return this.toResponse(trainer);
+  }
+
+  /** Task 3.9 (api §4.1 "PATCH /trainers/:id"). Business details only — branding is Task 8.1's separate endpoint. */
+  async updateTrainer(ctx: AuthContext, id: string, dto: UpdateTrainerDto): Promise<TrainerResponseDto> {
+    this.assertOwnershipOrNotFound(ctx, id);
+
+    const existing = await this.trainersRepository.findById(id);
+    if (!existing) {
+      throw new NotFoundException({ message: 'Trainer not found', errorCode: 'NOT_FOUND' });
+    }
+
+    const updated = await this.trainersRepository.update(id, {
+      ...(dto.businessName !== undefined ? { businessName: dto.businessName } : {}),
+      ...(dto.address !== undefined ? { address: dto.address } : {}),
+      ...(dto.website !== undefined ? { website: dto.website } : {}),
+      ...(dto.description !== undefined ? { description: dto.description } : {}),
+    });
+
+    return this.toResponse(updated);
+  }
+
+  /**
+   * `:id === caller.tid` for TRAINER, unconditional for SUPER_ADMIN (api
+   * §4.1 footnote). Always 404 on a mismatch, never 403 — arch §8 Layer 3:
+   * cross-tenant reads must not disclose existence. Runs BEFORE any
+   * repository call, which is what keeps a mismatched id from ever
+   * reaching the tenant-guard Prisma extension (Layer 2) — that extension
+   * would throw TenantScopeViolationError (500) for a genuinely
+   * cross-tenant query, the wrong status for an ordinary ownership miss.
+   */
+  private assertOwnershipOrNotFound(ctx: AuthContext, id: string): void {
+    if (ctx.role === 'SUPER_ADMIN') {
+      return;
+    }
+    if (ctx.role === 'TRAINER' && ctx.trainerId === id) {
+      return;
+    }
+    throw new NotFoundException({ message: 'Trainer not found', errorCode: 'NOT_FOUND' });
+  }
+
+  private toResponse(trainer: {
+    id: string;
+    userId: string;
+    businessName: string;
+    address: string | null;
+    website: string | null;
+    description: string | null;
+    logoUrl: string | null;
+    primaryColorHex: string | null;
+    createdAt: Date;
+  }): TrainerResponseDto {
+    return plainToInstance(TrainerResponseDto, trainer, { excludeExtraneousValues: true });
+  }
+}

@@ -1,0 +1,95 @@
+'use client';
+
+import { useState } from 'react';
+
+import { apiRequest } from '../../lib/api/apiClient';
+import { Modal } from '../shared/Modal';
+
+import type { TrainerAssociationRow } from './TrainerAssociationList';
+
+export interface RemoveTrainerConfirmModalProps {
+  isOpen: boolean;
+  profileId: string;
+  trainer: TrainerAssociationRow | null;
+  onClose: () => void;
+  onRemoved: (trainerId: string) => void;
+}
+
+const GENERIC_ERROR_MESSAGE = 'Something went wrong removing this trainer. Please try again.';
+
+// fe §4.6/§9.4 — RemoveTrainerConfirmModal: "This will cancel all upcoming
+// RSVPs" — a full blocking dialog (same shape as the Super Admin's
+// DeactivateConfirmModal, Task 12.5), never optimistic, unlike the
+// low-stakes `RevokeConfirmPopover` (Task 13.3): removing a child from a
+// trainer has real downstream consequences (RSVP cancellation, api §4.3),
+// so the row only updates after the server confirms. `DELETE
+// /player-profiles/:id/trainers/:trainerId` (FR-032, "Remove Child from
+// Trainer" — the client shows this confirmation; the server performs the
+// soft-delete-with-cascade unconditionally, with no confirmation step of
+// its own). Task 14.5.
+export function RemoveTrainerConfirmModal({ isOpen, profileId, trainer, onClose, onRemoved }: RemoveTrainerConfirmModalProps) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!isOpen || !trainer) {
+    return null;
+  }
+
+  function handleClose() {
+    setError(null);
+    onClose();
+  }
+
+  async function handleConfirm() {
+    if (!trainer) {
+      return;
+    }
+    setIsSubmitting(true);
+    setError(null);
+
+    const res = await apiRequest(`/player-profiles/${profileId}/trainers/${trainer.trainerId}`, { method: 'DELETE' });
+
+    setIsSubmitting(false);
+
+    if (!res.ok) {
+      setError(GENERIC_ERROR_MESSAGE);
+      return;
+    }
+
+    onRemoved(trainer.trainerId);
+  }
+
+  return (
+    <Modal
+      labelledBy="remove-trainer-heading"
+      onClose={handleClose}
+      dismissible={!isSubmitting}
+      className="w-full max-w-[24rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong"
+    >
+      <h2 id="remove-trainer-heading" className="text-block-title font-semibold text-text-primary">
+        Remove {trainer.businessName}?
+      </h2>
+      <p className="mt-sm text-body text-text-secondary">This will cancel all upcoming RSVPs with this trainer. This can&apos;t be undone.</p>
+
+      {error && (
+        <p role="alert" className="mt-sm text-body text-danger">
+          {error}
+        </p>
+      )}
+
+      <div className="mt-md flex justify-end gap-sm">
+        <button type="button" onClick={handleClose} disabled={isSubmitting} className="btn btn-ghost">
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleConfirm}
+          disabled={isSubmitting}
+          className="btn btn-danger"
+        >
+          {isSubmitting ? 'Removing…' : 'Yes, remove'}
+        </button>
+      </div>
+    </Modal>
+  );
+}

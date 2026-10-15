@@ -1,0 +1,424 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+
+import { useAuthStore } from '../../stores/useAuthStore';
+import type { UserSummaryDto } from '../../types/auth';
+
+import { ShareLinkDispatcher } from './ShareLinkDispatcher';
+
+const pushMock = jest.fn();
+
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: pushMock }),
+}));
+
+function mockResponse(status: number, body: unknown = {}, headers: Record<string, string> = { 'content-type': 'application/json' }): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+    headers: new Headers(headers),
+  } as unknown as Response;
+}
+
+function validPreview(type: 'PLAYER_STATIC' | 'COACH_UNIQUE' = 'PLAYER_STATIC') {
+  return { valid: true, type, trainerDisplayName: 'Coach Lisa', logoUrl: null, primaryColorHex: null };
+}
+
+function userWith(overrides: Partial<UserSummaryDto>): UserSummaryDto {
+  return {
+    id: 'user-1',
+    email: 'user@example.com',
+    role: 'PLAYER_PARENT',
+    accountType: 'ADULT',
+    firstName: 'A',
+    lastName: 'B',
+    mustChangePassword: false,
+    ...overrides,
+  };
+}
+
+describe('ShareLinkDispatcher', () => {
+  beforeEach(() => {
+    useAuthStore.getState().clear();
+    pushMock.mockClear();
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  describe('stage 1 — preview/invalid (Task 11.7)', () => {
+    it('fetches GET /share-links/:code on mount', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, { valid: false, reason: 'NOT_FOUND' }));
+
+      render(<ShareLinkDispatcher code="abc123" />);
+
+      await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+      const [url] = (global.fetch as jest.Mock).mock.calls[0];
+      expect(url).toContain('/share-links/abc123');
+    });
+
+    it.each([
+      ['NOT_FOUND', "This invitation link doesn't exist."],
+      ['EXPIRED', 'This invitation link has expired. Ask your trainer for a new one.'],
+      ['EXHAUSTED', 'This invitation link has already been used.'],
+      ['REVOKED', 'This invitation link is no longer active.'],
+    ] as const)('renders the distinct copy for reason=%s', async (reason, expectedCopy) => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, { valid: false, reason }));
+
+      render(<ShareLinkDispatcher code="abc123" />);
+
+      expect(await screen.findByText(expectedCopy)).toBeInTheDocument();
+    });
+
+    it('treats a network-level failure as data (renders the invalid card) instead of throwing', async () => {
+      (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('network down'));
+
+      render(<ShareLinkDispatcher code="abc123" />);
+
+      expect(await screen.findByText('Something went wrong loading this invitation link. Please try again.')).toBeInTheDocument();
+    });
+
+    it('treats a non-ok HTTP response as data too (never throws)', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(500, {}));
+
+      render(<ShareLinkDispatcher code="abc123" />);
+
+      expect(await screen.findByText('Something went wrong loading this invitation link. Please try again.')).toBeInTheDocument();
+    });
+  });
+
+  // fe §4.2's branch-selection table (auth-state x link-type), Task 11.10.
+  describe('branch selection (auth-state x link-type matrix)', () => {
+    it('no session + PLAYER_STATIC -> AnonymousJoinForm (full registration fields)', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')));
+
+      render(<ShareLinkDispatcher code="abc123" />);
+
+      expect(await screen.findByLabelText('Email')).toBeInTheDocument();
+    });
+
+    it('no session + COACH_UNIQUE -> AnonymousJoinForm (password-only fields)', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, validPreview('COACH_UNIQUE')));
+
+      render(<ShareLinkDispatcher code="abc123" />);
+
+      expect(await screen.findByLabelText('Choose a password')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Email')).not.toBeInTheDocument();
+    });
+
+    it('anonymous join form links to /login?next=/join/<code>', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')));
+
+      render(<ShareLinkDispatcher code="abc123" />);
+
+      expect(await screen.findByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login?next=/join/abc123');
+    });
+
+    it('PLAYER_PARENT ADULT session -> FamilyPickerForm', async () => {
+      useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith({ role: 'PLAYER_PARENT', accountType: 'ADULT' }), expiresAt: Date.now() + 60_000 });
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')))
+        .mockResolvedValueOnce(mockResponse(200, [{ id: 'p-self', name: 'A', isSelf: true }]));
+
+      render(<ShareLinkDispatcher code="abc123" />);
+
+      expect(await screen.findByText('Who will train with Coach Lisa?')).toBeInTheDocument();
+    });
+
+    it('CHILD accountType session -> ChildBlockedNotice, which calls redeem once so the server emails the guardian (never /player-profiles)', async () => {
+      useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith({ role: 'PLAYER_PARENT', accountType: 'CHILD' }), expiresAt: Date.now() + 60_000 });
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')))
+        .mockResolvedValueOnce(mockResponse(403, { errorCode: 'CHILD_SHARE_LINK_BLOCKED' }));
+
+      render(<ShareLinkDispatcher code="child-blocked-code" />);
+
+      expect(await screen.findByText('Ask your parent to register you with this trainer.')).toBeInTheDocument();
+      await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2)); // stage-1 GET + one redeem call
+      const [redeemUrl, redeemOptions] = (global.fetch as jest.Mock).mock.calls[1];
+      expect(redeemUrl).toContain('/share-links/child-blocked-code/redeem');
+      expect(redeemOptions.method).toBe('POST');
+    });
+
+    it('TRAINER session -> RoleCannotJoinNotice, never calls redeem', async () => {
+      useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith({ role: 'TRAINER' }), expiresAt: Date.now() + 60_000 });
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')));
+
+      render(<ShareLinkDispatcher code="abc123" />);
+
+      expect(await screen.findByText(/can't join as a participant/)).toBeInTheDocument();
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('SUPER_ADMIN session -> RoleCannotJoinNotice, never calls redeem', async () => {
+      useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith({ role: 'SUPER_ADMIN' }), expiresAt: Date.now() + 60_000 });
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')));
+
+      render(<ShareLinkDispatcher code="abc123" />);
+
+      expect(await screen.findByText(/can't join as a participant/)).toBeInTheDocument();
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('COACH session + COACH_UNIQUE link -> CoachAcceptForm', async () => {
+      useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith({ role: 'COACH' }), expiresAt: Date.now() + 60_000 });
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, validPreview('COACH_UNIQUE')));
+
+      render(<ShareLinkDispatcher code="abc123" />);
+
+      expect(await screen.findByText('Accept this invitation to coach for Coach Lisa?')).toBeInTheDocument();
+    });
+
+    it('COACH session + PLAYER_STATIC link -> unsupported fallback, never calls redeem', async () => {
+      useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith({ role: 'COACH' }), expiresAt: Date.now() + 60_000 });
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')));
+
+      render(<ShareLinkDispatcher code="abc123" />);
+
+      expect(await screen.findByText(/can't join as a participant/)).toBeInTheDocument();
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('submit wiring + response routing (Task 11.10)', () => {
+    it('ANONYMOUS_REGISTRATION: 201 AuthSessionResponseDto populates useAuthStore and redirects to /dashboard', async () => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')))
+        .mockResolvedValueOnce(
+          mockResponse(201, {
+            accessToken: 'new-token',
+            expiresIn: 900,
+            user: userWith({ role: 'PLAYER_PARENT', firstName: 'Sam' }),
+          }),
+        );
+
+      render(<ShareLinkDispatcher code="abc123" />);
+      await screen.findByLabelText('Email');
+
+      fireEvent.change(screen.getByLabelText('Your first name'), { target: { value: 'Pat' } });
+      fireEvent.change(screen.getByLabelText('Your last name'), { target: { value: 'Parent' } });
+      fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'parent@example.com' } });
+      fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'Password1' } });
+      fireEvent.change(screen.getByLabelText('Phone number'), { target: { value: '+14155552671' } });
+      fireEvent.change(screen.getByLabelText("Player's name"), { target: { value: 'Alex' } });
+      fireEvent.change(screen.getByLabelText('Date of birth'), { target: { value: '1990-01-01' } });
+      fireEvent.change(screen.getByLabelText('Gender'), { target: { value: 'MALE' } });
+      fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+      await waitFor(() => expect(useAuthStore.getState().accessToken).toBe('new-token'));
+      expect(await screen.findByText('Welcome, Sam!')).toBeInTheDocument();
+
+      const [redeemUrl, redeemOptions] = (global.fetch as jest.Mock).mock.calls[1];
+      expect(redeemUrl).toContain('/share-links/abc123/redeem');
+      expect(JSON.parse(redeemOptions.body)).toEqual({
+        parentFirstName: 'Pat',
+        parentLastName: 'Parent',
+        email: 'parent@example.com',
+        password: 'Password1',
+        phone: '+14155552671',
+        playerName: 'Alex',
+        dateOfBirth: '1990-01-01',
+        gender: 'MALE',
+        isSelf: true,
+      });
+
+      await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/dashboard'), { timeout: 2000 });
+    });
+
+    // Task 18.6 — fe §10 names this component's branch matrix as the
+    // highest-value frontend test target; this closes the one real gap
+    // found in that matrix. The anonymous COACH_UNIQUE branch (no session +
+    // COACH_UNIQUE link) was covered for rendering (branch-selection
+    // matrix, above) but never actually submitted end-to-end — its request
+    // body shape (`{ password }` only, no email/playerName/etc., per
+    // `AnonymousJoinForm.tsx`'s `AnonymousCoachAcceptFields`) and its
+    // success routing (an anonymous COACH_ACCEPT also returns an
+    // `AuthSessionResponseDto` and auto-logs in, per
+    // `ShareLinkDispatcher.tsx`'s own "both auto-login" comment) are both
+    // distinct enough from the PLAYER_STATIC path above to warrant their
+    // own assertion.
+    it('anonymous COACH_ACCEPT: 201 AuthSessionResponseDto populates useAuthStore and redirects, with a name + password redeem body', async () => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockResponse(200, validPreview('COACH_UNIQUE')))
+        .mockResolvedValueOnce(
+          mockResponse(201, {
+            accessToken: 'new-coach-token',
+            expiresIn: 900,
+            user: userWith({ role: 'COACH', firstName: 'Cory' }),
+          }),
+        );
+
+      render(<ShareLinkDispatcher code="abc123" />);
+      await screen.findByLabelText('Choose a password');
+
+      fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Cory' } });
+      fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Coach' } });
+      fireEvent.change(screen.getByLabelText('Choose a password'), { target: { value: 'Password1' } });
+      fireEvent.click(screen.getByRole('button', { name: /accept invitation/i }));
+
+      await waitFor(() => expect(useAuthStore.getState().accessToken).toBe('new-coach-token'));
+      expect(await screen.findByText('Welcome, Cory!')).toBeInTheDocument();
+
+      const [redeemUrl, redeemOptions] = (global.fetch as jest.Mock).mock.calls[1];
+      expect(redeemUrl).toContain('/share-links/abc123/redeem');
+      expect(JSON.parse(redeemOptions.body)).toEqual({ firstName: 'Cory', lastName: 'Coach', password: 'Password1' });
+
+      await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/dashboard'), { timeout: 2000 });
+    });
+
+    it('ASSOCIATE_EXISTING: 200 array shows a connected message and redirects to /dashboard', async () => {
+      useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith({ role: 'PLAYER_PARENT', accountType: 'ADULT' }), expiresAt: Date.now() + 60_000 });
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')))
+        .mockResolvedValueOnce(mockResponse(200, [{ id: 'p-self', name: 'A', isSelf: true }]))
+        .mockResolvedValueOnce(
+          mockResponse(200, [{ playerProfileId: 'p-self', status: 'ACTIVE', connectedAt: '2026-01-01', alreadyConnected: false }]),
+        );
+
+      render(<ShareLinkDispatcher code="abc123" />);
+      await screen.findByText('Who will train with Coach Lisa?');
+
+      fireEvent.click(screen.getByLabelText('Me'));
+      fireEvent.click(screen.getByRole('button', { name: /connect/i }));
+
+      expect(await screen.findByText('Connected with Coach Lisa')).toBeInTheDocument();
+      const [redeemUrl, redeemOptions] = (global.fetch as jest.Mock).mock.calls[2];
+      expect(redeemUrl).toContain('/share-links/abc123/redeem');
+      expect(JSON.parse(redeemOptions.body)).toEqual({ subjectProfileIds: ['p-self'] });
+
+      await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/dashboard'), { timeout: 2000 });
+    });
+
+    it('COACH_ACCEPT (authenticated): 200 {trainerId,status} shows a connected message and redirects', async () => {
+      useAuthStore.getState().setSession({ csrfToken: 'test-csrf-token', accessToken: 't', user: userWith({ role: 'COACH' }), expiresAt: Date.now() + 60_000 });
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockResponse(200, validPreview('COACH_UNIQUE')))
+        .mockResolvedValueOnce(mockResponse(200, { trainerId: 'trainer-1', status: 'ACTIVE' }));
+
+      render(<ShareLinkDispatcher code="abc123" />);
+      await screen.findByText('Accept this invitation to coach for Coach Lisa?');
+
+      fireEvent.click(screen.getByRole('button', { name: /accept invitation/i }));
+
+      expect(await screen.findByText('Connected with Coach Lisa')).toBeInTheDocument();
+      await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/dashboard'), { timeout: 2000 });
+    });
+
+    it('409 SHARE_LINK_UNAVAILABLE re-fetches stage 1 and re-renders the invalid card with the fresh reason', async () => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockResponse(200, validPreview('COACH_UNIQUE'))) // initial GET
+        .mockResolvedValueOnce(mockResponse(409, { errorCode: 'SHARE_LINK_UNAVAILABLE', message: 'gone' })) // redeem loses the race
+        .mockResolvedValueOnce(mockResponse(200, { valid: false, reason: 'EXHAUSTED' })); // re-fetched GET
+
+      render(<ShareLinkDispatcher code="abc123" />);
+      await screen.findByLabelText('Choose a password');
+
+      fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Cory' } });
+      fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Coach' } });
+      fireEvent.change(screen.getByLabelText('Choose a password'), { target: { value: 'Password1' } });
+      fireEvent.click(screen.getByRole('button', { name: /accept invitation/i }));
+
+      expect(await screen.findByText('This invitation link has already been used.')).toBeInTheDocument();
+      expect(global.fetch).toHaveBeenCalledTimes(3);
+      expect(pushMock).not.toHaveBeenCalled();
+    });
+
+    it('a generic redeem error keeps the form visible with an inline submitError, not a race-retry', async () => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockResponse(200, validPreview('COACH_UNIQUE')))
+        .mockResolvedValueOnce(mockResponse(400, { errorCode: 'VALIDATION_ERROR', message: 'Weak password' }));
+
+      render(<ShareLinkDispatcher code="abc123" />);
+      await screen.findByLabelText('Choose a password');
+
+      fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Cory' } });
+      fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Coach' } });
+      fireEvent.change(screen.getByLabelText('Choose a password'), { target: { value: 'Password1' } });
+      fireEvent.click(screen.getByRole('button', { name: /accept invitation/i }));
+
+      expect(await screen.findByText('Weak password')).toBeInTheDocument();
+      expect(screen.getByLabelText('Choose a password')).toBeInTheDocument();
+      expect(pushMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('camp sign-up conversion (?camp=<token>)', () => {
+    const campPayload = {
+      shareLinkCode: 'abc123',
+      source: 'CAMP',
+      expiresAt: '2030-01-01T00:00:00.000Z',
+      trainer: { displayName: 'Coach Lisa', logoUrl: null, primaryColorHex: null },
+      prefill: {
+        parentFirstName: 'Pat',
+        parentLastName: 'Camper',
+        email: 'pat@example.com',
+        phone: '+14155552671',
+        playerName: 'Kid Camper',
+        playerAge: 10,
+        dateOfBirth: '2016-04-05',
+        gender: 'FEMALE',
+        isSelf: false,
+      },
+    };
+
+    it('fetches the prefill, pre-fills the form and redeems with the conversionToken (only a password typed)', async () => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')))
+        .mockResolvedValueOnce(mockResponse(200, campPayload))
+        .mockResolvedValueOnce(
+          mockResponse(201, { accessToken: 'camp-token', expiresIn: 900, user: userWith({ role: 'PLAYER_PARENT', firstName: 'Pat' }) }),
+        );
+
+      render(<ShareLinkDispatcher code="abc123" campToken="tok123" />);
+
+      expect(await screen.findByText(/pre-filled this from your camp sign-up/i)).toBeInTheDocument();
+      expect((global.fetch as jest.Mock).mock.calls.some(([url]) => (url as string).includes('/camp-conversions/tok123'))).toBe(true);
+      expect(screen.getByLabelText('Email')).toHaveValue('pat@example.com');
+
+      fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'Password1' } });
+      fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+      expect(await screen.findByText('Welcome, Pat!')).toBeInTheDocument();
+      const redeemCall = (global.fetch as jest.Mock).mock.calls.find(([url]) => (url as string).includes('/redeem'));
+      expect(JSON.parse(redeemCall[1].body)).toEqual({
+        parentFirstName: 'Pat',
+        parentLastName: 'Camper',
+        email: 'pat@example.com',
+        password: 'Password1',
+        phone: '+14155552671',
+        playerName: 'Kid Camper',
+        dateOfBirth: '2016-04-05',
+        gender: 'FEMALE',
+        isSelf: false,
+        conversionToken: 'tok123',
+      });
+      await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/dashboard'), { timeout: 2000 });
+    });
+
+    it.each([
+      [410, /has expired/i],
+      [404, /already used or is not valid/i],
+    ])('a %s token explains why and falls back to the empty form', async (status, copy) => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')))
+        .mockResolvedValueOnce(mockResponse(status, { errorCode: 'NOT_FOUND' }));
+
+      render(<ShareLinkDispatcher code="abc123" campToken="stale" />);
+
+      expect(await screen.findByText(copy)).toBeInTheDocument();
+      expect(screen.getByLabelText('Email')).toHaveValue('');
+      expect(screen.queryByText(/pre-filled this from your camp sign-up/i)).not.toBeInTheDocument();
+    });
+
+    it('does not fetch any camp data without a token', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce(mockResponse(200, validPreview('PLAYER_STATIC')));
+
+      render(<ShareLinkDispatcher code="abc123" />);
+      await screen.findByLabelText('Email');
+
+      expect((global.fetch as jest.Mock).mock.calls.some(([url]) => (url as string).includes('/camp-conversions'))).toBe(false);
+    });
+  });
+});

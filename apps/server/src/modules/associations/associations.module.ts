@@ -1,0 +1,25 @@
+import { Module } from '@nestjs/common';
+
+import { ShareLinksRepository } from '../share-links/share-links.repository';
+
+import { AssociationsController } from './associations.controller';
+import { AssociationsRepository } from './associations.repository';
+import { AssociationsService } from './associations.service';
+
+// Task 4.1's repository-only skeleton, extended in Task 5.7 with the real
+// `AssociationsController`/`AssociationsService` (api §4.3, arch §2's "one
+// resource surface, two owning modules" — `player-profiles` and
+// `associations` both mount under `/player-profiles`). Still exports
+// `AssociationsRepository` — `share-links` (Tasks 4.6/4.7/4.9) and
+// `player-profiles` (Task 5.1) import this module for it without a
+// circular dependency back onto either. `ShareLinksRepository` (Task 5.8)
+// is declared directly as a provider here, not via a `ShareLinksModule`
+// import — `ShareLinksModule` already imports THIS module, so importing it
+// back would be circular; same workaround `UsersModule` uses for
+// `RefreshTokenRepository`.
+@Module({
+  controllers: [AssociationsController],
+  providers: [AssociationsRepository, AssociationsService, ShareLinksRepository],
+  exports: [AssociationsRepository, AssociationsService],
+})
+export class AssociationsModule {}

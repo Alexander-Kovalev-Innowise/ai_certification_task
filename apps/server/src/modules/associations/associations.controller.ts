@@ -1,0 +1,141 @@
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, Res } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Role } from '@prisma/client';
+import type { Response } from 'express';
+
+import type { AuthContext } from '../../shared/security/auth-context.interface';
+import { Capability } from '../../shared/security/capability.enum';
+import { CurrentUser } from '../../shared/security/decorators/current-user.decorator';
+import { RequiresCapability } from '../../shared/security/decorators/requires-capability.decorator';
+import { Roles } from '../../shared/security/decorators/roles.decorator';
+
+import { AssociationsService } from './associations.service';
+import { AddTrainerAssociationDto } from './dto/add-trainer-association.dto';
+import { ContextListResponseDto } from './dto/context-list-response.dto';
+import { ListRosterQueryDto } from './dto/list-roster-query.dto';
+import { RosterPageDto } from './dto/roster-row.dto';
+import { SetSkillLevelDto, SkillLevelResponseDto } from './dto/skill-level.dto';
+import { SuggestedTimesResponseDto } from './dto/suggested-times.dto';
+
+// Task 5.7, first endpoint — extended in Tasks 5.8-5.10 (api §4.3's
+// `AssociationsController`, the second owning module mounted under
+// `/player-profiles`/`/me`/`/trainers`, per architect-architecture.md §2's
+// "one resource surface, two owning modules" split). Empty `@Controller()`
+// prefix — same reason ShareLinksController/CoachesController use one,
+// this class mixes `/me/contexts`, `/player-profiles/:id/trainers` and
+// `/trainers/:id/players` paths.
+@ApiTags('associations')
+@ApiBearerAuth()
+@Controller()
+export class AssociationsController {
+  constructor(private readonly associationsService: AssociationsService) {}
+
+  // Task 5.7 (api §4.3 "GET /me/contexts", FR-034).
+  @RequiresCapability(Capability.EDIT_OWN_PROFILE)
+  @Get('me/contexts')
+  @ApiOperation({ summary: 'List every active (playerProfile, trainer) context — populates the trainer-context switcher' })
+  @ApiResponse({ status: 200, type: ContextListResponseDto })
+  async listContexts(@CurrentUser() ctx: AuthContext): Promise<ContextListResponseDto> {
+    return this.associationsService.listContextsForUser(ctx);
+  }
+
+  // Task 5.8 (api §4.3 "POST /player-profiles/:id/trainers", FR-032).
+  // `@Res()` without `passthrough` — idempotent re-association returns
+  // `200` with the existing row instead of the normal `201` (see
+  // AssociationsService.AddTrainerAssociationResult's comment).
+  @RequiresCapability(Capability.MANAGE_TRAINER_ASSOCIATIONS)
+  @Post('player-profiles/:id/trainers')
+  @ApiOperation({ summary: 'Add a trainer to a player profile, by ShareLink code or trainerId (oneOf)' })
+  @ApiResponse({ status: 201, description: 'Newly created association' })
+  @ApiResponse({ status: 200, description: 'Already associated — idempotent, existing row returned' })
+  @ApiResponse({ status: 400, description: 'Neither or both of shareLinkCode/trainerId supplied' })
+  @ApiResponse({ status: 403, description: 'Denied for typ: CHILD tokens', schema: { example: { errorCode: 'CHILD_CAPABILITY_DENIED' } } })
+  @ApiResponse({ status: 404, description: 'Unknown code/trainer, or the player profile is not the caller\'s own' })
+  async addTrainerAssociation(
+    @CurrentUser() ctx: AuthContext,
+    @Param('id') id: string,
+    @Body() dto: AddTrainerAssociationDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const result = await this.associationsService.addTrainerAssociation(ctx, id, dto);
+    res.status(result.statusCode).json(result.body);
+  }
+
+  // Task 5.9 (api §4.3 "DELETE /player-profiles/:id/trainers/:trainerId",
+  // FR-032). Soft-delete-with-cascade, unconditional (no server-side
+  // confirmation step).
+  @RequiresCapability(Capability.MANAGE_TRAINER_ASSOCIATIONS)
+  @Delete('player-profiles/:id/trainers/:trainerId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Remove a trainer association (soft — status becomes INACTIVE)' })
+  @ApiResponse({ status: 204 })
+  @ApiResponse({ status: 403, description: 'Denied for typ: CHILD tokens', schema: { example: { errorCode: 'CHILD_CAPABILITY_DENIED' } } })
+  @ApiResponse({ status: 404 })
+  async removeTrainerAssociation(
+    @CurrentUser() ctx: AuthContext,
+    @Param('id') id: string,
+    @Param('trainerId') trainerId: string,
+  ): Promise<void> {
+    await this.associationsService.removeTrainerAssociation(ctx, id, trainerId);
+  }
+
+  // Task 5.10 (api §4.3 "GET /trainers/:id/players", FR-070 gap-fill §8.8).
+  // Own tenant for TRAINER, any for SUPER_ADMIN.
+  @RequiresCapability(Capability.VIEW_PLAYER_AVAILABILITY)
+  @Get('trainers/:id/players')
+  @ApiOperation({ summary: "A trainer's minimal player roster with availability summary — not full CRM" })
+  @ApiResponse({ status: 200, type: RosterPageDto })
+  @ApiResponse({ status: 404, description: 'Cross-tenant (never 403, arch §8 Layer 3)' })
+  async listRosterForTrainer(
+    @CurrentUser() ctx: AuthContext,
+    @Param('id') id: string,
+    @Query() query: ListRosterQueryDto,
+  ): Promise<RosterPageDto> {
+    return this.associationsService.listRosterForTrainer(ctx, id, query);
+  }
+
+  // US-01.09 "Suggest session times matching most players' availability".
+  // `trainers/me/...` - always the caller's own tenant (no :id to spoof).
+  @Roles(Role.TRAINER)
+  @RequiresCapability(Capability.VIEW_PLAYER_AVAILABILITY)
+  @Get('trainers/me/players/suggested-times')
+  @ApiOperation({ summary: "Top 3 day/time windows in which the most of the trainer's active players are available" })
+  @ApiResponse({ status: 200, type: SuggestedTimesResponseDto })
+  async suggestedTimes(@CurrentUser() ctx: AuthContext): Promise<SuggestedTimesResponseDto> {
+    return this.associationsService.suggestTimesForTrainer(ctx);
+  }
+
+  // Spec US-01.11: skill level is trainer-set (read-only for the player/parent).
+  @Roles(Role.TRAINER)
+  @RequiresCapability(Capability.MANAGE_TRAINER_ASSOCIATIONS)
+  @Patch('trainers/:id/players/:playerProfileId/skill-level')
+  @ApiOperation({ summary: "Set a rostered player's skill level (BEGINNER | INTERMEDIATE | ADVANCED | ELITE)" })
+  @ApiResponse({ status: 200, type: SkillLevelResponseDto })
+  @ApiResponse({ status: 400, description: 'Unknown skill level' })
+  @ApiResponse({ status: 404, description: 'Cross-tenant or not on the roster (never 403)' })
+  async setPlayerSkillLevel(
+    @CurrentUser() ctx: AuthContext,
+    @Param('id') id: string,
+    @Param('playerProfileId') playerProfileId: string,
+    @Body() dto: SetSkillLevelDto,
+  ): Promise<SkillLevelResponseDto> {
+    return this.associationsService.setPlayerSkillLevel(ctx, id, playerProfileId, dto);
+  }
+
+  // Epic §3 "Manage own organization users": the trainer removes a player from
+  // their roster (soft - association INACTIVE, history kept). 404 cross-tenant.
+  @Roles(Role.TRAINER)
+  @RequiresCapability(Capability.MANAGE_TRAINER_ASSOCIATIONS)
+  @Delete('trainers/:id/players/:playerProfileId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: "Remove a player from the trainer's roster (soft - association becomes INACTIVE)" })
+  @ApiResponse({ status: 204 })
+  @ApiResponse({ status: 404, description: 'Cross-tenant or not on the roster (never 403)' })
+  async removePlayerFromRoster(
+    @CurrentUser() ctx: AuthContext,
+    @Param('id') id: string,
+    @Param('playerProfileId') playerProfileId: string,
+  ): Promise<void> {
+    await this.associationsService.removePlayerFromRoster(ctx, id, playerProfileId);
+  }
+}

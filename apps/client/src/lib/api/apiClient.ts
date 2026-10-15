@@ -1,0 +1,310 @@
+
+import { useAuthStore } from '../../stores/useAuthStore';
+import { useTrainerContextStore } from '../../stores/useTrainerContextStore';
+import type { AuthSessionResponseDto } from '../../types/auth';
+import { logClientError } from '../monitoring/errorMonitor';
+import { toast } from '../toast/toast';
+
+import { parseApiErrorBody } from './apiError';
+
+// arch §1: apps/client never talks to Postgres directly — every call here
+// goes to the NestJS API over HTTP, base URL injected at build time via
+// next.config.mjs's root-.env loader (Task 0.5).
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
+
+export class SessionExpiredError extends Error {
+  constructor() {
+    super('Session expired');
+    this.name = 'SessionExpiredError';
+  }
+}
+
+/**
+ * fe §9.4/Task 18.3 — thrown by apiRequest() for a `500
+ * TENANT_SCOPE_VIOLATION` (architecture §8 Layer 2: should never reach the
+ * client, must degrade safely if it does). `QueryProvider.tsx` configures
+ * TanStack Query's `throwOnError` to re-throw exactly this type during
+ * render, so the root `ErrorBoundary` (Task 18.3) catches it and shows the
+ * generic, deliberately-unexplained "Something went wrong" fallback (api
+ * §0.5: this errorCode is "alerted, not user-facing copy").
+ */
+export class FatalApiError extends Error {
+  readonly errorCode: string;
+
+  constructor(errorCode: string) {
+    super('A server error occurred');
+    this.name = 'FatalApiError';
+    this.errorCode = errorCode;
+  }
+}
+
+// api §3/§4.6 — a 403 with either of these error codes reaching the client
+// at all means a UI hide-rule failed somewhere upstream (fe §7.2/§4.6 name
+// the actual prevention: not rendering the triggering field/nav item for a
+// CHILD session in the first place). fe §9.4's own framing: "should never
+// happen in steady state" — the generic toast + client-error-monitor log
+// below is a bug-signal fallback, not the primary UX for this case.
+const CHILD_GUARDRAIL_ERROR_CODES = new Set(['CHILD_CAPABILITY_DENIED', 'CHILD_FIELD_NOT_EDITABLE']);
+
+const CHILD_GUARDRAIL_TOAST_MESSAGE = "This action isn't available on this account.";
+
+/**
+ * fe §9.4/Task 18.3 — apiRequest()'s single chokepoint for the two
+ * cross-cutting error-code reactions that don't fit the 401 retry/redirect
+ * branch above: a fatal `TENANT_SCOPE_VIOLATION` (throws, see
+ * `FatalApiError`) and a child-guardrail 403 reaching the client anyway
+ * (toast + log, never a throw — callers like `AccountProfileForm`/
+ * `ProfileEditForm` already branch on `!res.ok` themselves, so this must
+ * not consume the response body in a way a real browser `Response` can't
+ * recover from). `res.clone()` when available (every real `fetch` Response)
+ * keeps the original body stream intact for the caller; test doubles that
+ * omit `clone()` fall back to reading `res` directly, safe there because
+ * those mocks' `json()` is a plain re-invokable function, not a
+ * single-read stream.
+ */
+async function handleCrossCuttingErrorCodes(res: Response, path: string): Promise<void> {
+  if (res.status !== 403 && res.status !== 500) {
+    return;
+  }
+
+  const source = typeof res.clone === 'function' ? res.clone() : res;
+  const body = await parseApiErrorBody(source);
+  if (!body) {
+    return;
+  }
+
+  if (res.status === 500 && body.errorCode === 'TENANT_SCOPE_VIOLATION') {
+    throw new FatalApiError(body.errorCode);
+  }
+
+  if (res.status === 403 && CHILD_GUARDRAIL_ERROR_CODES.has(body.errorCode)) {
+    toast.error(CHILD_GUARDRAIL_TOAST_MESSAGE);
+    logClientError('child-capability-denied-reached-client', { path, errorCode: body.errorCode });
+  }
+}
+
+interface ApiRequestOptions extends Omit<RequestInit, 'headers'> {
+  headers?: Record<string, string>;
+  /** Internal — set by apiRequest itself when retrying after a refresh. Never pass this at a call site. */
+  _isRetry?: boolean;
+}
+
+/**
+ * fe §6.2 / spec §13 CSRF — the two cookie-authenticated, state-changing
+ * calls (POST /auth/refresh, POST /auth/logout) are protected server-side by
+ * two layers:
+ *   1. Origin verification: the browser attaches `Origin` itself on every
+ *      cross-origin fetch (page script cannot set or forge it), and the
+ *      server requires it to equal CLIENT_URL — nothing to send from here.
+ *   2. Double-submit token (logout only): `X-CSRF-Token` must equal the
+ *      `csrf` cookie, which `credentials: 'include'` makes the browser send.
+ *      /auth/refresh does NOT require it — after a page reload there is no
+ *      in-memory token yet and refresh is what returns one — so on refresh
+ *      this header is only sent when a (possibly stale) token happens to be
+ *      in memory, and the server ignores it.
+ *
+ * The token comes from useAuthStore, NOT document.cookie (see
+ * auth-session-response.dto.ts server-side and useAuthStore.ts): the `csrf`
+ * cookie belongs to apps/server's origin and is unreadable from this page, so
+ * the server returns the same value in the login/refresh response body and it
+ * is kept in memory. Kept separate from apiRequest's generic header set
+ * deliberately, scoped to the routes that actually consume it.
+ */
+function csrfHeaders(): Record<string, string> {
+  const csrf = useAuthStore.getState().csrfToken;
+  return csrf ? { 'X-CSRF-Token': csrf } : {};
+}
+
+function redirectToLogin(): void {
+  if (typeof window !== 'undefined') {
+    window.location.href = '/login';
+  }
+}
+
+/**
+ * POST /auth/refresh — cookie-only, no body (fe §6.1/§6.2). Populates
+ * useAuthStore on success and returns whether the refresh succeeded.
+ *
+ * Impersonation sessions short-circuit to `false` without ever hitting the
+ * network: an impersonation access token has no refresh token behind it to
+ * rotate (architecture §10, ADR-03 — "no refresh token issued" for an
+ * impersonation session), so attempting `/auth/refresh` here would be a
+ * doomed round trip, not a real recovery path. The actual exit sequence
+ * (discard token, best-effort POST /impersonation/end, refresh the
+ * untouched admin cookie) belongs to ImpersonationBanner (Task 16.1) — this
+ * function only needs to know not to pretend a refresh is possible.
+ */
+export function refreshSession(): Promise<boolean> {
+  // Single-flight: the refresh token rotates on every use and the server
+  // treats a second use of the same token as theft, revoking the whole
+  // family. Concurrent callers (React StrictMode's double-mounted boot
+  // effect in dev, several queries 401-ing at once) must therefore share
+  // ONE request, never fire one each — otherwise the loser's 401 also kills
+  // the winner's brand-new session and the user is logged out on reload.
+  if (!inflightRefresh) {
+    inflightRefresh = performRefresh().finally(() => {
+      inflightRefresh = null;
+    });
+  }
+  return inflightRefresh;
+}
+
+let inflightRefresh: Promise<boolean> | null = null;
+
+async function performRefresh(): Promise<boolean> {
+  if (useAuthStore.getState().isImpersonating) {
+    return false;
+  }
+
+  const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { ...csrfHeaders() },
+  });
+
+  if (!res.ok) {
+    return false;
+  }
+
+  const session = (await res.json()) as AuthSessionResponseDto;
+  useAuthStore.getState().setSession({
+    accessToken: session.accessToken,
+    user: session.user,
+    expiresAt: Date.now() + session.expiresIn * 1000,
+    csrfToken: session.csrfToken,
+  });
+  return true;
+}
+
+/**
+ * Exit impersonation: drop the impersonation token, then refresh the admin's own, untouched cookie session.
+ * The token goes first (`refreshSession` refuses to run while `isImpersonating`), but `user` is deliberately
+ * KEPT until the admin session lands in one `setSession`: a render with no user would make RoleGuard
+ * `router.replace('/login')`, and on a route whose guard admits the admin again (e.g. /dashboard) nothing
+ * navigates back, stranding a signed-in admin on the login page. If the admin session cannot be restored the
+ * store is cleared completely.
+ */
+export async function restoreAdminSession(): Promise<boolean> {
+  useAuthStore.setState({ accessToken: null, expiresAt: null, isImpersonating: false, csrfToken: null });
+  const restored = await refreshSession();
+  if (!restored) {
+    useAuthStore.getState().clear();
+  }
+  return restored;
+}
+
+/**
+ * POST /auth/logout — the server requires a matching Origin (sent by the
+ * browser) AND X-CSRF-Token (arch §6.4, spec §13): the in-memory token is
+ * always present here because BootSequence refreshes before any signed-in UI
+ * renders, so sign-out works immediately after a page reload.
+ *
+ * An impersonation session has no refresh token / csrf pair of its own (the
+ * browser's cookies are the admin's), and the server refuses logout on an
+ * impersonation token. So signing out while impersonating first runs the
+ * normal exit (POST /impersonation/end, drop the token, refresh the admin's
+ * untouched cookie session — which also restores the admin's csrf token),
+ * then logs the admin out. If the admin session cannot be restored there is
+ * nothing left to revoke server-side and local state is simply cleared.
+ */
+export async function logout(everywhere = false): Promise<void> {
+  if (useAuthStore.getState().isImpersonating) {
+    try {
+      await publicApiRequest('/impersonation/end', { method: 'POST' });
+    } catch {
+      // Best-effort (api §2): ending may itself 401 past the 60-minute cap.
+    }
+    if (!(await restoreAdminSession())) {
+      return;
+    }
+  }
+
+  const sendLogout = (): Promise<Response> => {
+    const { accessToken } = useAuthStore.getState();
+    return fetch(`${API_BASE_URL}/auth/logout${everywhere ? '?everywhere=true' : ''}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
+        ...csrfHeaders(),
+      },
+    });
+  };
+
+  const res = await sendLogout();
+  // A 403 here means the in-memory csrf token no longer equals the csrf
+  // cookie — typically another tab rotated the session (refresh re-issues
+  // both). Re-sync once via a refresh, then retry, so the server-side session
+  // is still revoked rather than silently left alive behind a cleared UI.
+  if (res.status === 403 && (await refreshSession())) {
+    await sendLogout();
+  }
+  useAuthStore.getState().clear();
+}
+
+/**
+ * fe §4.1 (Task 11.1+) — a sibling to apiRequest() for the handful of
+ * endpoints where a 401 does NOT mean "this session's access token
+ * expired": POST /auth/login's own invalid-credentials/ACCOUNT_INACTIVE 401
+ * (there is no session yet to refresh) and POST /auth/change-password's
+ * wrong-currentPassword 401 (the session is perfectly valid — the *password*
+ * was wrong). Routing either through apiRequest() would trigger its
+ * refresh-then-redirect-to-/login flow on a normal, expected business
+ * response, which is exactly the bug this avoids. Same header-attachment
+ * behavior as apiRequest() (Authorization when a token is in memory,
+ * `credentials: 'include'` for cookies) — just without the 401 special
+ * case. Same reasoning as refreshSession()/logout() above already being
+ * hand-rolled fetches instead of going through apiRequest().
+ */
+export async function publicApiRequest(path: string, options: ApiRequestOptions = {}): Promise<Response> {
+  const { accessToken } = useAuthStore.getState();
+  const { headers: callerHeaders, ...rest } = options;
+
+  const headers: Record<string, string> = {
+    ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
+    ...callerHeaders,
+  };
+
+  return fetch(`${API_BASE_URL}${path}`, { ...rest, headers, credentials: 'include' });
+}
+
+/**
+ * fe §6.2 — the single fetch wrapper every API call in the app goes
+ * through. `Authorization` and `X-Trainer-Context` are attached
+ * automatically from the Zustand stores — no call site threads either
+ * header through manually, which is what keeps api-spec §0.3's per-endpoint
+ * Required/N-A header bucketing from becoming 45 places a developer could
+ * forget it.
+ *
+ * On a 401: one silent-refresh retry, then a hard failure (session cleared,
+ * redirected to /login, SessionExpiredError thrown) — never a second retry,
+ * and never a retry at all for an impersonation-token 401 (refreshSession
+ * itself short-circuits that case).
+ */
+export async function apiRequest(path: string, options: ApiRequestOptions = {}): Promise<Response> {
+  const { accessToken, isImpersonating } = useAuthStore.getState();
+  const { activeTrainerId } = useTrainerContextStore.getState();
+  const { _isRetry, headers: callerHeaders, ...rest } = options;
+
+  const headers: Record<string, string> = {
+    ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
+    ...(activeTrainerId && { 'X-Trainer-Context': activeTrainerId }),
+    ...callerHeaders,
+  };
+
+  const res = await fetch(`${API_BASE_URL}${path}`, { ...rest, headers, credentials: 'include' });
+
+  if (res.status === 401 && !_isRetry) {
+    const refreshed = isImpersonating ? false : await refreshSession();
+    if (refreshed) {
+      return apiRequest(path, { ...options, _isRetry: true });
+    }
+    useAuthStore.getState().clear();
+    redirectToLogin();
+    throw new SessionExpiredError();
+  }
+
+  await handleCrossCuttingErrorCodes(res, path);
+
+  return res;
+}

@@ -1,0 +1,24 @@
+# Lean/single-instance scope (ADR-11): PostgreSQL only. No Redis, no PgBouncer, no broker.
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    # Docker gives containers a 64 MB /dev/shm by default. PostgreSQL parallel query workers
+    # (big hash joins/aggregates, e.g. the dashboard counts of a trainer with tens of thousands
+    # of players) allocate dynamic shared memory there and fail with
+    # "could not resize shared memory segment ... No space left on device" -> HTTP 500.
+    shm_size: 256mb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: practiceperfect
+    ports:
+      # Host 5433 -> container 5432: a native Windows PostgreSQL service
+      # already occupies host port 5432 on this machine. Container-internal
+      # port stays 5432 (unaffected, only the host-side mapping changed).
+      - '5433:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

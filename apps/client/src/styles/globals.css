@@ -1,0 +1,717 @@
+@import 'tailwindcss';
+
+/* No @config here — deliberately. tailwind.config.ts (legacy JS config) was
+   removed; every theme value lives in this native @theme block instead.
+   Two separate, real bugs were found and fixed getting here:
+
+   1. max-w-{name} bug (fixed for real, root cause confirmed): Tailwind v4
+      prefers a matching custom `--spacing-{name}` variable over its own
+      built-in `--container-{name}` scale when both exist with the same key
+      — this is genuine native v4 behavior, not a JS-config-bridge artifact
+      (confirmed by inspecting the compiled CSS directly: `.max-w-md` compiled
+      to `max-width: var(--spacing-md)`, not `var(--container-md)`, even
+      after removing @config entirely). Our --spacing-* scale's xxs..xxl keys
+      collide by name with max-w-*'s reserved xs/sm/md/lg/xl scale. Every
+      `max-w-{name}` call site in the app was changed to an arbitrary literal
+      value instead (`max-w-[28rem]`, not `max-w-md`) to route around the
+      collision entirely — see git history for the affected files.
+
+   2. Opacity-modifier corruption bug (worked around, root cause NOT fully
+      understood — flagging honestly): a CSS custom-property name reused
+      across many files, combined with an opacity modifier (`bg-warning/15`,
+      or the old `bg-[var(--warning)]/15` arbitrary-value form — both hit
+      it), gets corrupted in the generated color-mix() fallback
+      (`var(--warning)` becomes `var(--war&)`, `var(--border-soft)` becomes
+      `var(--)`, etc.), sometimes producing entirely fabricated variable
+      names (`var(--A0)`) with no source-code counterpart at all. Confirmed
+      via direct binary inspection of the compiled CSS that this is NOT
+      caused by: the source files (byte-clean, no hidden characters), the
+      @config JS-bridge (persists after removing it), or Turbopack
+      specifically (also reproduces under `next dev --webpack`). It IS
+      confirmed absent from `next build`'s production output (verified
+      twice, byte-for-byte clean) and from webpack dev mode specifically —
+      only Turbopack dev mode treats the resulting malformed selector as a
+      hard parse error (500); webpack's CSS pipeline tolerates the same
+      malformed rule as dead, unmatched, harmless byte-noise and renders
+      correctly. **Workaround in place**: apps/client's `dev` script uses
+      `next dev --webpack` instead of the Turbopack default. This looks like
+      a genuine upstream Tailwind v4.3.3 / Next.js 16.3.5 Turbopack bug
+      worth a minimal-repro report — not something fixable from application
+      code, since the corrupted rules match no real class name anywhere in
+      this app's source. */
+@theme {
+  /* Fonts — Figtree (self-hosted variable font via @fontsource-variable/
+     figtree, imported in app/layout.tsx). It matches the geometric, round
+     sans in Task/designs (double-storey a, angled-top t); the same family
+     serves headings (700-800) and body (400-600). */
+  --font-sans: 'Figtree Variable', 'Segoe UI', sans-serif;
+  --font-display: 'Figtree Variable', 'Segoe UI', sans-serif;
+
+  /* Spacing scale — DESIGN_TOKENS.md, verbatim */
+  --spacing-xxs: 4px;
+  --spacing-xs: 8px;
+  --spacing-sm: 12px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-xxl: 40px;
+
+  /* Border radius scale — DESIGN_TOKENS.md, verbatim */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+  --radius-pill: 999px;
+
+  /* Shadows — fe §1.3 */
+  --shadow-card-soft: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-card-strong: 0 4px 16px rgba(0, 0, 0, 0.3);
+
+  /* Typography scale — DESIGN_TOKENS.md. Tailwind v4's {name}--line-height
+     pairing convention (weight is applied separately via font-weight
+     utilities per component, as before). */
+  --text-hero-title: 30px;
+  --text-hero-title--line-height: 38px;
+  --text-section-title: 22px;
+  --text-section-title--line-height: 28px;
+  --text-block-title: 18px;
+  --text-block-title--line-height: 24px;
+  --text-card-title: 16px;
+  --text-card-title--line-height: 22px;
+  --text-body-lg: 16px;
+  --text-body-lg--line-height: 26px;
+  --text-body: 14px;
+  --text-body--line-height: 22px;
+  --text-caption: 12px;
+  --text-caption--line-height: 18px;
+  --text-eyebrow: 11px;
+  --text-eyebrow--line-height: 16px;
+
+  /* Named color utilities (bg-warning, text-ink, border-border-soft/40, ...)
+     mapped straight through to the live :root custom properties below, so
+     BrandingProvider's runtime overrides (--brand-primary*) still work.
+     This is Tailwind v4's real mechanism for custom themed colors — it
+     exists specifically to replace `[var(--x)]` arbitrary-value classes,
+     which turned out to have a serious bug in this Tailwind version: reusing
+     the same arbitrary var() class name across many files corrupts the
+     generated CSS selector (var(--warning) became var(--war&), etc.),
+     producing ~100 silent build failures across the app that a warm
+     Turbopack cache had been masking since Phase 10. Named utilities go
+     through Tailwind's normal, non-buggy code path and support opacity
+     modifiers (bg-warning/15) natively. */
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-surface-input: var(--surface-input);
+  --color-surface-sidebar: var(--surface-sidebar);
+  --color-surface-green: var(--surface-green);
+  --color-text-subtle: var(--text-subtle);
+  --color-border-soft: var(--border-soft);
+  --color-border-strong: var(--border-strong);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-primary-soft: var(--brand-primary-soft);
+  --color-brand-primary-deep: var(--brand-primary-deep);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+}
+
+:root {
+  /* Palette sampled from Task/designs/*.svg: page #0D0D0D, cards #1D2F1D,
+     inputs #111D11, selected nav item #173F17, accent green #00B300
+     (deep #006600), error #FF5E58, placeholder #AAAAAA. */
+  --surface-0: #0d0d0d;
+  --surface-1: #1d2f1d;
+  --surface-2: #26364a; /* wet asphalt - selection / hover / header fill */
+  --surface-3: #363636;
+  --surface-input: #111d11;
+  --surface-sidebar: #0f190f;
+  --surface-green: #173f17; /* sidebar active row, account pill, theme toggle */
+  --border-soft: #2f4b2f;
+  --border-strong: #5c805c;
+  --field-border: #001900;
+  --ink-muted: #cfcfcf;
+  --ink: #f3f3f3;
+  --text-subtle: #aaaaaa;
+  --brand-primary: #00b300; /* platform default green, overridden per-tenant by BrandingProvider (Task 10.10) */
+  --success: #2ad42a; /* AA (>=4.5:1) on every dark surface incl. surface-2/3/green */
+  --warning: #fbbf24;
+  --danger: #ff7a74; /* AA on surface-2/3/green; the old #ff5e58 stayed ~4.0:1 */
+  --info: #60a5fa;
+
+  /* RGB mirror of --brand-primary for rgba()-based glow shadows (fe §1.2/1.3).
+     Static platform-default value here; BrandingProvider (Task 10.10) overrides
+     all three at runtime per tenant. */
+  --brand-primary-rgb: 0, 179, 0;
+  --glow-alpha: 0.5;
+  --btn-secondary-ink: #e6ffe6;
+  --btn-edge: #0d0d0d;
+
+  /* Aliases — 76 components across the app reference --text-primary/
+     --text-secondary (a naming convention from an earlier design pass) but
+     these were never actually defined, so `color` fell back to whatever was
+     inherited (masking the bug for text) while any non-inherited property
+     using them (backgrounds, borders, fills) silently computed to its
+     CSS-initial value instead. Aliasing to the tokens that ARE defined
+     (--ink/--ink-muted) fixes every call site without a 76-file rename. */
+  --text-primary: var(--ink);
+  --text-secondary: var(--ink-muted);
+
+  /* Accessible brand-coloured TEXT/focus ring (WCAG 1.4.3 / 1.4.11). The raw
+     accent is a fill colour; as text it needs lightening on the dark theme and
+     darkening on the light one. Consumers read it through the `text-brand-link`
+     class / the global :focus-visible ring below, which evaluate the mix at the
+     element so tenant branding (--brand-primary on [data-branding]) still wins. */
+  --brand-link-mix: 65%;
+  --brand-link-base: #fff;
+}
+
+/* Light theme: same green accent, paper-white surfaces. Toggled by
+   ThemeToggle via <html data-theme>; first paint is set by the inline script
+   in app/layout.tsx so there is no dark flash. */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --surface-0: #eaf0ea;
+  --surface-1: #ffffff;
+  --surface-2: #dde5ee;
+  --surface-3: #cddacd;
+  --surface-input: #f2f6f2;
+  --surface-sidebar: #ffffff;
+  --surface-green: #e0eee0;
+  --border-soft: #d3e1d3;
+  --border-strong: #93b093;
+  --field-border: #c4d5c4;
+  --ink: #0f1a0f;
+  --ink-muted: #46584a;
+  --text-subtle: #4d5f52;
+  --success: #006b00;
+  --warning: #855000;
+  --danger: #b3261f;
+  --info: #1d4ed8;
+  --brand-link-mix: 55%;
+  --brand-link-base: #000;
+  --glow-alpha: 0.22;
+  --btn-secondary-ink: #0f1a0f;
+  --btn-edge: #c4d5c4;
+}
+
+/* The platform mark is white artwork; on the light theme it flips to near-black. */
+.logo-adaptive {
+  transition: filter 350ms ease;
+}
+
+:root[data-theme='light'] .logo-adaptive {
+  filter: invert(1);
+}
+
+/* Headings that opt into `font-display` get the bold cut of the same Figtree
+   family (weight utilities like font-semibold still win, being utilities). */
+.font-display {
+  font-weight: 700;
+}
+
+html {
+  color-scheme: dark;
+}
+
+/* Smooth theme switch: ThemeToggle adds this class for ~400ms around the flip. */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition:
+    background-color 350ms ease,
+    border-color 350ms ease,
+    color 350ms ease,
+    fill 350ms ease,
+    stroke 350ms ease !important;
+}
+
+/* The soft green "spotlight" behind every screen (event_builder.svg). Reads
+   --brand-primary-rgb, so inside a BrandingProvider wrapper (.app-glow) it
+   follows the tenant's accent; on bare pages (login) it uses the platform
+   default. */
+body {
+  background-color: var(--surface-0);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+}
+
+/* Static fallback spotlight (no WebGL / before hydration). The animated mesh
+   gradient (components/shell/BackgroundGradient.tsx) is a fixed layer behind
+   the app and paints over this; wrappers like .app-glow must stay transparent
+   so it shows through. */
+body {
+  background-image: radial-gradient(
+    70% 60% at 32% 82%,
+    rgba(var(--brand-primary-rgb), var(--glow-alpha)) 0%,
+    rgba(var(--brand-primary-rgb), calc(var(--glow-alpha) * 0.32)) 45%,
+    transparent 78%
+  );
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+/* Pointer (hand) cursor on every interactive control app-wide — Tailwind v4's
+   preflight resets buttons to the default arrow. Disabled controls get
+   not-allowed instead so they don't read as clickable. */
+button,
+select,
+summary,
+label[for],
+[role='button'],
+[role='tab'],
+[role='option'],
+input:not([disabled]),
+textarea:not([disabled]) {
+  cursor: pointer;
+}
+
+button:disabled,
+select:disabled,
+input:disabled,
+textarea:disabled,
+[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+
+/* fe §1.1 — numeric variant for availability grids/countdowns/ids: keeps
+   digits from jittering width as they change (48h-expiry countdowns,
+   weekly-grid times). Composes with General Sans, the only family numerals
+   render in per the type scale. */
+.font-numeric {
+  font-variant-numeric: tabular-nums;
+}
+
+/* fe §1.3/§5.2 — the "spotlight moves" cross-fade: when ContextSwitcher
+   (Task 14.1) writes a new active trainer, BrandingProvider recomputes
+   --brand-primary/-soft/-deep/-rgb on the [data-branding] wrapper it owns
+   (fe §8) and every element under it that reads one of those custom
+   properties for its own color/background/border should ease into the new
+   value over 180ms rather than snap — this is "the single animation every
+   player/parent user will see repeatedly," so it's declared once here
+   rather than per-component. `motion-reduce` honors prefers-reduced-motion
+   (accessibility checklist) by disabling the transition outright. */
+[data-branding],
+[data-branding] * {
+  transition:
+    background-color 180ms ease-in-out,
+    border-color 180ms ease-in-out,
+    color 180ms ease-in-out,
+    fill 180ms ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-branding],
+  [data-branding] * {
+    transition: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Design-system controls — Task/designs/{inputs,buttons,form_control_element}.svg
+   Plain CSS (not utility strings) so every call site shares one definition and
+   tenant branding flows through --brand-primary. `@layer components` keeps
+   them overridable by Tailwind utilities (e.g. `btn self-start`).
+   --------------------------------------------------------------------------- */
+@layer base {
+  /* Visible keyboard focus on every interactive control (WCAG 2.4.7). :where()
+     keeps specificity at zero so component rules (.btn, inputs' own
+     border+glow focus style, `outline-none` utilities on purpose-built
+     controls) still override it. */
+  :where(a[href], button, summary, select, textarea, input, [role='button'], [role='tab'], [role='menuitem'], [role='option'], [tabindex]):focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--brand-primary) var(--brand-link-mix), var(--brand-link-base));
+    outline-offset: 2px;
+  }
+
+  /* Programmatic focus targets (skip-link destination, dialog panel) are not
+     keyboard stops and should not draw a ring. */
+  [tabindex='-1']:focus {
+    outline: none;
+  }
+
+  /* Inputs: #111D11 fill, #001900 edge, accent border + soft ring on focus,
+     #FF5E58 when aria-invalid, near-black when disabled. */
+  input:where(:not([type='checkbox'], [type='radio'], [type='color'], [type='file'], [type='range'], [type='submit'], [type='button'])),
+  select,
+  textarea {
+    min-height: 40px;
+    padding: 0 14px;
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-sm);
+    background-color: var(--surface-input);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 22px;
+    outline: none;
+    transition:
+      border-color 150ms ease-in-out,
+      box-shadow 150ms ease-in-out;
+  }
+
+  textarea {
+    padding: 9px 14px;
+  }
+
+  /* Native arrow replaced so it sits a comfortable distance from the edge. */
+  select {
+    appearance: none;
+    padding-right: 42px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23cfcfcf' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 16px center;
+    background-size: 14px 14px;
+  }
+
+  :root[data-theme='light'] select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2346584a' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--text-subtle);
+    opacity: 1;
+  }
+
+  input:where(:not([type='checkbox'], [type='radio'], [type='color'], [type='file'], [type='range'], [type='submit'], [type='button'])):hover:not(:disabled),
+  select:hover:not(:disabled),
+  textarea:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--brand-primary) 57%, #000);
+  }
+
+  input:where(:not([type='checkbox'], [type='radio'], [type='color'], [type='file'], [type='range'], [type='submit'], [type='button'])):focus,
+  select:focus,
+  textarea:focus {
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb), 0.18);
+  }
+
+  input[aria-invalid='true'],
+  select[aria-invalid='true'],
+  textarea[aria-invalid='true'] {
+    border-color: var(--danger);
+  }
+
+  input[aria-invalid='true']:focus,
+  select[aria-invalid='true']:focus,
+  textarea[aria-invalid='true']:focus {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 3px rgba(255, 94, 88, 0.18);
+  }
+
+  input:disabled:where(:not([type='checkbox'], [type='radio'])),
+  select:disabled,
+  textarea:disabled {
+    background-color: var(--field-border);
+    color: var(--text-subtle);
+  }
+
+  /* Checkbox 22px r4, radio 22px circle — accent fill + white tick/dot. */
+  input[type='checkbox'],
+  input[type='radio'] {
+    appearance: none;
+    flex: none;
+    width: 22px;
+    height: 22px;
+    margin: 0;
+    border: 1.5px solid var(--text-subtle);
+    background-color: transparent;
+    background-repeat: no-repeat;
+    background-position: center;
+    transition:
+      background-color 150ms ease-in-out,
+      border-color 150ms ease-in-out;
+  }
+
+  input[type='checkbox'] {
+    border-radius: 4px;
+  }
+
+  input[type='radio'] {
+    border-radius: 999px;
+  }
+
+  input[type='checkbox']:checked {
+    border-color: var(--brand-primary);
+    background-color: var(--brand-primary);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");
+    background-size: 80%;
+  }
+
+  input[type='radio']:checked {
+    border-color: var(--brand-primary);
+    background-color: #fff;
+    background-image: radial-gradient(circle, var(--brand-primary) 0 5px, transparent 5.5px);
+  }
+
+  input[type='checkbox']:disabled,
+  input[type='radio']:disabled {
+    opacity: 0.5;
+  }
+}
+
+@layer components {
+  .field-label {
+    font-size: 12px;
+    line-height: 18px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  /* Buttons: 2px #0D0D0D edge, radius 15, label #E6FFE6 (buttons.svg). The
+     default fill is the accent at 57% brightness (#00B300 -> #006600); hover
+     is the full accent (#00B500), pressed sits between, disabled dims. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 0 20px;
+    border: 2px solid var(--btn-edge);
+    border-radius: 15px;
+    font-size: 14px;
+    line-height: 22px;
+    font-weight: 600;
+    color: #e6ffe6;
+    text-decoration: none;
+    white-space: nowrap;
+    transition:
+      background-color 150ms ease-in-out,
+      box-shadow 150ms ease-in-out,
+      opacity 150ms ease-in-out;
+  }
+
+  .btn:disabled,
+  .btn[aria-disabled='true'] {
+    opacity: 0.5;
+  }
+
+  .btn:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--brand-primary) var(--brand-link-mix), var(--brand-link-base));
+    outline-offset: 2px;
+  }
+
+  /* Brand-coloured text that stays AA on both themes (see --brand-link-mix). */
+  .text-brand-link {
+    color: color-mix(in srgb, var(--brand-primary) var(--brand-link-mix), var(--brand-link-base));
+  }
+
+  /* "Skip to main content" (WCAG 2.4.1): first stop in the signed-in shell,
+     parked off-screen until it receives keyboard focus. */
+  .skip-link {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 100;
+    padding: 10px 16px;
+    border: 2px solid color-mix(in srgb, var(--brand-primary) var(--brand-link-mix), var(--brand-link-base));
+    border-radius: 12px;
+    background-color: var(--surface-1);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 22px;
+    font-weight: 600;
+    text-decoration: none;
+    transform: translateY(-200%);
+  }
+
+  .skip-link:focus,
+  .skip-link:focus-visible {
+    transform: none;
+  }
+
+  .btn-sm {
+    min-height: 32px;
+    padding: 0 14px;
+    border-radius: 12px;
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  /* Touch-friendly controls (spec "Mobile Requirements"): on phones and any coarse
+     pointer the compact button still gets a 40px touch target; desktop is unchanged. */
+  @media (pointer: coarse), (max-width: 767px) {
+    .btn-sm {
+      min-height: 40px;
+    }
+  }
+
+  .btn-lg {
+    min-height: 56px;
+    padding: 0 28px;
+    border-radius: 15px;
+    font-size: 16px;
+  }
+
+  /* Filled variants have no visible edge (buttons.svg): the fill runs under a
+     transparent border so they measure exactly as tall as outlined ones. */
+  .btn-primary,
+  .btn-danger {
+    border-color: transparent;
+  }
+
+  .btn-primary {
+    background-color: color-mix(in srgb, var(--brand-primary) 57%, #000);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--brand-primary);
+  }
+
+  .btn-primary:active:not(:disabled) {
+    background-color: color-mix(in srgb, var(--brand-primary) 83%, #000);
+  }
+
+  .btn-secondary {
+    background-color: var(--surface-1);
+    color: var(--btn-secondary-ink);
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--brand-primary) 57%, #000);
+    color: #e6ffe6;
+  }
+
+  .btn-secondary:active:not(:disabled) {
+    background-color: color-mix(in srgb, var(--brand-primary) 83%, #000);
+  }
+
+  .btn-ghost {
+    border-color: transparent;
+    background-color: transparent;
+    color: var(--ink-muted);
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--ink) 8%, transparent);
+    color: var(--ink);
+  }
+
+  .btn-danger {
+    background-color: #c9302c;
+    color: #fff;
+  }
+
+  .btn-danger:hover:not(:disabled) {
+    background-color: #e0453f;
+    color: #fff;
+  }
+
+  .btn-danger-outline {
+    color: var(--danger);
+  }
+
+  .btn-danger-outline:hover:not(:disabled) {
+    background-color: #c9302c;
+    color: #fff;
+  }
+
+  /* Pills (event_builder.svg: Public / Invite only / Internal) + avatar chips. */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 10px;
+    border: 2px solid var(--field-border);
+    border-radius: 999px;
+    background-color: color-mix(in srgb, var(--brand-primary) 57%, #000);
+    font-size: 12px;
+    line-height: 18px;
+    font-weight: 600;
+    color: #e6ffe6;
+  }
+
+  .badge-neutral {
+    background-color: var(--surface-3);
+    color: var(--ink);
+  }
+
+  .badge-dark {
+    background-color: var(--surface-0);
+    color: var(--ink);
+  }
+
+  .badge-danger {
+    background-color: #c9302c;
+    color: #fff;
+  }
+
+  .avatar {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: 1.5px solid var(--surface-0);
+    border-radius: 999px;
+    background-color: #e6ffe6;
+    font-size: 12px;
+    font-weight: 700;
+    color: #101928;
+  }
+}
+
+/* App-wide scrollbar: slim, track-less, no arrow buttons; the thumb brightens
+   when its container, then the bar itself, is hovered. Chromium/Safari use
+   the ::-webkit-scrollbar parts (Chrome ignores them whenever
+   scrollbar-width/color is set, hence the @supports split); Firefox gets the
+   standard properties. Tables hide the native bar and draw an overlay one
+   (components/shared/ScrollArea.tsx) so it never pushes content aside. */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  background: transparent;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  background-color: color-mix(in srgb, var(--ink) 20%, transparent);
+}
+
+*:hover::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--ink) 40%, transparent);
+}
+
+*::-webkit-scrollbar-thumb:hover,
+*::-webkit-scrollbar-thumb:active {
+  background-color: rgba(var(--brand-primary-rgb), 0.85);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--ink) 30%, transparent) transparent;
+  }
+}
+
+/* Native scrollbar fully hidden (used together with ScrollArea's overlay). */
+.scroll-hide-native {
+  scrollbar-width: none;
+}
+
+.scroll-hide-native::-webkit-scrollbar {
+  display: none;
+}

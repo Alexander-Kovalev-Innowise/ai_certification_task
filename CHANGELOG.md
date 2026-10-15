@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Server mail delivery: every transactional email now renders subject + HTML + text with absolute `CLIENT_URL` links; `MAIL_PROVIDER` = `console | ses | smtp | dev` (`SMTP_URL`, `MAIL_FROM`); `dev` exposes `GET/DELETE /__dev/mailbox` (never in production).
+- `RATE_LIMITS_DISABLED` env (ignored in production); verification email after ShareLink/coach/trainer-setup signup.
+- Impersonation: ended sessions are rejected, non-GET writes are audited (`audit.ImpersonationAuditLog`), history rows carry `writeCount`.
+- Audit: `audit.TrainerCreationLog`; `GET /users/deletion-log`; GDPR backup includes profile rows, coach `certifications` and trainer `logoUrl` are anonymized.
+
+### Fixed
+- Deactivated users no longer vanish (deactivation no longer sets `deletedAt`): directory status filters, `ACCOUNT_INACTIVE` on login, edit/reactivate all work.
+
 ## [1.1.0] - 2026-05-18
 
 ### Added

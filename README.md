@@ -494,3 +494,63 @@ After completion, agent suggests: `/code-reviewer [context]`
 - [.claude/agents/](.claude/agents/) - Agent architecture details
 - [.claude/hooks/README.md](.claude/hooks/README.md) - Hook configuration guide
 - [.claude/skills/SKILL FLOW.md](.claude/skills/SKILL%20FLOW.md) - Skill flow diagram
+
+## Development Setup
+
+This section covers running the PracticePerfect application itself (`apps/server` + `apps/client`), as scaffolded by the Epic-01 implementation plan — separate from the Accelerator Core tooling documented above.
+
+> ### ⚠️ Single-replica constraint — read this before deploying
+>
+> **This deployment is single-process only. Do not run two instances of `apps/server` at once.** Scheduled jobs (`@nestjs/schedule` `@Cron` — the outbox pump plus four maintenance sweeps) fire in *every* process that registers them; a second replica means duplicate side effects (e.g. duplicate expiry emails to parents), not just duplicate log lines. There is no distributed lock or leader election here — none is needed at one replica, and none is built.
+>
+> **Emergency stopgap only:** set `SCHEDULER_ENABLED=false` (typed in `apps/server/src/shared/config/env.schema.ts`, default `true`) on every replica but one to bring up a second process without double-firing today. This is not a scaling design — it makes the scheduler a single point of failure. See `specs/architect-architecture.md` §21 for the real exit criteria and minimum change required before scaling past one replica.
+
+### Prerequisites
+
+- **Node.js** 20+ and **npm** 10+ (npm workspaces — not pnpm/yarn)
+- **Docker** (for local PostgreSQL via `docker-compose.yml`, and for Testcontainers-backed integration tests)
+
+```bash
+node -v && npm -v
+docker --version
+```
+
+### First-time setup
+
+```bash
+# 1. Start PostgreSQL
+docker compose up -d
+
+# 2. Install dependencies (root — installs all workspaces)
+npm install
+
+# 3. Copy the env template and fill in real values
+cp .env.example .env
+
+# 4. Apply database migrations (once Phase 1's Prisma schema exists)
+npm run prisma:migrate -w apps/server
+```
+
+### Running the apps
+
+```bash
+npm run dev
+```
+
+This runs `turbo run dev`, which starts both `apps/server` (NestJS, `:3000`) and `apps/client` (Next.js) in watch mode. To run just one:
+
+```bash
+npm run dev -w apps/server
+npm run dev -w apps/client
+```
+
+### Running tests
+
+```bash
+npm run test        # unit tests, all workspaces
+npm run test:e2e     # integration/e2e tests (apps/server)
+```
+
+`test:e2e` uses Testcontainers to spin up a real PostgreSQL container per test run — **Docker must be running** for these to pass.
+
+See the single-replica warning at the top of this section before running more than one instance of `apps/server`.

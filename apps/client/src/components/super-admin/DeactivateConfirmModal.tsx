@@ -1,0 +1,100 @@
+'use client';
+
+import { useState } from 'react';
+
+import { apiRequest } from '../../lib/api/apiClient';
+import { Modal } from '../shared/Modal';
+
+import type { UserDetailResponseDto } from './UserDetailForm';
+
+export interface DeactivateConfirmModalProps {
+  isOpen: boolean;
+  action: 'deactivate' | 'reactivate';
+  userId: string;
+  onClose: () => void;
+  onSuccess: (updated: UserDetailResponseDto) => void;
+}
+
+const COPY = {
+  deactivate: {
+    headingId: 'deactivate-confirm-heading',
+    heading: 'Deactivate user',
+    body: 'This user will be signed out immediately and unable to log back in until reactivated.',
+    confirmLabel: 'Deactivate',
+    submittingLabel: 'Deactivating…',
+    conflictMessage: 'This user is already inactive or deleted.',
+  },
+  reactivate: {
+    headingId: 'reactivate-confirm-heading',
+    heading: 'Reactivate user',
+    body: 'This user will be able to log in again.',
+    confirmLabel: 'Reactivate',
+    submittingLabel: 'Reactivating…',
+    conflictMessage: 'This user cannot be reactivated — it has been permanently deleted.',
+  },
+} as const;
+
+// fe §4.3 — DeactivateConfirmModal: POST /users/:id/deactivate|/reactivate
+// (api §3, FR-013/BR-011). One component covers both directions via
+// `action` — the route table names a single modal for both entry points.
+// Task 12.5.
+export function DeactivateConfirmModal({ isOpen, action, userId, onClose, onSuccess }: DeactivateConfirmModalProps) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const copy = COPY[action];
+
+  if (!isOpen) {
+    return null;
+  }
+
+  async function handleConfirm() {
+    setIsSubmitting(true);
+    setError(null);
+
+    const res = await apiRequest(`/users/${userId}/${action}`, { method: 'POST' });
+
+    setIsSubmitting(false);
+
+    if (!res.ok) {
+      setError(res.status === 409 ? copy.conflictMessage : 'Something went wrong. Please try again.');
+      return;
+    }
+
+    const updated = (await res.json()) as UserDetailResponseDto;
+    onSuccess(updated);
+  }
+
+  return (
+    <Modal
+      labelledBy={copy.headingId}
+      onClose={onClose}
+      dismissible={!isSubmitting}
+      className="w-full max-w-[24rem] rounded-md border border-border-soft bg-surface-1 p-lg shadow-card-strong"
+    >
+      <h2 id={copy.headingId} className="text-block-title font-semibold text-text-primary">
+        {copy.heading}
+      </h2>
+      <p className="mt-sm text-body text-text-secondary">{copy.body}</p>
+
+      {error && (
+        <p role="alert" className="mt-sm text-body text-danger">
+          {error}
+        </p>
+      )}
+
+      <div className="mt-md flex justify-end gap-sm">
+        <button type="button" onClick={onClose} disabled={isSubmitting} className="btn btn-ghost">
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleConfirm}
+          disabled={isSubmitting}
+          className="btn btn-danger"
+        >
+          {isSubmitting ? copy.submittingLabel : copy.confirmLabel}
+        </button>
+      </div>
+    </Modal>
+  );
+}
